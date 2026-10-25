@@ -1,12 +1,13 @@
 import { useState, useEffect } from "react";
 import { View, Pressable, Platform, FlatList } from "react-native";
 import { router } from "expo-router";
-import { Page, Text, Icon, Button, Empty, Loading } from "@/components/flickwell/ui";
-import { MediaImage } from "@/components/flickwell/media-image";
-import { useFlickWell } from "@/components/flickwell/provider";
-import { smartSessions, sessionTitle, remainingSeconds } from "@/lib/flickwell/sessions";
-import { Collection, SessionMinutes } from "@/lib/flickwell/types";
-import { bytes } from "@/lib/flickwell/logic";
+import { Page, Text, Icon, Button, Empty, Loading } from "@/components/pictopia/ui";
+import { MediaImage } from "@/components/pictopia/media-image";
+import { usePictopia } from "@/components/pictopia/provider";
+import { useSessionTally } from "@/components/pictopia/use-session-tally";
+import { smartSessions, sessionTitle, remainingSeconds } from "@/lib/pictopia/sessions";
+import { Collection, SessionMinutes } from "@/lib/pictopia/types";
+import { bytes } from "@/lib/pictopia/logic";
 const collections = [
   {
     title: "Recent photos",
@@ -34,7 +35,8 @@ const collections = [
   },
 ];
 export default function Home() {
-  const app = useFlickWell();
+  const app = usePictopia();
+  const tally = useSessionTally(app.session, app.revision);
   const [minutes, setMinutes] = useState<SessionMinutes>(5);
   const unfinished = app.session && !app.session.complete;
   useEffect(() => {
@@ -62,7 +64,7 @@ export default function Home() {
   }
   const progress = app.stats.total ? app.stats.reviewed / app.stats.total : 0;
   return (
-    <Page title="FlickWell" subtitle="Keep the memories. Lose the clutter.">
+    <Page title="Pictopia" subtitle="Keep the memories. Lose the clutter.">
       <View className="mb-6 flex-row items-center gap-2">
         <Icon name="ShieldCheck" size={16} className="text-primary" />
         <Text className="text-body text-muted-foreground">Your photos stay yours. Always.</Text>
@@ -90,7 +92,7 @@ export default function Home() {
             </Text>
             <Text className="mb-6 mt-4 max-w-sm text-body leading-6 text-muted-foreground">
               {unfinished && app.session
-                ? `${sessionTitle(app.session.collection)} • ${app.session.reviewed} reviewed. Your next photo is ready.`
+                ? `${sessionTitle(app.session.collection)} • ${tally?.reviewed ?? 0} reviewed. Your next photo is ready.`
                 : "A few easy decisions. A few rediscovered memories. A little space for what’s next."}
             </Text>
             {!unfinished && (
@@ -326,7 +328,7 @@ export default function Home() {
           title="Your memories belong here"
           description={
             Platform.OS === "web"
-              ? "Choose your own photos to try FlickWell in your browser. Camera-roll access and safe device deletion are available in the native app."
+              ? "Choose your own photos to try Pictopia in your browser. Camera-roll access and safe device deletion are available in the native app."
               : "Connect your photo library to see your months and start cleaning. Nothing is deleted without your confirmation."
           }
           action={

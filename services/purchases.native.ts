@@ -1,7 +1,7 @@
 import Purchases, { CustomerInfo, PurchasesPackage } from "react-native-purchases";
 import { Platform } from "react-native";
 import { PurchaseService } from "./purchases.types";
-import { Entitlement, Offer } from "@/lib/flickwell/types";
+import { Entitlement, Offer } from "@/lib/pictopia/types";
 const key =
   Platform.OS === "ios"
     ? process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY

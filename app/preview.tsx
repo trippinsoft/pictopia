@@ -2,16 +2,16 @@ import React, { useState, useEffect } from "react";
 import { View, Pressable, ScrollView, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
-import { LivePhoto } from "@/components/flickwell/live-photo";
-import { ZoomPhoto } from "@/components/flickwell/zoom-photo";
+import { LivePhoto } from "@/components/pictopia/live-photo";
+import { ZoomPhoto } from "@/components/pictopia/zoom-photo";
 
 import { useVideoPlayer, VideoView } from "expo-video";
-import { Text, Icon, Empty, Loading } from "@/components/flickwell/ui";
-import { useFlickWell } from "@/components/flickwell/provider";
+import { Text, Icon, Empty, Loading } from "@/components/pictopia/ui";
+import { usePictopia } from "@/components/pictopia/provider";
 import { repository, storage } from "@/services/repository";
 import { mediaService } from "@/services/media";
-import { Media } from "@/lib/flickwell/types";
-import { bytes } from "@/lib/flickwell/logic";
+import { Media } from "@/lib/pictopia/types";
+import { bytes } from "@/lib/pictopia/logic";
 function Video({ uri, autoplay }: { uri: string; autoplay: boolean }) {
   const player = useVideoPlayer(uri, (p) => {
     p.loop = false;
@@ -29,7 +29,7 @@ function Video({ uri, autoplay }: { uri: string; autoplay: boolean }) {
 }
 export default function Preview() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const app = useFlickWell();
+  const app = usePictopia();
   const [m, setM] = useState<Media>(),
     [uri, setUri] = useState<string>(),
     [error, setError] = useState(""),
@@ -137,7 +137,7 @@ export default function Preview() {
               {"\n"}
               {m.width} × {m.height} • {bytes(m.size)}
               {m.duration ? `\n${Math.round(m.duration)} seconds` : ""}
-              {"\n"}Favorites are saved in FlickWell; your original media is not modified.
+              {"\n"}Favorites are saved in Pictopia; your original media is not modified.
             </Text>
           </ScrollView>
         )}

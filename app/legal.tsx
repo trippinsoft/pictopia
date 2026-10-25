@@ -1,10 +1,10 @@
 import { View, Pressable } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { Page, Text, Icon } from "@/components/flickwell/ui";
+import { Page, Text, Icon } from "@/components/pictopia/ui";
 const privacy = [
   [
     "Your photos stay local",
-    "FlickWell reads media you authorize to help you review and organize it. Photos and videos are not uploaded for analysis. No account is required.",
+    "Pictopia reads media you authorize to help you review and organize it. Photos and videos are not uploaded for analysis. No account is required.",
   ],
   [
     "Local information",
@@ -16,11 +16,11 @@ const privacy = [
   ],
   [
     "Your control",
-    "You may limit or revoke photo access in system settings. Decisions and analysis caches can be reset in FlickWell. Original media is deleted only after your explicit confirmation and an authorized native deletion request.",
+    "You may limit or revoke photo access in system settings. Decisions and analysis caches can be reset in Pictopia. Original media is deleted only after your explicit confirmation and an authorized native deletion request.",
   ],
   [
     "No ads or tracking",
-    "FlickWell’s application code adds no advertising SDK, photo-upload service, or behavioral analytics. The development preview is hosted by Draftbit and subject to its own platform policies.",
+    "Pictopia’s application code adds no advertising SDK, photo-upload service, or behavioral analytics. The development preview is hosted by Draftbit and subject to its own platform policies.",
   ],
   [
     "Publisher details required",
@@ -29,8 +29,8 @@ const privacy = [
 ];
 const terms = [
   [
-    "Using FlickWell",
-    "FlickWell helps you review your personal photo and video library. You retain ownership of your media and responsibility for your choices. Keep backups of important memories.",
+    "Using Pictopia",
+    "Pictopia helps you review your personal photo and video library. You retain ownership of your media and responsibility for your choices. Keep backups of important memories.",
   ],
   [
     "Deletion and suggestions",

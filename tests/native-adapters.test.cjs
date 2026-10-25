@@ -129,3 +129,13 @@ test("store cancellation and pending approval never unlock Pro", async () => {
   await assert.rejects(() => service.purchase("monthly"), /pending/);
   delete process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY;
 });
+test("native builds without the analysis module report it unavailable instead of simulating", async () => {
+  const load = makeLoader({
+    "expo-modules-core": { requireOptionalNativeModule: () => null },
+    "./media": { mediaService: { resolve: async () => ({ uri: "ph://a" }) } },
+  });
+  const { analyzer } = load("services/analysis.native.ts");
+  assert.equal(analyzer.available, false);
+  assert.equal(await analyzer.canScan(), false);
+  await assert.rejects(() => analyzer.analyze({ id: "a", type: "photo" }), /native build/);
+});

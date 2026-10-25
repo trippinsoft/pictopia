@@ -8,9 +8,9 @@ interface NativeProps extends ViewProps {
   onReady: () => void;
   onUnavailable: (event: { nativeEvent: { message: string } }) => void;
 }
-const available = Platform.OS === "ios" && !!requireOptionalNativeModule("FlickWellAnalysis");
+const available = Platform.OS === "ios" && !!requireOptionalNativeModule("PictopiaAnalysis");
 const NativeLivePhoto = available
-  ? requireNativeViewManager<NativeProps>("FlickWellAnalysis")
+  ? requireNativeViewManager<NativeProps>("PictopiaAnalysis")
   : null;
 const fill = { flex: 1 };
 export function LivePhoto({ id }: LivePhotoProps) {

@@ -30,7 +30,8 @@ exports.makeLoader = (mocks = {}) => {
       }
       return require(name);
     };
-    new Function("require", "module", "exports", code)(localRequire, module, module.exports);
+    // TypeScript's CommonJS output only uses `exports`; sources may declare their own `module`.
+    new Function("require", "exports", code)(localRequire, module.exports);
     return module.exports;
   }
   return load;

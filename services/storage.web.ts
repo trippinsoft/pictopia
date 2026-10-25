@@ -1,6 +1,6 @@
 import { Storage } from "./storage.types";
-import { Media, Stats, Month } from "@/lib/flickwell/types";
-import { matches } from "@/lib/flickwell/logic";
+import { Media, Stats, Month } from "@/lib/pictopia/types";
+import { matches } from "@/lib/pictopia/logic";
 let db: IDBDatabase;
 function req<T>(r: IDBRequest<T>) {
   return new Promise<T>((resolve, reject) => {
@@ -32,6 +32,7 @@ async function each(
 export const storage: Storage = {
   async init() {
     db = await new Promise((resolve, reject) => {
+      // Stable legacy storage identity preserves selected files and cleanup progress.
       const r = globalThis.indexedDB.open("flickwell", 1);
       r.onupgradeneeded = () => {
         const m = r.result.createObjectStore("media", { keyPath: "id" });

@@ -3,10 +3,45 @@ import { requireOptionalNativeModule } from "expo-modules-core";
 import { File } from "expo-file-system";
 import { Linking, Platform } from "react-native";
 import { MediaService } from "./media.types";
-import { dateKeys } from "@/lib/flickwell/logic";
+import { dateKeys } from "@/lib/pictopia/logic";
+import { accessScope, classifyDeletion, deletionErrorKind } from "@/lib/pictopia/deletion";
+import { OsDeletion, Presence } from "@/lib/pictopia/types";
 const nativeMetadata = requireOptionalNativeModule<{
   getMetadata(ids: string[]): Promise<{ id: string; favorite: boolean; screenshot: boolean }[]>;
-}>("FlickWellAnalysis");
+}>("PictopiaAnalysis");
+async function currentScope() {
+  return accessScope(await MediaLibrary.getPermissionsAsync(false, ["photo", "video"]));
+}
+/**
+ * Looks up each asset by identifier. A null result means "not visible to Pictopia", which is
+ * only proof of absence under full access; lookup errors are always unknown.
+ */
+async function lookup(ids: string[]) {
+  const scope = await currentScope();
+  const presence: Record<string, Presence> = {};
+  const info = new Map<string, MediaLibrary.AssetInfo>();
+  for (const id of ids) presence[id] = "unknown";
+  if (scope === "none") return { scope, presence, info };
+  for (let offset = 0; offset < ids.length; offset += 20)
+    await Promise.all(
+      ids.slice(offset, offset + 20).map(async (id) => {
+        try {
+          const a = await MediaLibrary.getAssetInfoAsync(id, { shouldDownloadFromNetwork: false });
+          if (a == null) presence[id] = "absent";
+          else if (a.id === id) {
+            presence[id] = "present";
+            info.set(id, a);
+          }
+        } catch {
+          /* A failed lookup proves nothing either way. */
+        }
+      }),
+    );
+  // A scope change during the lookups makes every absence ambiguous.
+  if ((await currentScope()) !== scope)
+    for (const id of ids) if (presence[id] === "absent") presence[id] = "unknown";
+  return { scope, presence, info };
+}
 export const mediaService: MediaService = {
   async permission(request = false) {
     const p = await (request
@@ -109,7 +144,7 @@ export const mediaService: MediaService = {
       a.height !== m.height ||
       a.mediaType !== m.type
     )
-      throw Error("This item changed outside FlickWell. Refresh your library before reviewing it.");
+      throw Error("This item changed outside Pictopia. Refresh your library before reviewing it.");
     if (a.isNetworkAsset && !a.localUri)
       throw Error("This item is in the cloud. Download it in Photos, then try again.");
     const uri = a.localUri ?? a.uri;
@@ -122,46 +157,61 @@ export const mediaService: MediaService = {
     }
     return { uri, size, systemFavorite: a.isFavorite };
   },
-  async remove(ids) {
-    const p = await this.permission();
-    if (!p.granted) throw Error("Photo access changed. Reconnect your library before deleting.");
-    try {
-      const success = await MediaLibrary.deleteAssetsAsync(ids);
-      if (!success) return { confirmed: [], cancelled: true };
-      const now = await this.permission();
-      if (!now.granted || now.limited !== p.limited) return { confirmed: [], cancelled: false };
-      const confirmed: string[] = [];
-      for (const id of ids) {
-        try {
-          const a = await MediaLibrary.getAssetInfoAsync(id, { shouldDownloadFromNetwork: false });
-          if (!a?.id) confirmed.push(id);
-        } catch {
-          /* A lookup error is not proof of deletion. Reconcile against an OS enumeration below. */
-        }
-      }
-      if (confirmed.length !== ids.length) {
-        const remaining = new Set(ids.filter((id) => !confirmed.includes(id)));
-        let after: string | undefined,
-          more = true;
-        while (more) {
-          const r = await MediaLibrary.getAssetsAsync({
-            first: 200,
-            after,
-            mediaType: ["photo", "video"],
-          });
-          for (const a of r.assets) remaining.delete(a.id);
-          after = r.endCursor;
-          more = r.hasNextPage;
-        }
-        const latest = await this.permission();
-        if (latest.granted && latest.limited === p.limited) confirmed.push(...remaining);
-      }
-      return { confirmed: [...new Set(confirmed)], cancelled: false };
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "";
-      if (/cancel|denied|reject/i.test(message)) return { confirmed: [], cancelled: true };
-      throw Error("Deletion could not be verified. Your review queue has been kept.");
+  async inspect(ids) {
+    const { scope, presence } = await lookup(ids);
+    return { scope, presence };
+  },
+  async remove(items, hooks) {
+    const before = await lookup(items.map((m) => m.id));
+    if (before.scope === "none")
+      throw Error("Photo access changed. Reconnect your library before deleting.");
+    const requested: string[] = [],
+      skipped: string[] = [];
+    for (const m of items) {
+      const a = before.info.get(m.id);
+      // Only assets verified visible and unchanged right now are sent to the OS.
+      if (
+        before.presence[m.id] === "present" &&
+        a &&
+        a.creationTime === m.created &&
+        a.width === m.width &&
+        a.height === m.height &&
+        a.mediaType === m.type
+      )
+        requested.push(m.id);
+      else skipped.push(m.id);
     }
+    if (!requested.length)
+      return classifyDeletion({
+        requested,
+        skipped,
+        os: "unknown",
+        before: before.scope,
+        after: before.scope,
+        presence: before.presence,
+      });
+    await hooks.beforeRequest(requested, before.scope);
+    let os: OsDeletion;
+    try {
+      // iOS rejects on cancellation; Android deletes item by item and may reject part-way.
+      os = (await MediaLibrary.deleteAssetsAsync(requested)) ? "success" : "cancelled";
+    } catch (e) {
+      os = deletionErrorKind(e);
+    }
+    try {
+      await hooks.afterRequest(os);
+    } catch {
+      /* Recovery treats an unrecorded OS result as unknown, which is more conservative. */
+    }
+    const after = await lookup(requested);
+    return classifyDeletion({
+      requested,
+      skipped,
+      os,
+      before: before.scope,
+      after: after.scope,
+      presence: after.presence,
+    });
   },
   listen(callback) {
     const s = MediaLibrary.addListener(callback);

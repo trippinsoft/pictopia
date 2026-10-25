@@ -3,7 +3,8 @@ import { View, Pressable, ScrollView, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Text } from "@/components/ui/text";
 import Icon, { IconName } from "@/lib/icons/LucideIcon";
-import { useFlickWell } from "./provider";
+import { usePictopia } from "./provider";
+import { useTheme } from "@/theming/ThemeProvider";
 import { router } from "expo-router";
 export { Text, Icon };
 export function Button({
@@ -21,6 +22,11 @@ export function Button({
   danger?: boolean;
   disabled?: boolean;
 }) {
+  const foreground = danger
+    ? "text-destructive-foreground"
+    : secondary
+      ? "text-secondary-foreground"
+      : "text-primary-foreground";
   return (
     <Pressable
       accessibilityRole="button"
@@ -28,16 +34,8 @@ export function Button({
       onPress={onPress}
       className={`min-h-12 flex-row items-center justify-center gap-2 rounded-2xl px-5 py-3 ${danger ? "bg-destructive" : secondary ? "bg-secondary" : "bg-primary"} ${disabled ? "opacity-40" : "active:opacity-75"}`}
     >
-      <Text className={`text-button ${secondary ? "text-foreground" : "text-primary-foreground"}`}>
-        {children}
-      </Text>
-      {icon && (
-        <Icon
-          name={icon}
-          size={18}
-          className={secondary ? "text-foreground" : "text-primary-foreground"}
-        />
-      )}
+      <Text className={`text-button ${foreground}`}>{children}</Text>
+      {icon && <Icon name={icon} size={18} className={foreground} />}
     </Pressable>
   );
 }
@@ -54,7 +52,7 @@ export function Page({
   scroll?: boolean;
   compactHeader?: boolean;
 }) {
-  const app = useFlickWell();
+  const app = usePictopia();
   const body = (
     <View className="mx-auto w-full max-w-6xl px-5 pb-8 md:px-10">
       <View
@@ -64,7 +62,7 @@ export function Page({
           <Text className={`${compactHeader ? "text-h3" : "text-h1"} text-foreground`}>
             {title}
           </Text>
-          {subtitle && <Text className="mt-2 text-body text-muted-foreground">{subtitle}</Text>}
+          {!!subtitle && <Text className="mt-2 text-body text-muted-foreground">{subtitle}</Text>}
         </View>
         <Pressable
           accessibilityLabel="Review deletion queue"
@@ -74,7 +72,7 @@ export function Page({
           <Icon name="Trash2" size={21} className="text-foreground" />
           {app.stats.pending > 0 && (
             <View className="absolute -right-1 -top-1 min-w-5 items-center rounded-full bg-destructive px-1 py-0.5">
-              <Text className="text-caption text-primary-foreground">{app.stats.pending}</Text>
+              <Text className="text-caption text-destructive-foreground">{app.stats.pending}</Text>
             </View>
           )}
         </Pressable>
@@ -113,9 +111,10 @@ export function Empty({
   );
 }
 export function Loading() {
+  const { theme } = useTheme();
   return (
     <View className="items-center p-10">
-      <ActivityIndicator />
+      <ActivityIndicator color={theme.colors.primary} />
       <Text className="mt-3 text-body text-muted-foreground">Getting things ready…</Text>
     </View>
   );

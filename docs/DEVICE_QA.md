@@ -6,6 +6,7 @@ Repeat on minimum supported iOS/Android and a current maintained version; includ
 
 | Scenario | Steps and required result |
 | --- | --- |
+| Appearance | Switch Light/Dark/System on iOS and Android; change OS appearance while open and backgrounded, reload/force-quit, and verify headers, status/navigation controls, permission dialogs, loading states and deletion confirmation. Confirm no screen/session resets or white startup flash. Include three-button and gesture navigation. |
 | First launch | Open a fresh install, use onboarding, reach permission explanation without a paywall or account. |
 | Full / limited / denied access | Grant each mode separately. Only authorized actual media appears. Denial offers Settings; limited access remains usable. |
 | Photos and videos | Import fixture media into device Photos. Verify counts, creation months, ordering, representative thumbnails, video duration, unknown-size labeling. |
@@ -21,6 +22,9 @@ Repeat on minimum supported iOS/Android and a current maintained version; includ
 | Cancel deletion | Cancel in-app confirmation and OS authorization separately. No success or recovered-space claim appears. |
 | Confirm deletion | Approve deletion on a disposable batch. Verify original IDs absent from OS enumeration and app. Explain Recently Deleted/Trash. |
 | Partial results | Remove one asset externally during review; revoke permission during request. Only verified deletions leave local active state; ambiguous items retain history. |
+| Limited-access deletion | iOS "Selected Photos" and Android 14 "Allow limited access": queue items inside and outside the selection, then delete. Only selected items are sent to the OS; unselected items are reported as unavailable and remain marked. Cancel the OS sheet once and confirm the "Deletion cancelled" message. |
+| Restored items | Set aside several items, restore one from the queue, and check the session summary, Home and Insights: the restored item no longer counts as set aside and reappears in a later session. After confirming a deletion, deleted items still count as set aside in that session. |
+| Interrupted deletion | Force-quit (app switcher) while the OS deletion sheet is open, once before and once after approving. Relaunch: the app reports the checked result; full access confirms absent items once; limited access reports unverified items without counting them. Relaunch again: counts in Insights do not change. |
 | Exact duplicates | Include byte-identical originals, visually matching re-encodes, and matching filenames with different bytes. Only content-hash matches form exact groups. Live Photos require matching paired content. |
 | Similar / best shot / blur | Use controlled nearby captures, rotated/cropped frames, sharp and low-detail images. Compare suggestions manually; no automatic deletion. |
 | Scan interruptions | Pause, cancel, background, low-power mode, low memory, thermal pressure, process death. Resume without re-hashing unchanged successful originals. |

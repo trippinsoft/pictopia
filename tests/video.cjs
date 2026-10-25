@@ -10,7 +10,7 @@ const assert = require("node:assert/strict");
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   try {
-    await page.goto("http://localhost:17514");
+    await page.goto(process.env.PREVIEW_URL || "http://localhost:17290");
     await page.getByText("Add photos", { exact: true }).waitFor();
     const payload = await page.evaluate(async () => {
       const canvas = document.createElement("canvas");

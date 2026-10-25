@@ -1,10 +1,10 @@
 Pod::Spec.new do |s|
-  s.name = 'FlickWellAnalysis'
+  s.name = 'PictopiaAnalysis'
   s.version = '1.0.0'
   s.summary = 'Private on-device streaming hashes and thumbnail quality analysis'
-  s.description = 'Local FlickWell analysis module, with no networking.'
+  s.description = 'Local Pictopia analysis module, with no networking.'
   s.license = { :type => 'MIT' }
-  s.author = 'FlickWell'
+  s.author = 'Pictopia'
   s.homepage = 'https://expo.dev'
   s.platforms = { :ios => '15.1' }
   s.source = { :git => '' }

@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from "react";
 import { AppState, Appearance, Platform, View, Pressable } from "react-native";
 import { Text } from "@/components/ui/text";
-import { repository, storage, serialize } from "@/services/repository";
+import { repository, storage } from "@/services/repository";
+import { deleteMarked, recoverDeletions } from "@/services/deletion";
 import { mediaService } from "@/services/media";
 import { purchaseService } from "@/services/purchases";
 import { analyzer } from "@/services/analysis";
@@ -17,8 +18,10 @@ import {
   Entitlement,
   ScanState,
   Media,
-} from "@/lib/flickwell/types";
-import { SCAN_VERSION, entitlementActive } from "@/lib/flickwell/logic";
+  DeletionResult,
+} from "@/lib/pictopia/types";
+import { SCAN_VERSION, entitlementActive } from "@/lib/pictopia/logic";
+import { recoveryMessage } from "@/lib/pictopia/deletion";
 const emptyStats: Stats = {
   total: 0,
   photos: 0,
@@ -49,19 +52,19 @@ interface Context {
   start: (c: Collection, minutes?: SessionMinutes) => Promise<void>;
   addSessionTime: (id: string, milliseconds: number) => Promise<void>;
   finishSession: () => Promise<void>;
-  decide: (d: "keep" | "delete") => Promise<void>;
+  decide: (d: "keep" | "delete", expectedId?: string) => Promise<void>;
   undo: () => Promise<void>;
-  skip: () => Promise<void>;
+  skip: (expectedId?: string) => Promise<void>;
   updatePrefs: (p: Partial<Preferences>) => Promise<void>;
   scanLibrary: () => Promise<void>;
   pauseScan: () => void;
   cancelScan: () => Promise<void>;
   restorePurchases: () => Promise<void>;
   setEntitlement: (e: Entitlement) => Promise<void>;
-  deleteQueue: (items: Media[]) => Promise<number>;
+  deleteQueue: (items: Media[]) => Promise<DeletionResult>;
 }
 const Ctx = createContext<Context | null>(null);
-export function FlickWellProvider({ children }: { children: React.ReactNode }) {
+export function PictopiaProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false),
     [stats, setStats] = useState(emptyStats),
     [months, setMonths] = useState<Month[]>([]),
@@ -97,6 +100,21 @@ export function FlickWellProvider({ children }: { children: React.ReactNode }) {
     await storage.setValue("entitlement", e);
     setEnt(e);
   }, []);
+  async function recover() {
+    if (Platform.OS === "web" || deletingRef.current || syncRef.current) return;
+    deletingRef.current = true;
+    try {
+      const result = await recoverDeletions(mediaService);
+      if (!result) return;
+      const message = recoveryMessage(result);
+      if (message && alive.current) setError(message);
+      await refresh();
+    } catch {
+      /* The journal is kept and re-checked on the next launch or return to the app. */
+    } finally {
+      deletingRef.current = false;
+    }
+  }
   async function sync(request: boolean) {
     if (syncRef.current || deletingRef.current) return false;
     setBusy(true);
@@ -146,6 +164,8 @@ export function FlickWellProvider({ children }: { children: React.ReactNode }) {
           void saveEnt(e);
         });
         if (Platform.OS !== "web") {
+          // Finish checking any deletion interrupted by a crash or termination before syncing.
+          await recover();
           const permission = await mediaService.permission();
           if (permission.granted) void sync(false);
           stopMedia = mediaService.listen(() => {
@@ -168,7 +188,7 @@ export function FlickWellProvider({ children }: { children: React.ReactNode }) {
           .refresh()
           .then(saveEnt)
           .catch(() => {});
-        if (Platform.OS !== "web") void sync(false);
+        if (Platform.OS !== "web") void recover().then(() => sync(false));
       }
     });
     const timer = setInterval(() => setClock(Date.now()), 30000);
@@ -189,15 +209,15 @@ export function FlickWellProvider({ children }: { children: React.ReactNode }) {
       (c === "large" || c === "blurry" || c.startsWith("group:")) &&
       !entitlementActive(entitlement)
     )
-      throw Error("This collection is part of FlickWell Pro.");
+      throw Error("This collection is part of Pictopia Pro.");
     setSession(await repository.start(c, prefs, entitlementActive(entitlement), minutes));
     await refresh();
   }
-  async function decision(d: "keep" | "delete") {
+  async function decision(d: "keep" | "delete", expectedId?: string) {
     if (decisionLock.current) return;
     decisionLock.current = true;
     try {
-      setSession(await repository.decide(d));
+      setSession(await repository.decide(d, expectedId));
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Your decision could not be saved. Try again.");
@@ -213,8 +233,10 @@ export function FlickWellProvider({ children }: { children: React.ReactNode }) {
     Appearance.setColorScheme(next.appearance === "system" ? "unspecified" : next.appearance);
   }
   async function scanLibrary() {
-    if (!entitlementActive(entitlement)) throw Error("Smart analysis is part of FlickWell Pro.");
+    if (!entitlementActive(entitlement)) throw Error("Smart analysis is part of Pictopia Pro.");
     if (!analyzer.available) throw Error("Smart analysis requires a native build.");
+    if (deletingRef.current)
+      throw Error("Wait for the current deletion to finish before scanning.");
     if (scanRef.current) return;
     const controller = new AbortController();
     scanRef.current = controller;
@@ -282,53 +304,16 @@ export function FlickWellProvider({ children }: { children: React.ReactNode }) {
       throw Error(
         "Device deletion is available in the native app. Browser files remain untouched.",
       );
-    if (scanRef.current || syncRef.current)
+    if (scanRef.current || syncRef.current || deletingRef.current)
       throw Error("Wait for the current library operation to finish before deleting.");
     deletingRef.current = true;
     setBusy(true);
     try {
-      const current: Media[] = [];
-      for (const item of items) {
-        const latest = await storage.get(item.id);
-        if (latest?.active && latest.decision === "delete") {
-          await mediaService.resolve(latest);
-          current.push(latest);
-        }
-      }
-      if (!current.length) return 0;
-      await storage.setValue("deletionAttempt", {
-        ids: current.map((m) => m.id),
-        started: Date.now(),
-      });
-      const result = await mediaService.remove(current.map((m) => m.id));
-      if (result.cancelled)
-        throw Error("Deletion cancelled. Everything stays in your review queue.");
-      await serialize(() =>
-        storage.put(
-          current
-            .filter((m) => result.confirmed.includes(m.id))
-            .map((m) => ({ ...m, active: false, decision: undefined })),
-        ),
-      );
-      await storage.setValue("deletionAttempt", null);
-      const previous = (await storage.getValue<{ count: number; estimatedBytes: number }>(
-        "confirmedCleanup",
-      )) ?? { count: 0, estimatedBytes: 0 };
-      await storage.setValue("confirmedCleanup", {
-        count: previous.count + result.confirmed.length,
-        estimatedBytes:
-          previous.estimatedBytes +
-          current
-            .filter((m) => result.confirmed.includes(m.id))
-            .reduce((n, m) => n + (m.size ?? 0), 0),
-      });
-      await refresh();
-      if (result.confirmed.length !== current.length)
-        setError("Some items could not be verified as deleted. They remain in your queue.");
-      return result.confirmed.length;
+      return await deleteMarked(items, mediaService);
     } finally {
       deletingRef.current = false;
       setBusy(false);
+      await refresh().catch(() => {});
     }
   }
   const value: Context = {
@@ -364,8 +349,8 @@ export function FlickWellProvider({ children }: { children: React.ReactNode }) {
       setSession((await repository.undo()) ?? null);
       await refresh();
     },
-    skip: async () => {
-      setSession((await repository.skip()) ?? null);
+    skip: async (expectedId) => {
+      setSession((await repository.skip(expectedId)) ?? null);
       await refresh();
     },
     updatePrefs,
@@ -389,7 +374,7 @@ export function FlickWellProvider({ children }: { children: React.ReactNode }) {
   return (
     <Ctx.Provider value={value}>
       {children}
-      {error && (
+      {!!error && (
         <View className="absolute bottom-20 left-4 right-4 mx-auto max-w-xl flex-row items-center rounded-2xl border border-destructive bg-card p-4">
           <Text accessibilityRole="alert" className="flex-1 text-body leading-5 text-foreground">
             {error}
@@ -406,8 +391,8 @@ export function FlickWellProvider({ children }: { children: React.ReactNode }) {
     </Ctx.Provider>
   );
 }
-export function useFlickWell() {
+export function usePictopia() {
   const value = useContext(Ctx);
-  if (!value) throw Error("FlickWell provider is missing.");
+  if (!value) throw Error("Pictopia provider is missing.");
   return value;
 }

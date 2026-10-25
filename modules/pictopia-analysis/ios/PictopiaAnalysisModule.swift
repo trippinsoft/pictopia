@@ -3,15 +3,15 @@ import Photos
 import UIKit
 import CryptoKit
 
-public class FlickWellAnalysisModule: Module {
+public class PictopiaAnalysisModule: Module {
   private let lock = NSLock()
   private var currentRequest: PHAssetResourceDataRequestID?
-  private let queue = DispatchQueue(label: "flickwell.analysis", qos: .utility)
+  private let queue = DispatchQueue(label: "pictopia.analysis", qos: .utility)
   public func definition() -> ModuleDefinition {
-    Name("FlickWellAnalysis")
-    View(FlickWellLivePhotoView.self) {
+    Name("PictopiaAnalysis")
+    View(PictopiaLivePhotoView.self) {
       Events("onReady", "onUnavailable")
-      Prop("assetId") { (view: FlickWellLivePhotoView, id: String) in view.load(id: id) }
+      Prop("assetId") { (view: PictopiaLivePhotoView, id: String) in view.load(id: id) }
     }
     Function("cancel") {
       self.lock.lock(); let request = self.currentRequest; self.lock.unlock()
@@ -39,33 +39,33 @@ public class FlickWellAnalysisModule: Module {
             guard let paired = resources.first(where: { $0.type == .pairedVideo }) else { throw AnalysisError.unavailable }
             components.append(paired)
           }
-          var digest = SHA256()
-          var size = 0
+          // Callback state lives in a locked reference box so no captured `var` is mutated
+          // inside Photos callbacks; this compiles whether or not the SDK marks them @Sendable.
+          let state = AnalysisState()
           for resource in components {
-            if components.count > 1 { digest.update(data: Data("flickwell-resource-\(resource.type.rawValue)".utf8)) }
+            // Preserve the original digest boundary marker for cached Live Photo hashes.
+            if components.count > 1 { state.update(Data("flickwell-resource-\(resource.type.rawValue)".utf8), counted: false) }
             let options = PHAssetResourceRequestOptions()
             options.isNetworkAccessAllowed = false
             let semaphore = DispatchSemaphore(value: 0)
-            let dataLock = NSLock()
-            var failure: Error?
             let request = PHAssetResourceManager.default().requestData(for: resource, options: options, dataReceivedHandler: { data in
-              dataLock.lock(); digest.update(data: data); size += data.count; dataLock.unlock()
-            }, completionHandler: { error in failure = error; semaphore.signal() })
+              state.update(data, counted: true)
+            }, completionHandler: { error in state.fail(error); semaphore.signal() })
             self.lock.lock(); self.currentRequest = request; self.lock.unlock()
             if semaphore.wait(timeout: .now() + 120) == .timedOut { PHAssetResourceManager.default().cancelDataRequest(request); throw AnalysisError.unavailable }
             self.lock.lock(); self.currentRequest = nil; self.lock.unlock()
-            if let failure = failure { throw failure }
+            if let failure = state.failure { throw failure }
           }
-          var result: [String: Any] = ["hash": digest.finalize().map { String(format: "%02x", $0) }.joined(), "size": size]
+          var result: [String: Any] = ["hash": state.hash(), "size": state.size]
           if !isVideo {
             let imageOptions = PHImageRequestOptions()
             imageOptions.isSynchronous = true
             imageOptions.isNetworkAccessAllowed = false
             imageOptions.deliveryMode = .highQualityFormat
             imageOptions.resizeMode = .exact
-            var thumbnail: UIImage?
-            PHImageManager.default().requestImage(for: asset, targetSize: CGSize(width: 64, height: 64), contentMode: .aspectFit, options: imageOptions) { image, _ in thumbnail = image }
-            guard let cg = thumbnail?.cgImage else { throw AnalysisError.unavailable }
+            let thumbnail = ImageBox()
+            PHImageManager.default().requestImage(for: asset, targetSize: CGSize(width: 64, height: 64), contentMode: .aspectFit, options: imageOptions) { image, _ in thumbnail.set(image) }
+            guard let cg = thumbnail.image?.cgImage else { throw AnalysisError.unavailable }
             var rgba = [UInt8](repeating: 0, count: 32 * 32 * 4)
             let rendered = rgba.withUnsafeMutableBytes { buffer -> Bool in
               guard let ctx = CGContext(data: buffer.baseAddress, width: 32, height: 32, bitsPerComponent: 8, bytesPerRow: 128, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
@@ -74,14 +74,10 @@ public class FlickWellAnalysisModule: Module {
               return true
             }
             guard rendered else { throw AnalysisError.unavailable }
-            let gray = (0..<1024).map { i in 0.299 * Double(rgba[i*4]) + 0.587 * Double(rgba[i*4+1]) + 0.114 * Double(rgba[i*4+2]) }
-            var perceptual = ""
-            for y in 0..<8 { for x in 0..<8 { let yy = y*31/7, xx = x*30/7; perceptual += gray[yy*32+xx] > gray[yy*32+xx+1] ? "1" : "0" } }
-            var sum = 0.0, squares = 0.0, count = 0.0
-            for y in 1..<31 { for x in 1..<31 { let i = y*32+x; let value = gray[i-1]+gray[i+1]+gray[i-32]+gray[i+32]-4*gray[i]; sum += value; squares += value*value; count += 1 } }
-            result["perceptual"] = perceptual
-            result["sharpness"] = squares/count - pow(sum/count, 2)
-            result["exposure"] = gray.reduce(0, +)/1024
+            let gray: [Double] = PictopiaPixelAnalysis.grayscale(rgba)
+            result["perceptual"] = PictopiaPixelAnalysis.differenceHash(gray)
+            result["sharpness"] = PictopiaPixelAnalysis.laplacianVariance(gray)
+            result["exposure"] = PictopiaPixelAnalysis.meanBrightness(gray)
           }
           promise.resolve(result)
         } catch { promise.reject("ERR_LOCAL_ANALYSIS", "Original media could not be analyzed locally.") }
@@ -90,3 +86,27 @@ public class FlickWellAnalysisModule: Module {
   }
 }
 private enum AnalysisError: Error { case unavailable }
+private final class AnalysisState: @unchecked Sendable {
+  private let lock = NSLock()
+  private var digest = SHA256()
+  private var bytes = 0
+  private var error: Error?
+  func update(_ data: Data, counted: Bool) {
+    lock.lock(); defer { lock.unlock() }
+    digest.update(data: data)
+    if counted { bytes += data.count }
+  }
+  func fail(_ error: Error?) { lock.lock(); self.error = error; lock.unlock() }
+  var failure: Error? { lock.lock(); defer { lock.unlock() }; return error }
+  var size: Int { lock.lock(); defer { lock.unlock() }; return bytes }
+  func hash() -> String {
+    lock.lock(); defer { lock.unlock() }
+    return digest.finalize().map { String(format: "%02x", $0) }.joined()
+  }
+}
+private final class ImageBox: @unchecked Sendable {
+  private let lock = NSLock()
+  private var value: UIImage?
+  func set(_ image: UIImage?) { lock.lock(); value = image; lock.unlock() }
+  var image: UIImage? { lock.lock(); defer { lock.unlock() }; return value }
+}

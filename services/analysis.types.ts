@@ -1,4 +1,4 @@
-import { Media, Analysis } from "@/lib/flickwell/types";
+import { Media, Analysis } from "@/lib/pictopia/types";
 export interface Analyzer {
   available: boolean;
   cancel?: () => void;

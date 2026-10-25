@@ -1,14 +1,16 @@
 import React, { useEffect, useState } from "react";
 import { View, FlatList } from "react-native";
 import { router } from "expo-router";
-import { Page, Text, Button, Empty } from "@/components/flickwell/ui";
-import { useFlickWell } from "@/components/flickwell/provider";
+import { Page, Text, Button, Empty } from "@/components/pictopia/ui";
+import { usePictopia } from "@/components/pictopia/provider";
 import { storage } from "@/services/storage";
-import { Session } from "@/lib/flickwell/types";
-import { bytes } from "@/lib/flickwell/logic";
+import { Session } from "@/lib/pictopia/types";
+import { SessionTally } from "@/lib/pictopia/sessions";
+import { repository } from "@/services/repository";
+import { bytes } from "@/lib/pictopia/logic";
 export default function Statistics() {
-  const app = useFlickWell();
-  const [sessions, setSessions] = useState<Session[]>([]),
+  const app = usePictopia();
+  const [sessions, setSessions] = useState<(Session & { tally: SessionTally })[]>([]),
     [cleanup, setCleanup] = useState({ count: 0, estimatedBytes: 0 });
   useEffect(() => {
     if (!app.ready) return;
@@ -22,7 +24,11 @@ export default function Statistics() {
           .reverse()
           .map((id) => storage.getValue<Session>(`session:${id}`)),
       );
-      setSessions(rows.filter((s): s is Session => !!s));
+      const saved = rows.filter((s): s is Session => !!s);
+      // Counts reflect current decisions, so restored items no longer appear as marked.
+      setSessions(
+        await Promise.all(saved.map(async (s) => ({ ...s, tally: await repository.tally(s) }))),
+      );
     });
   }, [app.revision]);
   return (
@@ -71,8 +77,8 @@ export default function Statistics() {
                   {new Date(item.started).toLocaleDateString()}
                 </Text>
                 <Text className="mt-3 text-body leading-6 text-muted-foreground">
-                  {item.reviewed} reviewed{"\n"}
-                  {item.kept} kept • {item.marked} marked
+                  {item.tally.reviewed} reviewed{"\n"}
+                  {item.tally.kept} kept • {item.tally.setAside} set aside
                 </Text>
                 <Text className="mt-3 text-caption text-primary">
                   {item.complete ? "Session finished" : "Progress saved"}

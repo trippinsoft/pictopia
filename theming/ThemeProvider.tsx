@@ -1,8 +1,16 @@
-import { ReactNode, createContext, useState, useMemo, useContext, useCallback } from 'react';
-import { Theme } from './Theme';
-import lightTheme from './themes/light';
-import { View } from 'react-native';
-import { vars } from 'nativewind';
+import {
+  ReactNode,
+  createContext,
+  useState,
+  useMemo,
+  useContext,
+  useCallback,
+  useEffect,
+} from "react";
+import { Theme } from "./Theme";
+import lightTheme from "./themes/light";
+import { Platform, View } from "react-native";
+import { vars } from "nativewind";
 
 interface ThemeContextValue {
   theme: Theme;
@@ -24,7 +32,7 @@ export const ThemeProvider = ({
   children: ReactNode;
 }) => {
   if (themes.length === 0) {
-    throw new Error('At least one theme must be provided in the ThemeProvider');
+    throw new Error("At least one theme must be provided in the ThemeProvider");
   }
 
   const [currentTheme, setCurrentTheme] = useState<Theme>(() => {
@@ -47,7 +55,7 @@ export const ThemeProvider = ({
       }
       setCurrentTheme(theme);
     },
-    [themes]
+    [themes],
   );
 
   const themeContextValue: ThemeContextValue = useMemo(
@@ -55,7 +63,7 @@ export const ThemeProvider = ({
       theme: currentTheme,
       setTheme,
     }),
-    [currentTheme, setTheme]
+    [currentTheme, setTheme],
   );
 
   // Flatten to variables that can be referenced in CSS/Tailwind classes
@@ -79,18 +87,31 @@ export const ThemeProvider = ({
   const strippedHslColors = useMemo(() => {
     const stripped: Record<string, string> = {};
     Object.entries(currentTheme.colors).forEach(([key, value]) => {
-      if (value.startsWith('hsl(')) {
-        stripped[key] = value.replace('hsl(', '').replace(')', '');
+      if (value.startsWith("hsl(")) {
+        stripped[key] = value.replace("hsl(", "").replace(")", "");
       }
     });
     return stripped;
   }, [currentTheme.colors]);
 
+  // Web Modal portals mount under body, outside the themed View.
+  // Root variables keep dialogs and portals in the same theme.
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof globalThis.document === "undefined") return;
+    const root = globalThis.document.documentElement;
+    Object.entries({ ...strippedHslColors, ...flattenedTypographyVariables }).forEach(
+      ([key, value]) => {
+        root.style.setProperty("--" + key, value);
+      },
+    );
+  }, [strippedHslColors, flattenedTypographyVariables]);
+
   return (
     <ThemeContext.Provider value={themeContextValue}>
       <View
         className="h-full w-full"
-        style={vars({ ...strippedHslColors, ...flattenedTypographyVariables })}>
+        style={vars({ ...strippedHslColors, ...flattenedTypographyVariables })}
+      >
         {children}
       </View>
     </ThemeContext.Provider>

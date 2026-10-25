@@ -2,14 +2,14 @@ import React, { useState, useEffect } from "react";
 import { View, FlatList, Pressable } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Text, Icon, Button, Empty } from "@/components/flickwell/ui";
-import { MediaImage } from "@/components/flickwell/media-image";
-import { useFlickWell } from "@/components/flickwell/provider";
+import { Text, Icon, Button, Empty } from "@/components/pictopia/ui";
+import { MediaImage } from "@/components/pictopia/media-image";
+import { usePictopia } from "@/components/pictopia/provider";
 import { storage, repository } from "@/services/repository";
-import { Media, Group } from "@/lib/flickwell/types";
+import { Media, Group } from "@/lib/pictopia/types";
 export default function Compare() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const app = useFlickWell();
+  const app = usePictopia();
   const [group, setGroup] = useState<Group>(),
     [items, setItems] = useState<Media[]>([]);
   useEffect(() => {
@@ -49,7 +49,7 @@ export default function Compare() {
         </View>
         {!app.pro ? (
           <Empty
-            title="Compare with FlickWell Pro"
+            title="Compare with Pictopia Pro"
             description="Your review history is retained when Pro expires."
             action={<Button onPress={() => router.replace("/paywall")}>View Pro plans</Button>}
           />

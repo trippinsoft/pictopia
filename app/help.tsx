@@ -1,5 +1,5 @@
 import { View, Linking } from "react-native";
-import { Page, Text, Button } from "@/components/flickwell/ui";
+import { Page, Text, Button } from "@/components/pictopia/ui";
 export default function Help() {
   const email = process.env.EXPO_PUBLIC_SUPPORT_EMAIL;
   return (
@@ -12,14 +12,14 @@ export default function Help() {
           ],
           [
             "Why didn’t my free storage change?",
-            "Deleted files may remain in Recently Deleted or Trash. FlickWell shows estimates from known file sizes, not a promise of immediate free space.",
+            "Deleted files may remain in Recently Deleted or Trash. Pictopia shows estimates from known file sizes, not a promise of immediate free space.",
           ],
           [
             "Why are some photos missing?",
-            "FlickWell sees only authorized media. Cloud originals must be downloaded in Photos before local analysis. You can change access in Settings.",
+            "Pictopia sees only authorized media. Cloud originals must be downloaded in Photos before local analysis. You can change access in Settings.",
           ],
           [
-            "Can I use FlickWell in a browser?",
+            "Can I use Pictopia in a browser?",
             "Yes: choose your own files and try swiping, zoom, video playback, undo, and resumable progress. Original-file deletion and store purchases require the native app.",
           ],
           [
@@ -28,7 +28,7 @@ export default function Help() {
           ],
           [
             "Where are my favorites?",
-            "Favorites marked here are local FlickWell preferences. They don’t change the favorite flag in your device’s Photos app. Existing iOS favorites are also excluded by default when their metadata is available.",
+            "Favorites marked here are local Pictopia preferences. They don’t change the favorite flag in your device’s Photos app. Existing iOS favorites are also excluded by default when their metadata is available.",
           ],
         ].map(([title, body]) => (
           <View key={title}>
@@ -38,7 +38,7 @@ export default function Help() {
         ))}
         {email ? (
           <Button
-            onPress={() => void Linking.openURL(`mailto:${email}?subject=FlickWell%20support`)}
+            onPress={() => void Linking.openURL(`mailto:${email}?subject=Pictopia%20support`)}
           >
             Contact support
           </Button>

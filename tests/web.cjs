@@ -12,8 +12,13 @@ const assert = require("node:assert/strict");
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
+  page.on("console", (message) => {
+    if (/Unexpected text node|Text strings must be rendered within a <Text>/.test(message.text())) {
+      errors.push(message.text());
+    }
+  });
   try {
-    await page.goto("http://localhost:17514");
+    await page.goto(process.env.PREVIEW_URL || "http://localhost:17290");
     await page.getByText("Your months, made lighter").waitFor();
     console.log("PASS Home renders with honest empty state");
     const chooser = page.waitForEvent("filechooser");
@@ -71,7 +76,7 @@ const assert = require("node:assert/strict");
     await page.getByLabel("Remove app favorite").waitFor();
     await page.getByLabel("Media details").click();
     await page
-      .getByText("Favorites are saved in FlickWell; your original media is not modified.", {
+      .getByText("Favorites are saved in Pictopia; your original media is not modified.", {
         exact: false,
       })
       .waitFor();
@@ -89,12 +94,12 @@ const assert = require("node:assert/strict");
     await page.getByRole("tab", { name: "Settings" }).click();
     await page.getByRole("radio", { name: "Dark", exact: true }).click();
     await page.getByText("Make yourself at home").waitFor();
-    await page.screenshot({ path: "/tmp/flickwell-settings-dark.png" });
+    await page.screenshot({ path: "/tmp/pictopia-settings-dark.png" });
     await page.reload();
     await page.getByRole("radio", { name: "Dark", exact: true }).waitFor();
     console.log("PASS Appearance preference survives reload");
     await page.getByRole("tab", { name: "Smart Clean" }).click();
-    await page.getByRole("button", { name: "Explore FlickWell Pro" }).click();
+    await page.getByRole("button", { name: "Explore Pictopia Pro" }).click();
     await page.getByText("Monthly Pro", { exact: true }).waitFor();
     assert.equal(
       await page.getByRole("button", { name: "Continue with selected plan" }).isDisabled(),
@@ -112,9 +117,9 @@ const assert = require("node:assert/strict");
       hasTouch: true,
     });
     const p = await mobile.newPage();
-    await p.goto("http://localhost:17514");
+    await p.goto(process.env.PREVIEW_URL || "http://localhost:17290");
     await p.getByText("Less clutter.").waitFor();
-    await p.screenshot({ path: "/tmp/flickwell-mobile.png" });
+    await p.screenshot({ path: "/tmp/pictopia-mobile.png" });
     assert.equal(
       await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
       true,

@@ -30,7 +30,7 @@ async function saved(page) {
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   try {
-    await page.goto("http://localhost:17514");
+    await page.goto(process.env.PREVIEW_URL || "http://localhost:17290");
     // Draftbit authoring chrome has an empty toast hit target at mobile tab coordinates.
     // Ignore only the empty harness element; real errors remain visible and recorded.
     await page.addStyleTag({ content: "#error-toast:empty { pointer-events: none; }" });
@@ -56,13 +56,37 @@ async function saved(page) {
     await page.waitForTimeout(2300);
     let s = await saved(page);
     assert.ok(s.elapsedMs >= 1000);
+    const setHidden = (hidden) =>
+      page.evaluate((h) => {
+        Object.defineProperty(document, "visibilityState", {
+          configurable: true,
+          get: () => (h ? "hidden" : "visible"),
+        });
+        document.dispatchEvent(new Event("visibilitychange"));
+      }, hidden);
+    await setHidden(true);
+    await page.waitForTimeout(600);
+    const hidden = await saved(page);
+    await page.waitForTimeout(2200);
+    assert.equal((await saved(page)).elapsedMs, hidden.elapsedMs);
+    await setHidden(false);
+    await page.waitForTimeout(2300);
+    assert.ok((await saved(page)).elapsedMs > hidden.elapsedMs);
+    console.log("PASS Timer pauses while the tab is hidden and resumes when visible");
 
     await page.getByRole("button", { name: "Set aside", exact: true }).click();
 
     await page.getByText("2 of 12 in this batch").waitFor();
     await page.getByRole("tab", { name: "Home", exact: true }).click();
     await page.getByRole("button", { name: "Resume your session", exact: true }).waitFor();
-    const paused = await saved(page);
+    // Leaving Swipe flushes its last sub-second tick asynchronously; let that write land first.
+    let paused = await saved(page);
+    for (let settled = false; !settled; ) {
+      await page.waitForTimeout(400);
+      const next = await saved(page);
+      settled = next.elapsedMs === paused.elapsedMs;
+      paused = next;
+    }
     await page.waitForTimeout(2200);
     assert.equal((await saved(page)).elapsedMs, paused.elapsedMs);
     assert.equal(await page.getByRole("radio", { name: "10 minutes", exact: true }).count(), 0);
@@ -75,7 +99,7 @@ async function saved(page) {
     assert.equal(s.position, 1);
     assert.ok(s.elapsedMs >= paused.elapsedMs);
     console.log("PASS Timer pauses on Home; exact review and duration survive reload");
-    await page.screenshot({ path: "/tmp/flickwell-session-mobile.png" });
+    await page.screenshot({ path: "/tmp/pictopia-session-mobile.png" });
     await page.getByRole("button", { name: "Finish session", exact: true }).click();
     await page.getByText("That’s progress worth keeping.").waitFor();
     await page.getByText("1 memory reviewed", { exact: true }).waitFor();
@@ -83,21 +107,32 @@ async function saved(page) {
     await page.getByRole("button", { name: "About device deletion", exact: true }).click();
     await page.getByRole("button", { name: "Cancel, keep my photos", exact: true }).click();
     assert.equal((await saved(page)).marked, 1);
-    await page.getByLabel("Back", { exact: true }).click();
-    await page.getByRole("button", { name: "Done for now", exact: true }).click();
     console.log(
       "PASS Early finish summarizes real decisions and safe deletion review remains reversible",
     );
+    await page.getByLabel("Restore this item", { exact: true }).click();
+    await page.getByText("No memories marked for deletion").waitFor();
+    await page.getByLabel("Back", { exact: true }).click();
+    await page.getByText("That’s progress worth keeping.").waitFor();
+    await page.waitForTimeout(500);
+    assert.equal(await page.getByText("1 memory reviewed", { exact: true }).count(), 0);
+    assert.equal(
+      await page.getByRole("button", { name: "Review set-aside items", exact: true }).count(),
+      0,
+    );
+    await page.getByRole("button", { name: "Done for now", exact: true }).click();
+    console.log("PASS Restored items no longer count as set aside in the session summary");
     await page.getByRole("radio", { name: "10 minutes", exact: true }).click();
     await page.getByRole("button", { name: /Memory Lane/ }).click();
-    await page.getByText("1 of 15 in this batch", { exact: true }).waitFor();
+    // 15 unreviewed files plus the photo restored above, which is unreviewed again.
+    await page.getByText("1 of 16 in this batch", { exact: true }).waitFor();
     assert.equal((await saved(page)).minutes, 10);
-    assert.equal((await saved(page)).ids.length, 15);
+    assert.equal((await saved(page)).ids.length, 16);
     await expect(page.getByRole("button", { name: "Keep", exact: true })).toBeEnabled();
     for (let i = 1; i <= 10; i++) {
       await expect(page.getByRole("button", { name: "Keep", exact: true })).toBeEnabled();
       await page.getByRole("button", { name: "Keep", exact: true }).click();
-      await page.getByText(i + 1 + " of 15 in this batch", { exact: true }).waitFor();
+      await page.getByText(i + 1 + " of 16 in this batch", { exact: true }).waitFor();
     }
     await page
       .getByText("10 memories reviewed. A little lighter already.", { exact: true })
@@ -143,7 +178,7 @@ async function saved(page) {
     await page.getByRole("tab", { name: "Settings", exact: true }).click();
     await page.getByRole("radio", { name: "Dark", exact: true }).click();
     await page.getByRole("tab", { name: "Home", exact: true }).click();
-    await page.screenshot({ path: "/tmp/flickwell-sessions-dark.png" });
+    await page.screenshot({ path: "/tmp/pictopia-sessions-dark.png" });
     assert.equal(
       await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
       true,
@@ -152,7 +187,7 @@ async function saved(page) {
     console.log("PASS Mobile Smart Sessions fit in light and dark themes without runtime errors");
   } catch (e) {
     console.log("Runtime errors:", errors);
-    await page.screenshot({ path: "/tmp/flickwell-session-error.png" });
+    await page.screenshot({ path: "/tmp/pictopia-session-error.png" });
     throw e;
   } finally {
     await browser.close();

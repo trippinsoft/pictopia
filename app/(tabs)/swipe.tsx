@@ -11,18 +11,24 @@ import {
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { Image as ExpoImage } from "expo-image";
 import { mediaService } from "@/services/media";
-import { SwipeGesture } from "@/components/flickwell/swipe-gesture";
+import { SwipeGesture } from "@/components/pictopia/swipe-gesture";
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
-import { Page, Text, Icon, Button, Empty, Loading } from "@/components/flickwell/ui";
-import { MediaImage } from "@/components/flickwell/media-image";
-import { useFlickWell } from "@/components/flickwell/provider";
+import { Page, Text, Icon, Button, Empty, Loading } from "@/components/pictopia/ui";
+import { MediaImage } from "@/components/pictopia/media-image";
+import { usePictopia } from "@/components/pictopia/provider";
+import { useSessionTally } from "@/components/pictopia/use-session-tally";
 import { storage } from "@/services/repository";
-import { Media, Collection } from "@/lib/flickwell/types";
-import { sessionTitle, remainingSeconds, milestone } from "@/lib/flickwell/sessions";
-import { SCAN_VERSION, bytes } from "@/lib/flickwell/logic";
+import { Media, Collection } from "@/lib/pictopia/types";
+import {
+  sessionTitle,
+  remainingSeconds,
+  milestone,
+  countsAsReviewTime,
+} from "@/lib/pictopia/sessions";
+import { SCAN_VERSION, bytes } from "@/lib/pictopia/logic";
 export default function Swipe() {
-  const app = useFlickWell();
+  const app = usePictopia();
   const params = useLocalSearchParams<{ collection?: string }>();
   const [item, setItem] = useState<Media>(),
     [loading, setLoading] = useState(false),
@@ -36,6 +42,7 @@ export default function Swipe() {
     y = useSharedValue(0);
   const actionLock = useRef(false);
   const reverse = app.prefs.reverseSwipe;
+  const tally = useSessionTally(app.session, app.revision);
   const current = app.session?.ids[app.session.position];
   const seconds = app.session ? remainingSeconds(app.session) : 300;
   const timed = !!app.session && (!!app.session.minutes || app.session.collection === "quick");
@@ -65,8 +72,7 @@ export default function Swipe() {
           Platform.OS !== "web" ||
           typeof document === "undefined" ||
           globalThis.document.visibilityState === "visible";
-        // Long gaps are suspended time, never time spent reviewing.
-        if (active && visible && clockRef.current.ready && delta > 0 && delta <= 1500)
+        if (countsAsReviewTime({ active, visible, ready: clockRef.current.ready, delta }))
           void clockRef.current.add(id, delta).catch((e) => app.setError(e.message));
       };
       const subscription = AppState.addEventListener("change", (state) => {
@@ -198,11 +204,12 @@ export default function Swipe() {
     };
   }, [current, app.revision]);
   async function decide(d: "keep" | "delete") {
-    if (actionLock.current || !item || !imageReady) return;
+    // The loaded item can lag the session for a frame; never decide on one not yet shown.
+    if (actionLock.current || !item || !imageReady || item.id !== current) return;
     actionLock.current = true;
     setActing(true);
     try {
-      await app.decide(d);
+      await app.decide(d, item.id);
       if (app.prefs.haptics && !reduced)
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     } catch {
@@ -276,18 +283,18 @@ export default function Swipe() {
                   : "No unreviewed items in this collection. Try another session or add more photos."
             }
           />
-          {!!app.session.reviewed && (
+          {!!tally?.reviewed && (
             <View className="rounded-3xl bg-accent p-6">
               <Text accessibilityLiveRegion="polite" className="mb-4 text-h3 text-primary">
-                {app.session.reviewed} {app.session.reviewed === 1 ? "memory" : "memories"} reviewed
+                {tally.reviewed} {tally.reviewed === 1 ? "memory" : "memories"} reviewed
               </Text>
               <View className="flex-row gap-5">
                 <View className="flex-1">
-                  <Text className="text-h2 text-foreground">{app.session.kept}</Text>
+                  <Text className="text-h2 text-foreground">{tally.kept}</Text>
                   <Text className="text-body text-muted-foreground">Kept</Text>
                 </View>
                 <View className="flex-1">
-                  <Text className="text-h2 text-foreground">{app.session.marked}</Text>
+                  <Text className="text-h2 text-foreground">{tally.setAside}</Text>
                   <Text className="text-body text-muted-foreground">Set aside</Text>
                 </View>
               </View>
@@ -298,7 +305,7 @@ export default function Swipe() {
               )}
             </View>
           )}
-          {app.session.marked > 0 && (
+          {!!tally?.setAside && (
             <Button onPress={() => router.push("/queue")}>Review set-aside items</Button>
           )}
           {app.session.collection === "best" && !app.session.ids.length && (
@@ -470,7 +477,7 @@ export default function Swipe() {
             </Pressable>
             <Pressable
               disabled={acting}
-              onPress={() => void runAction(app.skip)}
+              onPress={() => void runAction(() => app.skip(current))}
               className="flex-row items-center gap-2 p-4"
             >
               <Text className="text-body text-muted-foreground">Skip</Text>
@@ -478,7 +485,7 @@ export default function Swipe() {
             </Pressable>
           </View>
           <Text className="text-body text-center text-muted-foreground">
-            {app.session.kept} kept • {app.session.marked} set aside
+            {tally?.kept ?? 0} kept • {tally?.setAside ?? 0} set aside
           </Text>
           <Text
             accessibilityLiveRegion="polite"

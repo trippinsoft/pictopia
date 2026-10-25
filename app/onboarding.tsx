@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { View, Platform, Pressable } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { Page, Text, Icon, Button } from "@/components/flickwell/ui";
-import { Collection, SessionMinutes } from "@/lib/flickwell/types";
-import { useFlickWell } from "@/components/flickwell/provider";
+import { Page, Text, Icon, Button } from "@/components/pictopia/ui";
+import { Collection, SessionMinutes } from "@/lib/pictopia/types";
+import { usePictopia } from "@/components/pictopia/provider";
 const steps = [
   {
     icon: "MoveHorizontal" as const,
@@ -20,7 +20,7 @@ const steps = [
 ];
 export default function Onboarding() {
   const [step, setStep] = useState(0);
-  const app = useFlickWell();
+  const app = usePictopia();
   const params = useLocalSearchParams<{ collection?: string; minutes?: string }>();
   const minutes: SessionMinutes = params.minutes === "2" ? 2 : params.minutes === "10" ? 10 : 5;
   const collection: Collection = [
@@ -50,7 +50,7 @@ export default function Onboarding() {
     }
   }
   return (
-    <Page title="Welcome to FlickWell">
+    <Page title="Welcome to Pictopia">
       <View className="mx-auto max-w-lg items-center py-8">
         <View className="mb-9 h-40 w-40 items-center justify-center rounded-[40px] bg-accent">
           <Icon name={item.icon} size={70} className="text-primary" />
@@ -82,7 +82,7 @@ export default function Onboarding() {
                 : "Allow photo access"
               : "Continue"}
         </Button>
-        {app.syncProgress && (
+        {!!app.syncProgress && (
           <Text className="mt-4 text-body text-muted-foreground">{app.syncProgress}</Text>
         )}
         <Pressable onPress={() => router.replace("/(tabs)/home")} className="mt-5 p-4">

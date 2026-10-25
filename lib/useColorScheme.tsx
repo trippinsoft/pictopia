@@ -1,16 +1,16 @@
-import { Appearance, useColorScheme as useNativeColorScheme, ColorSchemeName } from 'react-native';
+import { Appearance, useColorScheme as useNativeColorScheme, ColorSchemeName } from "react-native";
 
 export function useColorScheme() {
-  const colorScheme = useNativeColorScheme();
+  const colorScheme = useNativeColorScheme() === "dark" ? "dark" : "light";
 
   return {
-    colorScheme: colorScheme ?? 'dark',
-    isDarkColorScheme: colorScheme === 'dark',
+    colorScheme,
+    isDarkColorScheme: colorScheme === "dark",
     setColorScheme: (colorScheme: ColorSchemeName) => {
       Appearance.setColorScheme(colorScheme);
     },
     toggleColorScheme: () => {
-      Appearance.setColorScheme(colorScheme === 'dark' ? 'light' : 'dark');
+      Appearance.setColorScheme(colorScheme === "dark" ? "light" : "dark");
     },
   };
 }

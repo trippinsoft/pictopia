@@ -1,4 +1,4 @@
-package expo.modules.flickwellanalysis
+package expo.modules.pictopiaanalysis
 
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.functions.Coroutine
@@ -15,10 +15,10 @@ import android.graphics.BitmapFactory
 import java.io.File
 import java.security.MessageDigest
 
-class FlickWellAnalysisModule : Module() {
+class PictopiaAnalysisModule : Module() {
   @Volatile private var cancelled = false
   override fun definition() = ModuleDefinition {
-    Name("FlickWellAnalysis")
+    Name("PictopiaAnalysis")
     Function("cancel") { cancelled = true }
     AsyncFunction("canScan") {
       val context = appContext.reactContext ?: error("Context unavailable")

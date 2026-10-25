@@ -1,7 +1,7 @@
-import { SCAN_VERSION } from "@/lib/flickwell/logic";
+import { SCAN_VERSION } from "@/lib/pictopia/logic";
 import * as SQLite from "expo-sqlite";
 import { Storage } from "./storage.types";
-import { Query, Stats, Month } from "@/lib/flickwell/types";
+import { Query, Stats, Month } from "@/lib/pictopia/types";
 let db: SQLite.SQLiteDatabase;
 function conditions(q: Query) {
   let sql = "active=1";
@@ -33,10 +33,11 @@ function conditions(q: Query) {
 }
 export const storage: Storage = {
   async init() {
+    // Stable legacy storage identity preserves saved decisions across the brand rename.
     db = await SQLite.openDatabaseAsync("flickwell.db");
     const version = await db.getFirstAsync<{ user_version: number }>("PRAGMA user_version");
     if ((version?.user_version ?? 0) > 1)
-      throw Error("This local database needs a newer version of FlickWell.");
+      throw Error("This local database needs a newer version of Pictopia.");
     await db.execAsync(
       `PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS media(id TEXT PRIMARY KEY NOT NULL,data TEXT NOT NULL,created REAL,month TEXT,day TEXT,type TEXT,decision TEXT,favorite INTEGER,screenshot INTEGER,size REAL,active INTEGER,scanned INTEGER,hash TEXT);CREATE TABLE IF NOT EXISTS preferences(key TEXT PRIMARY KEY,value TEXT NOT NULL);CREATE INDEX IF NOT EXISTS media_date ON media(active,created DESC);CREATE INDEX IF NOT EXISTS media_month ON media(active,month);CREATE INDEX IF NOT EXISTS media_decision ON media(active,decision);CREATE INDEX IF NOT EXISTS media_hash ON media(hash);PRAGMA user_version=1;`,
     );

@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { View, Pressable, Platform } from "react-native";
 import { router } from "expo-router";
-import { Page, Text, Icon, Button, Loading } from "@/components/flickwell/ui";
-import { useFlickWell } from "@/components/flickwell/provider";
+import { Page, Text, Icon, Button, Loading } from "@/components/pictopia/ui";
+import { usePictopia } from "@/components/pictopia/provider";
 import { purchaseService } from "@/services/purchases";
-import { openLegal, manageSubscription } from "@/lib/flickwell/links";
-import { Offer } from "@/lib/flickwell/types";
+import { openLegal, manageSubscription } from "@/lib/pictopia/links";
+import { Offer } from "@/lib/pictopia/types";
 export default function Paywall() {
-  const app = useFlickWell();
+  const app = usePictopia();
   const [offers, setOffers] = useState<Offer[]>([]),
     [selected, setSelected] = useState(""),
     [loading, setLoading] = useState(true),
@@ -64,7 +64,7 @@ export default function Paywall() {
             Less searching.{"\n"}More space.
           </Text>
           <Text className="mt-4 text-body text-center leading-6 text-muted-foreground">
-            FlickWell Pro finds the clutter, so you can focus on the keepers.
+            Pictopia Pro finds the clutter, so you can focus on the keepers.
           </Text>
         </View>
         <View className="my-7 gap-4">
@@ -117,7 +117,7 @@ export default function Paywall() {
             })}
           </View>
         )}
-        {error && (
+        {!!error && (
           <Text accessibilityRole="alert" className="mt-5 text-body leading-6 text-destructive">
             {error}
           </Text>

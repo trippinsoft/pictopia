@@ -1,4 +1,6 @@
 import React from "react";
+import lightTheme from "@/theming/themes/light";
+import darkTheme from "@/theming/themes/dark";
 import { ScrollViewStyleReset } from "expo-router/html";
 
 // This file is web-only and used to configure the root HTML for every
@@ -29,6 +31,7 @@ export default function Root({ children }: { children: React.ReactNode }) {
 
         {/* Using raw CSS styles as an escape-hatch to ensure the background color never flickers in dark-mode. */}
         <style dangerouslySetInnerHTML={{ __html: responsiveBackground }} />
+        <script dangerouslySetInnerHTML={{ __html: bootstrapAppearance }} />
         {/* Add any additional <head> elements that you want globally available on web... */}
       </head>
       <body>{children}</body>
@@ -37,11 +40,24 @@ export default function Root({ children }: { children: React.ReactNode }) {
 }
 
 const responsiveBackground = `
-body {
-  background-color: var(--background);
+html, body {
+  background-color: ${lightTheme.colors.background};
+  color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
-  body {
-    background-color: var(--background);
-  }
+  html, body { background-color: ${darkTheme.colors.background}; color-scheme: dark; }
+}
+html[data-theme="light"], html[data-theme="light"] body {
+  background-color: ${lightTheme.colors.background}; color-scheme: light;
+}
+html[data-theme="dark"], html[data-theme="dark"] body {
+  background-color: ${darkTheme.colors.background}; color-scheme: dark;
 }`;
+
+// Paint the persisted appearance before the bundle and fonts are ready.
+// IndexedDB remains authoritative; this small cache only prevents a startup flash.
+const bootstrapAppearance = `(function(){try{
+  var mode=localStorage.getItem("pictopia.appearance");
+  if(mode!=="light"&&mode!=="dark")return;
+  document.documentElement.setAttribute("data-theme",mode);
+}catch(error){}})();`;

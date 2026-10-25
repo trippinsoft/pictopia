@@ -13,7 +13,8 @@ import * as React from "react";
 import { Platform, View } from "react-native";
 import { useColorScheme } from "@/lib/useColorScheme";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { FlickWellProvider } from "@/components/flickwell/provider";
+import { PictopiaProvider, usePictopia } from "@/components/pictopia/provider";
+import { systemAppearanceService } from "@/services/system-appearance";
 import { ThemeProvider, useTheme } from "@/theming/ThemeProvider";
 import darkTheme from "@/theming/themes/dark";
 import lightTheme from "@/theming/themes/light";
@@ -37,7 +38,9 @@ export {
 } from "expo-router";
 
 function RootContent() {
+  const { ready, error } = usePictopia();
   const hasMounted = React.useRef(false);
+  const hasShownContent = React.useRef(false);
   const [portalContainer, setPortalContainer] = React.useState<View | null>(null);
   const { isDarkColorScheme } = useColorScheme();
   const { theme, setTheme } = useTheme();
@@ -51,6 +54,8 @@ function RootContent() {
     Inter_700Bold,
   });
   const isLoadingFonts = !fontsLoaded && !fontError;
+  const appearanceReady =
+    (ready || !!error) && theme.name === (isDarkColorScheme ? "dark" : "light");
 
   const navigationTheme: NavigationTheme = React.useMemo(() => {
     const navigationThemeBase = isDarkColorScheme ? NavigationDarkTheme : NavigationDefaultTheme;
@@ -76,7 +81,22 @@ function RootContent() {
     if (!isDarkColorScheme && theme.name !== "light") {
       setTheme("light");
     }
-  }, [isDarkColorScheme]);
+  }, [isDarkColorScheme, theme.name, setTheme]);
+
+  React.useEffect(() => {
+    if (Platform.OS !== "web") {
+      void systemAppearanceService
+        .sync(theme.colors.background ?? "", theme.name === "dark")
+        .catch(() => {});
+      return;
+    }
+    if (typeof globalThis.document === "undefined") return;
+    const root = globalThis.document.documentElement;
+    root.style.backgroundColor = theme.colors.background ?? "";
+    root.style.colorScheme = theme.name;
+    root.classList.toggle("dark", theme.name === "dark");
+    globalThis.document.body.style.backgroundColor = theme.colors.background ?? "";
+  }, [theme]);
 
   React.useEffect(() => {
     if (hasMounted.current) {
@@ -93,14 +113,16 @@ function RootContent() {
   }, []);
 
   React.useEffect(() => {
-    if (!isLoadingFonts) {
+    if (!isLoadingFonts && appearanceReady) {
       SplashScreen.hideAsync();
     }
-  }, [isLoadingFonts]);
+  }, [isLoadingFonts, appearanceReady]);
 
-  if (!isColorSchemeLoaded || isLoadingFonts) {
+  if (!isColorSchemeLoaded || isLoadingFonts || (!hasShownContent.current && !appearanceReady)) {
     return null;
   }
+
+  hasShownContent.current = true;
 
   return (
     <WebPortalContext.Provider
@@ -126,7 +148,7 @@ function RootContent() {
           <Stack.Screen
             name="index"
             options={{
-              title: "FlickWell",
+              title: "Pictopia",
               headerShown: false,
             }}
           />
@@ -164,9 +186,9 @@ export default function RootLayout() {
       themes={[lightTheme, darkTheme]}
     >
       <GestureHandlerRootView style={fillStyle}>
-        <FlickWellProvider>
+        <PictopiaProvider>
           <RootContent />
-        </FlickWellProvider>
+        </PictopiaProvider>
       </GestureHandlerRootView>
     </ThemeProvider>
   );

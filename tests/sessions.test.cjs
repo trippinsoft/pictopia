@@ -4,9 +4,9 @@ const assert = require("node:assert/strict");
 const { makeLoader } = require("./loader.cjs");
 const load = makeLoader();
 const { storage, repository } = load("services/repository.ts");
-const { defaultPreferences } = load("lib/flickwell/types.ts");
-const { dateKeys, SCAN_VERSION } = load("lib/flickwell/logic.ts");
-const { remainingSeconds, milestone } = load("lib/flickwell/sessions.ts");
+const { defaultPreferences } = load("lib/pictopia/types.ts");
+const { dateKeys, SCAN_VERSION } = load("lib/pictopia/logic.ts");
+const { remainingSeconds, milestone } = load("lib/pictopia/sessions.ts");
 const asset = (id, created, extra = {}) => ({
   id,
   uri: "file:///" + id,

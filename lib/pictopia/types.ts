@@ -32,6 +32,8 @@ export interface Media {
   livePhoto?: boolean;
   decision?: Decision;
   active: boolean;
+  /** Set only when Pictopia verified this item was deleted from the device. */
+  deletedAt?: number;
   scan?: Analysis;
   scanError?: string;
 }
@@ -136,4 +138,38 @@ export interface Entitlement {
   expires: number | null;
   verifiedAt: number;
   managementURL?: string | null;
+}
+export type AccessScope = "full" | "limited" | "none";
+export type Presence = "present" | "absent" | "unknown";
+export type OsDeletion = "success" | "cancelled" | "error" | "unknown";
+export interface DeletionResult {
+  status: "confirmed" | "partial" | "cancelled" | "failed" | "uncertain";
+  os: OsDeletion;
+  requested: string[];
+  confirmed: string[];
+  remaining: string[];
+  uncertain: string[];
+  skipped: string[];
+}
+export interface DeletionAttempt {
+  id?: string;
+  ids: string[];
+  sizes?: Record<string, number>;
+  scope?: AccessScope;
+  started: number;
+  phase?: "requested" | "returned";
+  os?: OsDeletion;
+}
+export interface PendingDeletion {
+  id: string;
+  size?: number;
+  scope: AccessScope;
+  os: OsDeletion;
+  since: number;
+}
+export interface DeletionRecovery {
+  interrupted: boolean;
+  confirmed: string[];
+  remaining: string[];
+  uncertain: string[];
 }

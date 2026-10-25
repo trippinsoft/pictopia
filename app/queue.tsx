@@ -2,14 +2,15 @@ import React, { useEffect, useState } from "react";
 import { View, FlatList, Pressable, Platform, Modal } from "react-native";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Text, Icon, Button, Empty, Loading } from "@/components/flickwell/ui";
-import { useFlickWell } from "@/components/flickwell/provider";
-import { MediaImage } from "@/components/flickwell/media-image";
-import { Media } from "@/lib/flickwell/types";
+import { Text, Icon, Button, Empty, Loading } from "@/components/pictopia/ui";
+import { usePictopia } from "@/components/pictopia/provider";
+import { MediaImage } from "@/components/pictopia/media-image";
+import { Media } from "@/lib/pictopia/types";
 import { repository, storage } from "@/services/repository";
-import { bytes } from "@/lib/flickwell/logic";
+import { bytes } from "@/lib/pictopia/logic";
+import { deletionMessage } from "@/lib/pictopia/deletion";
 export default function Queue() {
-  const app = useFlickWell();
+  const app = usePictopia();
   const [items, setItems] = useState<Media[]>([]),
     [loading, setLoading] = useState(true),
     [confirmation, setConfirmation] = useState(false),
@@ -45,13 +46,9 @@ export default function Queue() {
   async function confirm() {
     setWorking(true);
     try {
-      const count = await app.deleteQueue(confirmItems);
+      const result = await app.deleteQueue(confirmItems);
       setConfirmation(false);
-      setMessage(
-        count
-          ? `${count} items confirmed deleted. They may remain in Recently Deleted or Trash.`
-          : "No items were confirmed deleted. Your queue is unchanged.",
-      );
+      setMessage(deletionMessage(result));
     } catch (e) {
       app.setError(e instanceof Error ? e.message : "Deletion did not complete.");
     } finally {
@@ -91,7 +88,7 @@ export default function Queue() {
             untouched.
           </Text>
         )}
-        {message && (
+        {!!message && (
           <Text accessibilityRole="alert" className="mb-4 text-body text-primary">
             {message}
           </Text>
@@ -144,7 +141,7 @@ export default function Queue() {
               />
             }
           />
-        )}{" "}
+        )}
         {!!items.length && (
           <View className="gap-3 border-t border-border py-4">
             <Button

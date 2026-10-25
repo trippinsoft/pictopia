@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { View, StyleProp, ViewStyle } from "react-native";
 import { Image } from "expo-image";
-import { Media } from "@/lib/flickwell/types";
+import { Media } from "@/lib/pictopia/types";
 import { mediaService } from "@/services/media";
 import { Text, Icon } from "./ui";
 import { VideoPoster } from "./video-poster";

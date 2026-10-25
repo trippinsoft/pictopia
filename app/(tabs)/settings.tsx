@@ -2,16 +2,16 @@ import React, { useState } from "react";
 import { View, Pressable, Switch, Modal, Platform } from "react-native";
 import Constants from "expo-constants";
 import { router } from "expo-router";
-import { Page, Text, Icon, Button } from "@/components/flickwell/ui";
-import { useFlickWell } from "@/components/flickwell/provider";
+import { Page, Text, Icon, Button } from "@/components/pictopia/ui";
+import { usePictopia } from "@/components/pictopia/provider";
 import { useTheme } from "@/theming/ThemeProvider";
 import { repository } from "@/services/repository";
 import { mediaService } from "@/services/media";
-import { Preferences } from "@/lib/flickwell/types";
-import { openLegal, manageSubscription } from "@/lib/flickwell/links";
-import { bytes } from "@/lib/flickwell/logic";
+import { Preferences } from "@/lib/pictopia/types";
+import { openLegal, manageSubscription } from "@/lib/pictopia/links";
+import { bytes } from "@/lib/pictopia/logic";
 export default function Settings() {
-  const app = useFlickWell();
+  const app = usePictopia();
   const { theme } = useTheme();
   const [confirm, setConfirm] = useState<"reset" | "cache" | null>(null),
     [working, setWorking] = useState(false);
@@ -61,7 +61,7 @@ export default function Settings() {
           <View className="mb-2 flex-row items-center gap-2">
             <Icon name="Sparkles" size={20} className="text-primary" />
             <Text className="text-h3 text-foreground">
-              {app.pro ? "FlickWell Pro" : "A smarter kind of clean"}
+              {app.pro ? "Pictopia Pro" : "A smarter kind of clean"}
             </Text>
           </View>
           <Text className="max-w-xs text-body leading-6 text-muted-foreground">
@@ -107,6 +107,10 @@ export default function Settings() {
               accessibilityLabel={t.title}
               value={Boolean(app.prefs[t.key])}
               trackColor={{ true: theme.colors.primary, false: theme.colors.border }}
+              ios_backgroundColor={theme.colors.border}
+              thumbColor={
+                app.prefs[t.key] ? theme.colors.primaryForeground : theme.colors.mutedForeground
+              }
               onValueChange={(v) => void action(() => app.updatePrefs({ [t.key]: v }))}
             />
           </View>
@@ -121,7 +125,7 @@ export default function Settings() {
         <Text className="text-body leading-6 text-muted-foreground">
           {Platform.OS === "web"
             ? "The browser only sees files you select. Device deletion is unavailable here."
-            : "Limited access is welcome. You control which memories FlickWell can see."}
+            : "Limited access is welcome. You control which memories Pictopia can see."}
         </Text>
         <Button
           secondary
@@ -183,7 +187,7 @@ export default function Settings() {
         ))}
       </View>
       <Text className="text-caption text-center text-muted-foreground">
-        FlickWell {Constants.expoConfig?.version ?? "1.0.0"} • Build{" "}
+        Pictopia {Constants.expoConfig?.version ?? "1.0.0"} • Build{" "}
         {Constants.expoConfig?.ios?.buildNumber ??
           Constants.expoConfig?.android?.versionCode ??
           "1"}

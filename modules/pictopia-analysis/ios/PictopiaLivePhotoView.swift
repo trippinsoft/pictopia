@@ -3,7 +3,7 @@ import Photos
 import PhotosUI
 import UIKit
 
-final class FlickWellLivePhotoView: ExpoView {
+final class PictopiaLivePhotoView: ExpoView {
   let onReady = EventDispatcher()
   let onUnavailable = EventDispatcher()
   private let photoView = PHLivePhotoView()

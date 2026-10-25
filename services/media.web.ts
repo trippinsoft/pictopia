@@ -1,7 +1,7 @@
 import * as DocumentPicker from "expo-document-picker";
 import { MediaService } from "./media.types";
-import { Media } from "@/lib/flickwell/types";
-import { dateKeys } from "@/lib/flickwell/logic";
+import { Media } from "@/lib/pictopia/types";
+import { dateKeys } from "@/lib/pictopia/logic";
 import { storage } from "./storage";
 const urls = new Map<string, string>();
 export const mediaService: MediaService = {
@@ -85,6 +85,10 @@ export const mediaService: MediaService = {
       }
     }
     return { uri, size: m.size };
+  },
+  async inspect(ids) {
+    // Browser selections are not a device library, so they can never prove deletion.
+    return { scope: "limited", presence: Object.fromEntries(ids.map((id) => [id, "unknown"])) };
   },
   async remove() {
     throw Error(

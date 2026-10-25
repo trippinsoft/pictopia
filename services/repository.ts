@@ -9,7 +9,9 @@ import {
   Query,
   Group,
   SessionMinutes,
-} from "@/lib/flickwell/types";
+  DeletionAttempt,
+  PendingDeletion,
+} from "@/lib/pictopia/types";
 import {
   identity,
   applyDecision,
@@ -19,7 +21,8 @@ import {
   bestScore,
   similar,
   SCAN_VERSION,
-} from "@/lib/flickwell/logic";
+} from "@/lib/pictopia/logic";
+import { sessionTally } from "@/lib/pictopia/sessions";
 export { storage };
 let tail = Promise.resolve();
 export function serialize<T>(work: () => Promise<T>) {
@@ -29,6 +32,23 @@ export function serialize<T>(work: () => Promise<T>) {
     () => {},
   );
   return next;
+}
+export const DELETION_ATTEMPT = "deletionAttempt",
+  DELETION_PENDING = "deletionPending",
+  CONFIRMED_CLEANUP = "confirmedCleanup";
+/**
+ * Call inside serialize(). Items in an in-flight OS deletion cannot change decision. When
+ * `release` is set, items awaiting deletion verification stop being tracked because the user
+ * no longer wants them deleted; the returned values must be saved with the media change.
+ */
+async function deletionGuard(ids: string[], release: boolean) {
+  const attempt = await storage.getValue<DeletionAttempt | null>(DELETION_ATTEMPT);
+  if (attempt?.ids?.some((id) => ids.includes(id)))
+    throw Error("This item is part of a deletion that is still being checked. Try again shortly.");
+  if (!release) return {};
+  const pending = (await storage.getValue<PendingDeletion[]>(DELETION_PENDING)) ?? [];
+  const next = pending.filter((p) => !ids.includes(p.id));
+  return next.length === pending.length ? {} : { [DELETION_PENDING]: next };
 }
 export const repository = {
   async update(id: string, fn: (m: Media) => Media) {
@@ -224,14 +244,22 @@ export const repository = {
       return next;
     });
   },
-  async decide(decision: Decision) {
+  async decide(decision: Decision, expectedId?: string) {
     return serialize(async () => {
       const s = await storage.getValue<Session>("session");
       if (!s) throw Error("Start a review first.");
+      // A decision is bound to the item the user saw, never to whatever is current now.
+      if (expectedId !== undefined && s.ids[s.position] !== expectedId)
+        throw Error("This photo is no longer the current item.");
       const m = await storage.get(s.ids[s.position]);
       if (!m?.active) throw Error("This item is no longer accessible. Skip it to continue.");
       const next = applyDecision(s, m, decision);
-      await storage.put([next.media], { session: next.session, [`session:${s.id}`]: next.session });
+      const values = await deletionGuard([m.id], decision !== "delete");
+      await storage.put([next.media], {
+        ...values,
+        session: next.session,
+        [`session:${s.id}`]: next.session,
+      });
       return next.session;
     });
   },
@@ -243,14 +271,21 @@ export const repository = {
       const m = await storage.get(last.id);
       if (!m?.active) throw Error("This item is no longer available to undo.");
       const next = undoDecision(s, m);
-      await storage.put([next.media], { session: next.session, [`session:${s.id}`]: next.session });
+      const values = await deletionGuard([m.id], next.media.decision !== "delete");
+      await storage.put([next.media], {
+        ...values,
+        session: next.session,
+        [`session:${s.id}`]: next.session,
+      });
       return next.session;
     });
   },
-  async skip() {
+  async skip(expectedId?: string) {
     return serialize(async () => {
       const s = await storage.getValue<Session>("session");
       if (!s || s.complete) return s;
+      if (expectedId !== undefined && s.ids[s.position] !== expectedId)
+        throw Error("This photo is no longer the current item.");
       const next = { ...s, position: s.position + 1, complete: s.position + 1 >= s.ids.length };
       await storage.put([], { session: next, [`session:${next.id}`]: next });
       return next;
@@ -258,13 +293,18 @@ export const repository = {
   },
   async restore(ids: string[]) {
     return serialize(async () => {
+      const values = await deletionGuard(ids, true);
       const items: Media[] = [];
       for (const id of ids) {
         const m = await storage.get(id);
         if (m) items.push({ ...m, decision: undefined });
       }
-      await storage.put(items);
+      await storage.put(items, values);
     });
+  },
+  async tally(session: Session) {
+    const ids = Array.from(new Set(session.history.map((h) => h.id)));
+    return sessionTally(session, await Promise.all(ids.map((id) => storage.get(id))));
   },
   async favorite(id: string) {
     return serialize(async () => {

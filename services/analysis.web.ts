@@ -1,6 +1,6 @@
 import { Analyzer } from "./analysis.types";
 import { storage } from "./storage";
-import { pixelAnalysis } from "@/lib/flickwell/logic";
+import { pixelAnalysis } from "@/lib/pictopia/logic";
 export const analyzer: Analyzer = {
   available: true,
   async analyze(m) {

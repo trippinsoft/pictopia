@@ -3,8 +3,8 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { makeLoader } = require("./loader.cjs");
 const load = makeLoader();
-const logic = load("lib/flickwell/logic.ts");
-const { defaultPreferences } = load("lib/flickwell/types.ts");
+const logic = load("lib/pictopia/logic.ts");
+const { defaultPreferences } = load("lib/pictopia/types.ts");
 const { storage, repository } = load("services/repository.ts");
 function media(id, extra = {}) {
   const created = new Date("2025-06-12T12:00:00Z").getTime();
@@ -200,65 +200,7 @@ test("database and repository persist session, queue, undo, changes, groups, and
     },
   );
 });
-test("native deletion cancellation never confirms deletion", async () => {
-  const load = makeLoader({
-    "expo-modules-core": { requireOptionalNativeModule: () => null },
-    "expo-media-library": {
-      getPermissionsAsync: async () => ({
-        granted: true,
-        accessPrivileges: "all",
-        canAskAgain: true,
-      }),
-      deleteAssetsAsync: async () => false,
-    },
-    "expo-file-system": { File: class {} },
-    "react-native": { Platform: { OS: "ios" }, Linking: {} },
-  });
-  const { mediaService } = load("services/media.native.ts");
-  assert.deepEqual(await mediaService.remove(["a"]), { confirmed: [], cancelled: true });
-});
-test("native deletion reconciles partial success using enumeration, not lookup errors", async () => {
-  const load = makeLoader({
-    "expo-modules-core": { requireOptionalNativeModule: () => null },
-    "expo-media-library": {
-      getPermissionsAsync: async () => ({
-        granted: true,
-        accessPrivileges: "all",
-        canAskAgain: true,
-      }),
-      deleteAssetsAsync: async () => true,
-      getAssetInfoAsync: async () => {
-        throw Error("Ambiguous lookup");
-      },
-      getAssetsAsync: async () => ({ assets: [{ id: "b" }], hasNextPage: false, endCursor: "b" }),
-    },
-    "expo-file-system": { File: class {} },
-    "react-native": { Platform: { OS: "ios" }, Linking: {} },
-  });
-  const { mediaService } = load("services/media.native.ts");
-  assert.deepEqual(await mediaService.remove(["a", "b"]), { confirmed: ["a"], cancelled: false });
-});
-test("permission scope changes prevent confirmation", async () => {
-  let n = 0;
-  const load = makeLoader({
-    "expo-modules-core": { requireOptionalNativeModule: () => null },
-    "expo-media-library": {
-      getPermissionsAsync: async () => ({
-        granted: true,
-        accessPrivileges: n++ ? "limited" : "all",
-        canAskAgain: true,
-      }),
-      deleteAssetsAsync: async () => true,
-    },
-    "expo-file-system": { File: class {} },
-    "react-native": { Platform: { OS: "ios" }, Linking: {} },
-  });
-  assert.deepEqual(await load("services/media.native.ts").mediaService.remove(["a"]), {
-    confirmed: [],
-    cancelled: false,
-  });
-});
-
+// Native deletion verification is covered in tests/deletion.test.cjs.
 test("cached scan failures do not cause an infinite retry loop", () => {
   assert.equal(
     logic.matches(media("error", { scanError: "Unavailable" }), { scanMissing: true }),

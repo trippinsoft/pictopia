@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { View, Pressable, FlatList } from "react-native";
 import { router } from "expo-router";
-import { Page, Text, Icon, Button, Empty } from "@/components/flickwell/ui";
-import { useFlickWell } from "@/components/flickwell/provider";
+import { Page, Text, Icon, Button, Empty } from "@/components/pictopia/ui";
+import { usePictopia } from "@/components/pictopia/provider";
 import { storage, repository } from "@/services/repository";
-import { Group, Media } from "@/lib/flickwell/types";
-import { MediaImage } from "@/components/flickwell/media-image";
+import { Group, Media } from "@/lib/pictopia/types";
+import { MediaImage } from "@/components/pictopia/media-image";
 const tools = [
   {
     key: "exact",
@@ -33,7 +33,7 @@ const tools = [
   },
 ];
 export default function Smart() {
-  const app = useFlickWell();
+  const app = usePictopia();
   const [filter, setFilter] = useState("exact"),
     [groups, setGroups] = useState<Group[]>([]),
     [blurry, setBlurry] = useState<Media[]>([]);
@@ -77,7 +77,7 @@ export default function Smart() {
       <View className="mb-7 rounded-3xl bg-accent p-7">
         <View className="mb-4 flex-row items-center gap-2">
           <Icon name="Sparkles" size={23} className="text-primary" />
-          <Text className="text-h5 text-primary">FlickWell Pro</Text>
+          <Text className="text-h5 text-primary">Pictopia Pro</Text>
         </View>
         <Text className="text-h2 text-foreground">Your memories deserve{"\n"}a second look.</Text>
         <Text className="mb-6 mt-4 max-w-lg text-body leading-6 text-muted-foreground">
@@ -94,7 +94,7 @@ export default function Smart() {
               ? app.scan.status === "paused"
                 ? "Resume local scan"
                 : "Scan my library"
-              : "Explore FlickWell Pro"}
+              : "Explore Pictopia Pro"}
           </Button>
         </View>
         <View className="mt-5 flex-row items-center gap-2">

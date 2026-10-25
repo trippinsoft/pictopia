@@ -34,9 +34,8 @@ module.exports = {
   "expo-media-library",
   {
     photosPermission:
-    "Pictopia reads photos and videos you choose so you can review and safely clean your library. Your media stays on your device.",
-    savePhotosPermission:
-    "Pictopia requests your authorization to delete only the photos and videos you explicitly confirm.",
+    "Pictopia shows the photos and videos you allow it to access so you can review them, and deletes only the items you confirm. Your media stays on your device.",
+    savePhotosPermission: "Pictopia never saves or adds photos or videos to your library.",
     granularPermissions: ["photo", "video"]
   }],
 
@@ -61,6 +60,7 @@ module.exports = {
 
 
   }]],
+
 
 
 

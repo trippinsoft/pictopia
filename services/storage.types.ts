@@ -1,4 +1,4 @@
-import { Media, Query, Month, Stats } from "@/lib/flickwell/types";
+import { Media, Query, Month, Stats } from "@/lib/pictopia/types";
 export interface Storage {
   init(): Promise<void>;
   get(id: string): Promise<Media | undefined>;

@@ -2,7 +2,7 @@
 
 ## Listing
 
-Name: FlickWell
+Name: Pictopia
 
 Subtitle: Keep memories. Clear the clutter.
 
@@ -10,11 +10,11 @@ Short description: A calmer camera roll, one swipe at a time.
 
 Description:
 
-Keep the memories. Lose the clutter. FlickWell helps you review your photos and videos without rushing your decisions. Swipe right to keep, left to set aside, and undo whenever you change your mind. Browse by month or start a manageable 5-minute clean.
+Keep the memories. Lose the clutter. Pictopia helps you review your photos and videos without rushing your decisions. Swipe right to keep, left to set aside, and undo whenever you change your mind. Browse by month or start a manageable 5-minute clean.
 
 Your originals stay untouched while you review. When you're ready, check the deletion queue and authorize the request through your device. Deleted media may remain in Recently Deleted or Trash.
 
-Manual cleanup is free, with unlimited review, no daily swipe limits, and no account required. FlickWell Pro adds local exact-duplicate analysis, similar-shot comparisons, best-shot suggestions, likely-blur review, and large-video prioritization. Analysis runs on your device; personal media is not uploaded for analysis.
+Manual cleanup is free, with unlimited review, no daily swipe limits, and no account required. Pictopia Pro adds local exact-duplicate analysis, similar-shot comparisons, best-shot suggestions, likely-blur review, and large-video prioritization. Analysis runs on your device; personal media is not uploaded for analysis.
 
 Pro plans are monthly, annual, or a one-time lifetime purchase. Store prices and terms appear before purchase. Subscriptions renew automatically unless cancelled according to your store's terms. Manage or restore purchases from Settings.
 
