@@ -4,7 +4,7 @@ module.exports = {
       foregroundImage: "./assets/images/adaptive-icon.png",
       backgroundColor: "#ddefe7"
     },
-    package: process.env.FLICKWELL_ANDROID_PACKAGE || "com.flickwell.app",
+    package: "com.trippinsoft.pictopia",
     versionCode: 1,
     blockedPermissions: [
     "android.permission.RECORD_AUDIO",
@@ -17,11 +17,11 @@ module.exports = {
   icon: "./assets/images/icon.png",
   ios: {
     supportsTablet: true,
-    bundleIdentifier: process.env.FLICKWELL_IOS_BUNDLE_ID || "com.flickwell.app",
+    bundleIdentifier: "com.trippinsoft.pictopia",
     buildNumber: "1",
     infoPlist: { ITSAppUsesNonExemptEncryption: false }
   },
-  name: "FlickWell",
+  name: "Pictopia",
   orientation: "default",
   plugins: [
   ["expo-dev-client", { launchMode: "most-recent" }],
@@ -34,14 +34,16 @@ module.exports = {
   "expo-media-library",
   {
     photosPermission:
-    "FlickWell reads photos and videos you choose so you can review and safely clean your library. Your media stays on your device.",
+    "Pictopia reads photos and videos you choose so you can review and safely clean your library. Your media stays on your device.",
     savePhotosPermission:
-    "FlickWell requests your authorization to delete only the photos and videos you explicitly confirm.",
+    "Pictopia requests your authorization to delete only the photos and videos you explicitly confirm.",
     granularPermissions: ["photo", "video"]
   }],
 
 
   "expo-sqlite",
+  "expo-system-ui",
+  ["expo-navigation-bar", { enforceContrast: false }],
   [
   "expo-splash-screen",
   {
@@ -63,8 +65,8 @@ module.exports = {
 
 
 
-  scheme: "flickwell",
-  slug: "flickwell",
+  scheme: "pictopia",
+  slug: "pictopia",
   userInterfaceStyle: "automatic",
   version: "1.0.0",
   web: { bundler: "metro", output: "single", favicon: "./assets/images/favicon.png" },
