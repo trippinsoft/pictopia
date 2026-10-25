@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .text-h1 {
+    font-size: var(--h1-fontSize);
+    font-family: var(--h1-fontFamily);
+    font-weight: var(--h1-fontWeight);
+    font-style: var(--h1-fontStyle);
+  }
+
+  .text-h2 {
+    font-size: var(--h2-fontSize);
+    font-family: var(--h2-fontFamily);
+    font-weight: var(--h2-fontWeight);
+    font-style: var(--h2-fontStyle);
+  }
+
+  .text-h3 {
+    font-size: var(--h3-fontSize);
+    font-family: var(--h3-fontFamily);
+    font-weight: var(--h3-fontWeight);
+    font-style: var(--h3-fontStyle);
+  }
+
+  .text-h4 {
+    font-size: var(--h4-fontSize);
+    font-family: var(--h4-fontFamily);
+    font-weight: var(--h4-fontWeight);
+    font-style: var(--h4-fontStyle);
+  }
+
+  .text-h5 {
+    font-size: var(--h5-fontSize);
+    font-family: var(--h5-fontFamily);
+    font-weight: var(--h5-fontWeight);
+    font-style: var(--h5-fontStyle);
+  }
+
+  .text-h6 {
+    font-size: var(--h6-fontSize);
+    font-family: var(--h6-fontFamily);
+    font-weight: var(--h6-fontWeight);
+    font-style: var(--h6-fontStyle);
+  }
+
+  .text-body {
+    font-size: var(--body-fontSize);
+    font-family: var(--body-fontFamily);
+    font-weight: var(--body-fontWeight);
+    font-style: var(--body-fontStyle);
+  }
+
+  .text-caption {
+    font-size: var(--caption-fontSize);
+    font-family: var(--caption-fontFamily);
+    font-weight: var(--caption-fontWeight);
+    font-style: var(--caption-fontStyle);
+  }
+
+  .text-button {
+    font-size: var(--button-fontSize);
+    font-family: var(--button-fontFamily);
+    font-weight: var(--button-fontWeight);
+    font-style: var(--button-fontStyle);
+  }
+}
