@@ -15,7 +15,9 @@ Repeat on minimum supported iOS/Android and a current maintained version; includ
 | Threshold and rapid input | Short drag springs back; repeated taps/rapid reversals do not double-apply or skip an ID. |
 | Undo and skip | Undo restores the prior decision and counters. Skip does not create a decision. |
 | Smart Sessions | Try Quick Wins, Memory Lane, and Best of the Bunch at 2/5/10 minutes; validate actual prioritization and suggested keepers. Finish early, undo, resume, and verify all originals remain until authorized deletion. |
-| Session timer | Navigate away, background, lock, interrupt with a preview, and restart. Active time pauses; persisted position/order/duration resume. At zero, users may finish or continue; no automatic decision or deletion. |
+| Session timer | Start a 2-minute session; leave via home gesture, lock and app switcher; return after 10 s and after 5+ minutes; force-quit and relaunch. The timer resumes on its own when a photo is on screen, never counts time away, and keeps its place within a few seconds after relaunch. At zero, users may finish or continue; no automatic decision or deletion. |
+| Review controls | Review 30+ photos mixing swipes, button taps and rapid double taps, including right after returning from the background. Keep / Set aside never stay disabled while a photo is visible; nothing is decided twice or skipped; cloud-only photos display or explain themselves with Skip available. |
+| Swipe feel | Card tracks the finger, short drags spring back, committed swipes leave fully, the next photo is already in place, buttons animate like swipes, haptics follow the setting, and Reduce Motion replaces motion with quick fades. |
 | Process death | Kill after each decision, restart and reboot. Session position and queue match committed database state. |
 | Full preview | Pinch, double tap, pan, rotate; play/pause/scrub portrait and landscape videos. Cloud/unavailable items explain failure. |
 | Queue | Preview, restore one, restore all. Queue counts and sizes update correctly; originals remain. |

@@ -78,6 +78,20 @@ export default function Home() {
           </Text>
         </View>
       </View>
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => router.push("/vertical-explore")}
+        className="mb-5 flex-row items-center gap-4 rounded-2xl border border-border bg-card p-5"
+      >
+        <Icon name="ArrowUp" size={24} className="text-primary" />
+        <View className="flex-1">
+          <Text className="text-button text-foreground">Try Vertical Explore — 200 Photos</Text>
+          <Text className="mt-1 text-caption text-muted-foreground">
+            Free experiment · Resume anytime · Nothing deleted
+          </Text>
+        </View>
+        <Icon name="ChevronRight" size={20} className="text-muted-foreground" />
+      </Pressable>
       <View className="mb-7 overflow-hidden rounded-[28px] bg-accent p-7 md:p-9">
         <View className="flex-row items-center justify-between">
           <View className="max-w-lg flex-1">
@@ -120,11 +134,7 @@ export default function Home() {
               </View>
             )}
             <View className="self-start">
-              <Button
-                disabled={app.busy || !app.ready}
-                onPress={() => void open("quick")}
-                icon="ArrowRight"
-              >
+              <Button disabled={!app.ready} onPress={() => void open("quick")} icon="ArrowRight">
                 {unfinished ? "Resume your session" : `Start a ${minutes}-minute clean`}
               </Button>
             </View>

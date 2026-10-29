@@ -14,6 +14,8 @@ export function Button({
   secondary = false,
   danger = false,
   disabled = false,
+  quiet = false,
+  large = false,
 }: {
   children: string;
   onPress: () => void;
@@ -21,6 +23,9 @@ export function Button({
   secondary?: boolean;
   danger?: boolean;
   disabled?: boolean;
+  /** Ignore presses without dimming, for momentary locks such as a photo mid-transition. */
+  quiet?: boolean;
+  large?: boolean;
 }) {
   const foreground = danger
     ? "text-destructive-foreground"
@@ -30,9 +35,10 @@ export function Button({
   return (
     <Pressable
       accessibilityRole="button"
-      disabled={disabled}
+      accessibilityState={{ disabled: disabled || quiet }}
+      disabled={disabled || quiet}
       onPress={onPress}
-      className={`min-h-12 flex-row items-center justify-center gap-2 rounded-2xl px-5 py-3 ${danger ? "bg-destructive" : secondary ? "bg-secondary" : "bg-primary"} ${disabled ? "opacity-40" : "active:opacity-75"}`}
+      className={`${large ? "min-h-14" : "min-h-12"} flex-row items-center justify-center gap-2 rounded-2xl px-5 py-3 ${danger ? "bg-destructive" : secondary ? "bg-secondary" : "bg-primary"} ${disabled ? "opacity-40" : "active:scale-[0.98] active:opacity-80"}`}
     >
       <Text className={`text-button ${foreground}`}>{children}</Text>
       {icon && <Icon name={icon} size={18} className={foreground} />}
@@ -54,7 +60,7 @@ export function Page({
 }) {
   const app = usePictopia();
   const body = (
-    <View className="mx-auto w-full max-w-6xl px-5 pb-8 md:px-10">
+    <View className={`mx-auto w-full max-w-6xl px-5 md:px-10 ${scroll ? "pb-8" : "flex-1 pb-3"}`}>
       <View
         className={`${compactHeader ? "mb-4 mt-4" : "mb-7 mt-7"} flex-row items-center justify-between`}
       >

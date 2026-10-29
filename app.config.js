@@ -64,7 +64,6 @@ module.exports = {
 
 
 
-
   scheme: "pictopia",
   slug: "pictopia",
   userInterfaceStyle: "automatic",

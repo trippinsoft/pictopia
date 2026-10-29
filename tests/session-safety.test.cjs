@@ -247,3 +247,22 @@ test("session tallies count each item once from its current state", () => {
   ];
   assert.deepEqual(sessionTally(session, current), { reviewed: 2, kept: 1, setAside: 1 });
 });
+
+test("changing a decision from the session list keeps totals and the queue accurate", async () => {
+  const { app } = await started();
+  await app.repository.decide("keep", "a");
+  await app.repository.decide("delete", "b");
+  const session = await app.storage.getValue("session");
+  await app.repository.setDecision("a", "delete");
+  assert.deepEqual(await app.repository.tally(session), { reviewed: 2, kept: 0, setAside: 2 });
+  assert.equal((await app.storage.stats()).pending, 2);
+  await app.repository.setDecision("b", "keep");
+  assert.deepEqual(await app.repository.tally(session), { reviewed: 2, kept: 1, setAside: 1 });
+  assert.equal((await app.storage.stats()).pending, 1);
+  // History is untouched, so undo still targets the last swipe.
+  assert.equal((await app.storage.getValue("session")).history.length, 2);
+  // Items inside an unresolved OS deletion cannot be changed.
+  await app.storage.setValue("deletionAttempt", { id: "x", ids: ["a"], started: 1 });
+  await assert.rejects(() => app.repository.setDecision("a", "keep"), /still being checked/);
+  assert.equal((await app.storage.get("a")).decision, "delete");
+});

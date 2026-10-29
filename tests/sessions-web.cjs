@@ -49,13 +49,16 @@ async function saved(page) {
         buffer: fs.readFileSync("assets/images/icon.png"),
       })),
     );
-    await page.getByText("1 of 12 in this batch", { exact: true }).waitFor();
+    await page.getByText("1 of 12", { exact: true }).waitFor();
     await expect(page.getByRole("button", { name: "Keep", exact: true })).toBeEnabled();
     assert.equal((await saved(page)).minutes, 2);
     console.log("PASS Two-step onboarding leads straight to chosen 2-minute session");
-    await page.waitForTimeout(2300);
+    // The countdown moves every second; review time is saved every ~4 s and immediately on
+    // pause, blur or backgrounding.
+    await page.getByText("1:57", { exact: true }).waitFor({ timeout: 8000 });
+    await page.waitForTimeout(3000);
     let s = await saved(page);
-    assert.ok(s.elapsedMs >= 1000);
+    assert.ok(s.elapsedMs >= 4000, `elapsed ${s.elapsedMs}`);
     const setHidden = (hidden) =>
       page.evaluate((h) => {
         Object.defineProperty(document, "visibilityState", {
@@ -70,13 +73,13 @@ async function saved(page) {
     await page.waitForTimeout(2200);
     assert.equal((await saved(page)).elapsedMs, hidden.elapsedMs);
     await setHidden(false);
-    await page.waitForTimeout(2300);
+    await page.waitForTimeout(6000);
     assert.ok((await saved(page)).elapsedMs > hidden.elapsedMs);
     console.log("PASS Timer pauses while the tab is hidden and resumes when visible");
 
     await page.getByRole("button", { name: "Set aside", exact: true }).click();
 
-    await page.getByText("2 of 12 in this batch").waitFor();
+    await page.getByText("2 of 12", { exact: true }).waitFor();
     await page.getByRole("tab", { name: "Home", exact: true }).click();
     await page.getByRole("button", { name: "Resume your session", exact: true }).waitFor();
     // Leaving Swipe flushes its last sub-second tick asynchronously; let that write land first.
@@ -93,7 +96,7 @@ async function saved(page) {
     await page.reload();
     await page.addStyleTag({ content: "#error-toast:empty { pointer-events: none; }" });
     await page.getByRole("button", { name: "Resume your session", exact: true }).click();
-    await page.getByText("2 of 12 in this batch").waitFor();
+    await page.getByText("2 of 12", { exact: true }).waitFor();
     s = await saved(page);
     assert.equal(s.id, paused.id);
     assert.equal(s.position, 1);
@@ -102,10 +105,10 @@ async function saved(page) {
     await page.screenshot({ path: "/tmp/pictopia-session-mobile.png" });
     await page.getByRole("button", { name: "Finish session", exact: true }).click();
     await page.getByText("That’s progress worth keeping.").waitFor();
-    await page.getByText("1 memory reviewed", { exact: true }).waitFor();
-    await page.getByRole("button", { name: "Review set-aside items", exact: true }).click();
+    await page.getByText("You reviewed 1 memory.", { exact: false }).waitFor();
+    await page.getByRole("button", { name: "Review 1 item set aside", exact: true }).click();
     await page.getByRole("button", { name: "About device deletion", exact: true }).click();
-    await page.getByRole("button", { name: "Cancel, keep my photos", exact: true }).click();
+    await page.getByRole("button", { name: "Not now, keep them", exact: true }).click();
     assert.equal((await saved(page)).marked, 1);
     console.log(
       "PASS Early finish summarizes real decisions and safe deletion review remains reversible",
@@ -115,9 +118,9 @@ async function saved(page) {
     await page.getByLabel("Back", { exact: true }).click();
     await page.getByText("That’s progress worth keeping.").waitFor();
     await page.waitForTimeout(500);
-    assert.equal(await page.getByText("1 memory reviewed", { exact: true }).count(), 0);
+    assert.equal(await page.getByText("You reviewed 1 memory.", { exact: false }).count(), 0);
     assert.equal(
-      await page.getByRole("button", { name: "Review set-aside items", exact: true }).count(),
+      await page.getByRole("button", { name: "Review 1 item set aside", exact: true }).count(),
       0,
     );
     await page.getByRole("button", { name: "Done for now", exact: true }).click();
@@ -125,14 +128,14 @@ async function saved(page) {
     await page.getByRole("radio", { name: "10 minutes", exact: true }).click();
     await page.getByRole("button", { name: /Memory Lane/ }).click();
     // 15 unreviewed files plus the photo restored above, which is unreviewed again.
-    await page.getByText("1 of 16 in this batch", { exact: true }).waitFor();
+    await page.getByText("1 of 16", { exact: true }).waitFor();
     assert.equal((await saved(page)).minutes, 10);
     assert.equal((await saved(page)).ids.length, 16);
     await expect(page.getByRole("button", { name: "Keep", exact: true })).toBeEnabled();
     for (let i = 1; i <= 10; i++) {
       await expect(page.getByRole("button", { name: "Keep", exact: true })).toBeEnabled();
       await page.getByRole("button", { name: "Keep", exact: true }).click();
-      await page.getByText(i + 1 + " of 16 in this batch", { exact: true }).waitFor();
+      await page.getByText(i + 1 + " of 16", { exact: true }).waitFor();
     }
     await page
       .getByText("10 memories reviewed. A little lighter already.", { exact: true })
@@ -161,12 +164,10 @@ async function saved(page) {
     );
     await page.reload();
     await page.addStyleTag({ content: "#error-toast:empty { pointer-events: none; }" });
-    await page
-      .getByText("Time well spent. Finish here, or keep going at your own pace.", { exact: true })
-      .waitFor();
+    await page.getByText("Time well spent. Finish here, or keep going.", { exact: true }).waitFor();
     assert.equal((await saved(page)).complete, false);
     await expect(page.getByRole("button", { name: "Keep", exact: true })).toBeEnabled();
-    await page.getByRole("button", { name: "Finish session", exact: true }).click();
+    await page.getByRole("button", { name: "Finish", exact: true }).click();
     await page.getByRole("button", { name: "Done for now", exact: true }).click();
     await page.getByRole("radio", { name: "5 minutes", exact: true }).click();
     await page.getByRole("button", { name: /Best of the Bunch/ }).click();

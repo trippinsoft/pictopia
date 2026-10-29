@@ -1,6 +1,6 @@
 import React from "react";
 import { VideoPosterProps } from "./video-poster.types";
-export function VideoPoster({ uri, fit, onReady }: VideoPosterProps) {
+export function VideoPoster({ uri, fit, onReady, onFailed }: VideoPosterProps) {
   const videoStyle: React.CSSProperties = {
     width: "100%",
     height: "100%",
@@ -14,6 +14,7 @@ export function VideoPoster({ uri, fit, onReady }: VideoPosterProps) {
       playsInline
       preload="metadata"
       onLoadedData={onReady}
+      onError={onFailed}
       style={videoStyle}
     />
   );

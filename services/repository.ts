@@ -302,6 +302,15 @@ export const repository = {
       await storage.put(items, values);
     });
   },
+  /** Sets or clears one item's decision outside the swipe flow; session history is unchanged. */
+  async setDecision(id: string, decision: Decision | undefined) {
+    return serialize(async () => {
+      const m = await storage.get(id);
+      if (!m?.active) throw Error("This item is no longer available.");
+      const values = await deletionGuard([id], decision !== "delete");
+      await storage.put([{ ...m, decision }], values);
+    });
+  },
   async tally(session: Session) {
     const ids = Array.from(new Set(session.history.map((h) => h.id)));
     return sessionTally(session, await Promise.all(ids.map((id) => storage.get(id))));

@@ -52,7 +52,9 @@ interface Context {
   start: (c: Collection, minutes?: SessionMinutes) => Promise<void>;
   addSessionTime: (id: string, milliseconds: number) => Promise<void>;
   finishSession: () => Promise<void>;
-  decide: (d: "keep" | "delete", expectedId?: string) => Promise<void>;
+  decide: (d: "keep" | "delete", expectedId?: string) => Promise<Session>;
+  /** Changes or clears a decision from a review list (never deletes anything). */
+  changeDecision: (id: string, decision: "keep" | "delete" | undefined) => Promise<void>;
   undo: () => Promise<void>;
   skip: (expectedId?: string) => Promise<void>;
   updatePrefs: (p: Partial<Preferences>) => Promise<void>;
@@ -80,7 +82,6 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
     [clock, setClock] = useState(Date.now());
   const syncRef = useRef<AbortController | null>(null),
     scanRef = useRef<AbortController | null>(null),
-    decisionLock = useRef(false),
     alive = useRef(true),
     deletingRef = useRef(false);
   const refresh = useCallback(async () => {
@@ -213,18 +214,13 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
     setSession(await repository.start(c, prefs, entitlementActive(entitlement), minutes));
     await refresh();
   }
+  // Resolves as soon as the decision is saved; library totals refresh in the background so the
+  // review controls never wait on a whole-library recount.
   async function decision(d: "keep" | "delete", expectedId?: string) {
-    if (decisionLock.current) return;
-    decisionLock.current = true;
-    try {
-      setSession(await repository.decide(d, expectedId));
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Your decision could not be saved. Try again.");
-      throw e;
-    } finally {
-      decisionLock.current = false;
-    }
+    const next = await repository.decide(d, expectedId);
+    if (alive.current) setSession(next);
+    void refresh().catch(() => {});
+    return next;
   }
   async function updatePrefs(p: Partial<Preferences>) {
     const next = { ...prefs, ...p };
@@ -345,13 +341,17 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
       await refresh();
     },
     decide: decision,
+    changeDecision: async (id, d) => {
+      await repository.setDecision(id, d);
+      await refresh();
+    },
     undo: async () => {
       setSession((await repository.undo()) ?? null);
-      await refresh();
+      void refresh().catch(() => {});
     },
     skip: async (expectedId) => {
       setSession((await repository.skip(expectedId)) ?? null);
-      await refresh();
+      void refresh().catch(() => {});
     },
     updatePrefs,
     scanLibrary,

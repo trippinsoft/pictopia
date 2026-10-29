@@ -119,12 +119,12 @@ async function dark(page) {
     assert.match(button.foreground, /rgb\(20, 31, 41\)/);
     await page.screenshot({ path: "/tmp/pictopia-dark-swipe.png" });
     await page.getByRole("button", { name: "Set aside", exact: true }).click();
-    await page.getByText("2 of 2 in this batch").waitFor();
+    await page.getByText("2 of 2", { exact: true }).waitFor();
     await page.locator('[aria-label="Review deletion queue"]:visible').last().click();
     await page.getByRole("button", { name: "About device deletion", exact: true }).click();
     await page.getByText("One last check.", { exact: true }).waitFor();
     await dark(page);
-    await page.getByRole("button", { name: "Cancel, keep my photos", exact: true }).click();
+    await page.getByRole("button", { name: "Not now, keep them", exact: true }).click();
     console.log(
       "PASS Real-media swipe, set-aside controls and safe deletion review work in Dark mode",
     );

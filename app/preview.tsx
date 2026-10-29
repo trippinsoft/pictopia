@@ -6,7 +6,7 @@ import { LivePhoto } from "@/components/pictopia/live-photo";
 import { ZoomPhoto } from "@/components/pictopia/zoom-photo";
 
 import { useVideoPlayer, VideoView } from "expo-video";
-import { Text, Icon, Empty, Loading } from "@/components/pictopia/ui";
+import { Text, Icon, Empty, Loading, Button } from "@/components/pictopia/ui";
 import { usePictopia } from "@/components/pictopia/provider";
 import { repository, storage } from "@/services/repository";
 import { mediaService } from "@/services/media";
@@ -34,14 +34,33 @@ export default function Preview() {
     [uri, setUri] = useState<string>(),
     [error, setError] = useState(""),
     [details, setDetails] = useState(false),
-    [motion, setMotion] = useState(false);
+    [motion, setMotion] = useState(false),
+    [changing, setChanging] = useState(false);
+  async function change(decision: "keep" | "delete") {
+    if (!m) return;
+    setChanging(true);
+    try {
+      await app.changeDecision(m.id, decision);
+      setM({ ...m, decision });
+    } catch (e) {
+      app.setError((e as Error).message);
+    } finally {
+      setChanging(false);
+    }
+  }
   useEffect(() => {
     let active = true;
     void storage
       .get(id)
       .then(async (item) => {
         if (!item) throw Error("This item is no longer available.");
-        const resolved = await mediaService.resolve(item);
+        const resolved = await mediaService.resolve(item).catch((e: Error) => {
+          // Native photos display straight from the library (including iCloud originals),
+          // so a missing local file only matters for video playback.
+          if (Platform.OS !== "web" && item.type === "photo")
+            return { uri: item.uri } as { uri: string; size?: number; systemFavorite?: boolean };
+          throw e;
+        });
         const updated = {
           ...item,
           size: resolved.size ?? item.size,
@@ -51,11 +70,12 @@ export default function Preview() {
           setM(updated);
           setUri(resolved.uri);
         }
-        await repository.update(item.id, (latest) => ({
-          ...latest,
-          size: resolved.size ?? latest.size,
-          systemFavorite: resolved.systemFavorite ?? latest.systemFavorite,
-        }));
+        if ("size" in resolved)
+          await repository.update(item.id, (latest) => ({
+            ...latest,
+            size: resolved.size ?? latest.size,
+            systemFavorite: resolved.systemFavorite ?? latest.systemFavorite,
+          }));
       })
       .catch((e) => {
         if (active) setError(e.message);
@@ -82,7 +102,11 @@ export default function Preview() {
             <Pressable
               accessibilityLabel={m?.favorite ? "Remove app favorite" : "Add app favorite"}
               onPress={() => {
-                if (m) void repository.favorite(m.id).then(app.refresh).catch(e=>app.setError(e.message));
+                if (m)
+                  void repository
+                    .favorite(m.id)
+                    .then(app.refresh)
+                    .catch((e) => app.setError(e.message));
               }}
               className="p-3"
             >
@@ -141,11 +165,44 @@ export default function Preview() {
             </Text>
           </ScrollView>
         )}
-        <Text className="p-4 text-caption text-center text-muted-foreground">
-          {m?.type === "video"
-            ? "Use the video controls to play, pause, and scrub."
-            : "Pinch or double-tap to zoom. Drag to explore."}
-        </Text>
+        {m?.decision && m.active ? (
+          <View className="gap-2 border-t border-border p-4">
+            <Text className="text-caption text-center text-muted-foreground">
+              {m.decision === "keep"
+                ? "You kept this one."
+                : "Set aside. Nothing is deleted until you confirm in the queue."}
+            </Text>
+            <View className="flex-row gap-3">
+              <View className="flex-1">
+                <Button
+                  danger={m.decision !== "delete"}
+                  secondary={m.decision === "delete"}
+                  icon="X"
+                  disabled={m.decision === "delete" || changing}
+                  onPress={() => void change("delete")}
+                >
+                  Set aside
+                </Button>
+              </View>
+              <View className="flex-1">
+                <Button
+                  secondary={m.decision === "keep"}
+                  icon="Check"
+                  disabled={m.decision === "keep" || changing}
+                  onPress={() => void change("keep")}
+                >
+                  Keep
+                </Button>
+              </View>
+            </View>
+          </View>
+        ) : (
+          <Text className="p-4 text-caption text-center text-muted-foreground">
+            {m?.type === "video"
+              ? "Use the video controls to play, pause, and scrub."
+              : "Pinch or double-tap to zoom. Drag to explore."}
+          </Text>
+        )}
       </View>
     </SafeAreaView>
   );

@@ -9,6 +9,7 @@ import { Media } from "@/lib/pictopia/types";
 import { repository, storage } from "@/services/repository";
 import { bytes } from "@/lib/pictopia/logic";
 import { deletionMessage } from "@/lib/pictopia/deletion";
+import { plural } from "@/lib/pictopia/text";
 export default function Queue() {
   const app = usePictopia();
   const [items, setItems] = useState<Media[]>([]),
@@ -74,12 +75,14 @@ export default function Queue() {
           </View>
         </View>
         <View className="mb-5 rounded-2xl bg-accent p-5">
-          <Text className="text-h2 text-primary">{app.stats.pending} items</Text>
+          <Text className="text-h2 text-primary">
+            {plural(app.stats.pending, "item")} set aside
+          </Text>
           <Text className="mt-2 text-body text-muted-foreground">
             {bytes(app.stats.pendingBytes)} estimated • Known file sizes only
           </Text>
           <Text className="mt-3 text-body leading-6 text-foreground">
-            Changed your mind? Restore any memory to remove it from this queue.
+            Changed your mind? Restore anything to take it out of this list.
           </Text>
         </View>
         {Platform.OS === "web" && (
@@ -109,7 +112,10 @@ export default function Queue() {
                   .then((rows) => setItems((old) => [...old, ...rows]));
             }}
             renderItem={({ item }) => (
-              <View className="flex-1 overflow-hidden rounded-2xl border border-border bg-card">
+              <View
+                style={tileStyle}
+                className="overflow-hidden rounded-2xl border border-border bg-card"
+              >
                 <Pressable
                   onPress={() => router.push({ pathname: "/preview", params: { id: item.id } })}
                 >
@@ -155,10 +161,10 @@ export default function Queue() {
             >
               {Platform.OS === "web"
                 ? "About device deletion"
-                : `Review deletion of ${Math.min(items.length, 100)} items`}
+                : `Delete ${plural(Math.min(items.length, 100), "item")}…`}
             </Button>
             <Button disabled={working} secondary onPress={() => void restoreAll()}>
-              Restore all items
+              Restore all
             </Button>
           </View>
         )}
@@ -176,8 +182,9 @@ export default function Queue() {
             <Icon name="ShieldCheck" size={36} className="mb-5 text-primary" />
             <Text className="text-h2 text-foreground">One last check.</Text>
             <Text className="my-5 text-body leading-7 text-muted-foreground">
-              {confirmItems.filter((m) => m.type === "photo").length} photos and{" "}
-              {confirmItems.filter((m) => m.type === "video").length} videos{"\n"}
+              {plural(confirmItems.filter((m) => m.type === "photo").length, "photo")} and{" "}
+              {plural(confirmItems.filter((m) => m.type === "video").length, "video")}
+              {"\n"}
               {bytes(confirmItems.reduce((n, m) => n + (m.size ?? 0), 0))} estimated from known
               sizes.{"\n\n"}Your device will ask for authorization. Deleted items may stay in
               Recently Deleted or Trash, so free device storage may not change immediately.
@@ -189,12 +196,12 @@ export default function Queue() {
               </Text>
             ) : (
               <Button danger disabled={working} onPress={() => void confirm()}>
-                {working ? "Waiting for your device…" : "Request device deletion"}
+                {working ? "Waiting for your device…" : "Delete from device"}
               </Button>
             )}
             <View className="mt-3">
               <Button secondary disabled={working} onPress={() => setConfirmation(false)}>
-                Cancel, keep my photos
+                Not now, keep them
               </Button>
             </View>
           </View>
@@ -209,3 +216,5 @@ const columnStyle = { gap: 10 };
 const listStyle = { gap: 10, paddingBottom: 20 };
 
 const coverStyle = { aspectRatio: 1 };
+
+const tileStyle = { width: "31.5%" as const };

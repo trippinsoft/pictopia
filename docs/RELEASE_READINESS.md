@@ -19,6 +19,7 @@
 | Videos / Favorites | Separate real collections | Browser favorites tested; native metadata tests pending |
 | Large Videos | Available original sizes, largest first | Requires Pro; unknown sizes remain explicitly unknown |
 | Swipe right / left | Native UI-thread gestures; browser pointer gestures | Browser drag and decisions tested; native performance pending |
+| Vertical Explore internal prototype | Free fixed 200-still-photo snapshot, native up/down paging and peeking, synchronized sideways provisional discards, separate restore-only collection, persisted undo/resume/replay | Host SQLite/IndexedDB and logic tests; browser entry/intro visual checks; physical-iPhone/native build acceptance pending in `VERTICAL_EXPLORE_QA.md` |
 | Tapping / skip / undo | Transactional decision, undo, skip | Logic, repository, and browser tests passed |
 | Full-screen photo preview | Implemented | Browser tested |
 | Photo zoom | Native pinch/double tap/pan; browser pointer pinch/double-click/pan | Browser double-click zoom tested; native tests pending |
