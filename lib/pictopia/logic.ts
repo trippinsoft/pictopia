@@ -22,7 +22,7 @@ export function matches(m: Media, q: Query) {
     (!q.unreviewed || !m.decision) &&
     (!q.favorite || m.favorite || m.systemFavorite === true) &&
     (!q.excludeFavorites || (!m.favorite && !m.systemFavorite)) &&
-    (!q.screenshot || m.screenshot) &&
+    (q.screenshot === undefined || m.screenshot === q.screenshot) &&
     (!q.scanMissing || (!m.scanError && m.scan?.version !== `${SCAN_VERSION}:${m.modified}`)) &&
     (!q.hash || m.scan?.hash === q.hash) &&
     (!q.ids || q.ids.includes(m.id))

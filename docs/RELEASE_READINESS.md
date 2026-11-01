@@ -25,7 +25,8 @@
 | Photo zoom | Native pinch/double tap/pan; browser pointer pinch/double-click/pan | Browser double-click zoom tested; native tests pending |
 | Video playback / scrubbing | Expo Video native controls and browser controls | Browser video scenario provided; native codec/device tests pending |
 | Video review thumbnails | Native generated frame; browser video frame | Native generation unverified |
-| Local favorites | Persistent app preference; OS favorites read when supported | Browser tested; does not edit OS favorite flags |
+| Favorites | Adventure review: verified native favorite mutations on iOS / Android 11+; classic app-local favorites stay separate | Native source added; SDK/build/device verification pending; Android cloud sync not guaranteed |
+| Adventure photo review | Scroll to browse, swipe into a trashcan that catches the photograph, reversible queue marks, trash tray with Restore, explicit Done, contextual tips, native share adapters | Host tests and component layout captures; native compilation and real-photo interaction acceptance pending in `PHOTO_REVIEW_QA.md` |
 | Persistence / resuming | Versioned SQLite / IndexedDB; serialized mutations; session histories | Database, rollback, reopen, browser reload tests passed |
 | Pending deletion queue | Paginated review, individual/all restore | Browser and repository tests passed |
 | Explicit deletion confirmation | Counts, known size estimate, cancel, OS authorization | Browser limitation tested; native authorization tests pending |

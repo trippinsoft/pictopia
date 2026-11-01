@@ -17,16 +17,20 @@ export default function TabLayout() {
       {(
         [
           { name: "home", title: "Home", icon: "House" },
-          { name: "swipe", title: "Swipe", icon: "Layers2" },
-          { name: "smart", title: "Smart Clean", icon: "Sparkles" },
+          { name: "explore", title: "Explore", icon: "Compass" },
+          // Classic timed sessions and Smart Clean stay available (from Settings) with all
+          // their saved data, but Adventures are the one way to review from Home.
+          { name: "swipe", title: "Swipe", icon: "Layers2", hidden: true },
+          { name: "smart", title: "Smart Clean", icon: "Sparkles", hidden: true },
           { name: "settings", title: "Settings", icon: "Settings2" },
-        ] as { name: string; title: string; icon: IconName }[]
+        ] as { name: string; title: string; icon: IconName; hidden?: boolean }[]
       ).map((t) => (
         <Tabs.Screen
           key={t.name}
           name={t.name}
           options={{
             title: t.title,
+            ...(t.hidden ? { href: null } : {}),
             tabBarIcon: ({ color }) => <Icon name={t.icon} size={22} color={color} />,
           }}
         />

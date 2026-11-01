@@ -142,7 +142,7 @@ export default function Queue() {
                 title="No memories marked for deletion"
                 description="Swipe left to set something aside. It will wait here until you’re ready."
                 action={
-                  <Button onPress={() => router.replace("/(tabs)/swipe")}>Start reviewing</Button>
+                  <Button onPress={() => router.replace("/(tabs)/home")}>Start reviewing</Button>
                 }
               />
             }

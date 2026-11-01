@@ -7,5 +7,5 @@ export interface Storage {
   getValue<T>(key: string): Promise<T | undefined>;
   setValue(key: string, value: unknown): Promise<void>;
   stats(): Promise<Stats>;
-  months(): Promise<Month[]>;
+  months(photographsOnly?: boolean): Promise<Month[]>;
 }

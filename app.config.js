@@ -5,7 +5,7 @@ module.exports = {
       backgroundColor: "#ddefe7"
     },
     package: "com.trippinsoft.pictopia",
-    versionCode: 1,
+    versionCode: 15,
     blockedPermissions: [
     "android.permission.RECORD_AUDIO",
     "android.permission.CAMERA",
@@ -18,7 +18,7 @@ module.exports = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: "com.trippinsoft.pictopia",
-    buildNumber: "1",
+    buildNumber: "15",
     infoPlist: { ITSAppUsesNonExemptEncryption: false }
   },
   name: "Pictopia",
@@ -34,7 +34,7 @@ module.exports = {
   "expo-media-library",
   {
     photosPermission:
-    "Pictopia shows the photos and videos you allow it to access so you can review them, and deletes only the items you confirm. Your media stays on your device.",
+    "Pictopia accesses the photos and videos you choose so you can browse, update favorites and share selected items. Deletion happens only for items you explicitly confirm.",
     savePhotosPermission: "Pictopia never saves or adds photos or videos to your library.",
     granularPermissions: ["photo", "video"]
   }],
@@ -49,8 +49,8 @@ module.exports = {
     image: "./assets/images/splash.png",
     imageWidth: 160,
     resizeMode: "contain",
-    backgroundColor: "#f9fbfa",
-    dark: { backgroundColor: "#101820" }
+    backgroundColor: "#f8f3e8",
+    dark: { backgroundColor: "#10191d" }
   }],
 
 
@@ -67,7 +67,7 @@ module.exports = {
   scheme: "pictopia",
   slug: "pictopia",
   userInterfaceStyle: "automatic",
-  version: "1.0.0",
+  version: "1.0.14",
   web: { bundler: "metro", output: "single", favicon: "./assets/images/favicon.png" },
   platforms: ["ios", "android", "web"]
 };

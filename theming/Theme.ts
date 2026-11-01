@@ -35,6 +35,9 @@ export interface Theme {
     ring?: string;
     overlay?: string;
     notification?: string;
+    /** Immersive photo stage behind the vertical feed (dark in both themes). */
+    stage?: string;
+    stageForeground?: string;
   };
   typography: {
     h1?: Typography;
@@ -46,5 +49,11 @@ export interface Theme {
     body?: Typography;
     caption?: Typography;
     button?: Typography;
+    /** Editorial headline (Home invitation). */
+    display?: Typography;
+    /** The large A / B letters on Adventure choices. */
+    mark?: Typography;
+    /** Serif titles on cards (Adventure names, games). */
+    headline?: Typography;
   };
 }

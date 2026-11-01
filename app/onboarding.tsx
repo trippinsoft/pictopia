@@ -1,8 +1,7 @@
 import React, { useState } from "react";
 import { View, Platform, Pressable } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { router } from "expo-router";
 import { Page, Text, Icon, Button } from "@/components/pictopia/ui";
-import { Collection, SessionMinutes } from "@/lib/pictopia/types";
 import { usePictopia } from "@/components/pictopia/provider";
 const steps = [
   {
@@ -21,21 +20,6 @@ const steps = [
 export default function Onboarding() {
   const [step, setStep] = useState(0);
   const app = usePictopia();
-  const params = useLocalSearchParams<{ collection?: string; minutes?: string }>();
-  const minutes: SessionMinutes = params.minutes === "2" ? 2 : params.minutes === "10" ? 10 : 5;
-  const collection: Collection = [
-    "quick",
-    "memory",
-    "best",
-    "recent",
-    "today",
-    "random",
-    "screenshots",
-    "videos",
-    "favorites",
-  ].includes(params.collection ?? "")
-    ? (params.collection as Collection)
-    : "quick";
   const item = steps[step];
   async function next() {
     if (step < steps.length - 1) {
@@ -45,8 +29,8 @@ export default function Onboarding() {
     const connected = await app.connect();
     if (connected) {
       await app.updatePrefs({ onboarded: true });
-      await app.start(collection, minutes);
-      router.replace("/(tabs)/swipe");
+      // Adventures on Home are the way in; classic sessions stay available from Settings.
+      router.replace("/(tabs)/home");
     }
   }
   return (

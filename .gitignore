@@ -1,7 +1,5 @@
 node_modules/
 .expo/
-.yarn/*
-!.yarn/releases/
 dist/
 npm-debug.*
 *.jks
@@ -24,9 +22,24 @@ expo-env.d.ts
 
 # Temporary files created by Metro to check the health of the file watcher
 .metro-health-check*
-!.yarn/patches/
 .metro-cache/
 .env
 .draftbit/static-build/
 .prettier-cache
 draftbit-component-preview.tsx
+.yarn/*
+!.yarn/releases/
+!.yarn/releases/**
+!.yarn/patches/
+!.yarn/patches/**
+!.yarn/plugins/
+!.yarn/plugins/**
+!.yarn/sdks/
+!.yarn/sdks/**
+!.yarn/versions/
+!.yarn/versions/**
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*

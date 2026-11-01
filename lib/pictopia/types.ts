@@ -111,6 +111,8 @@ export interface Stats {
 export interface Month {
   key: string;
   count: number;
+  /** Still photos only (count includes videos). */
+  photos?: number;
   reviewed: number;
   cover?: string;
 }

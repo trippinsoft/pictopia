@@ -19,7 +19,7 @@ function conditions(q: Query) {
   if (q.unreviewed) add("decision IS NULL");
   if (q.favorite) add("favorite=1");
   if (q.excludeFavorites) add("favorite=0");
-  if (q.screenshot) add("screenshot=1");
+  if (q.screenshot !== undefined) add("screenshot=?", Number(q.screenshot));
   if (q.scanMissing) add("scanned=0");
   if (q.hash) add("hash=?", q.hash);
   if (q.ids) {
@@ -103,9 +103,9 @@ export const storage: Storage = {
     );
     return r!;
   },
-  async months() {
+  async months(photographsOnly = false) {
     const rows = await db.getAllAsync<Month>(
-      "SELECT month AS key,COUNT(*) count,SUM(decision IS NOT NULL) reviewed FROM media WHERE active=1 GROUP BY month ORDER BY month DESC",
+      `SELECT month AS key,COUNT(*) count,SUM(type='photo') photos,SUM(decision IS NOT NULL) reviewed FROM media WHERE active=1 ${photographsOnly ? "AND type='photo' AND screenshot=0" : ""} GROUP BY month ORDER BY month DESC`,
     );
     for (const row of rows) {
       const m = await this.query({ month: row.key, limit: 1 });

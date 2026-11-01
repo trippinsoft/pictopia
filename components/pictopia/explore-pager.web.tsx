@@ -2,6 +2,7 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   type CSSProperties,
@@ -22,6 +23,26 @@ export const ExplorePager = forwardRef<FlatList<string>, ExplorePagerProps>(func
   const reducedMotion = useReducedMotion();
   useImperativeHandle(ref, () => list.current!, []);
   useEffect(() => () => drag.dispose(), [drag]);
+  // The feed re-anchors on the shown photo's ID itself when photos are removed or restored.
+  // Browsers would also keep the old node in view, through scroll anchoring and by re-snapping
+  // to the same snap target, so a photo restored into the shown slot would be scrolled past.
+  // Snapping pauses for the commit that changes the pages (unless a drag already paused it).
+  const pages = useRef(props.data);
+  useLayoutEffect(() => {
+    const node = list.current?.getScrollableNode();
+    if (!(node instanceof HTMLElement)) return;
+    node.style.overflowAnchor = "none";
+    if (pages.current === props.data) return;
+    pages.current = props.data;
+    const snap = node.style.scrollSnapType;
+    if (snap === "none") return;
+    node.style.scrollSnapType = "none";
+    globalThis.requestAnimationFrame(() =>
+      globalThis.requestAnimationFrame(() => {
+        if (node.style.scrollSnapType === "none") node.style.scrollSnapType = snap;
+      }),
+    );
+  }, [props.data]);
   const sample = (e: PointerEvent<HTMLDivElement>): PagePointer => ({
     id: e.pointerId,
     x: e.clientX,

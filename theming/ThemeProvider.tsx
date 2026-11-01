@@ -25,10 +25,13 @@ const ThemeContext = createContext<ThemeContextValue>({
 export const ThemeProvider = ({
   initialThemeName,
   themes,
+  scoped = false,
   children,
 }: {
   initialThemeName: string;
   themes: Theme[];
+  /** A nested theme for one screen: styles only its own subtree, never the document root. */
+  scoped?: boolean;
   children: ReactNode;
 }) => {
   if (themes.length === 0) {
@@ -97,14 +100,14 @@ export const ThemeProvider = ({
   // Web Modal portals mount under body, outside the themed View.
   // Root variables keep dialogs and portals in the same theme.
   useEffect(() => {
-    if (Platform.OS !== "web" || typeof globalThis.document === "undefined") return;
+    if (scoped || Platform.OS !== "web" || typeof globalThis.document === "undefined") return;
     const root = globalThis.document.documentElement;
     Object.entries({ ...strippedHslColors, ...flattenedTypographyVariables }).forEach(
       ([key, value]) => {
         root.style.setProperty("--" + key, value);
       },
     );
-  }, [strippedHslColors, flattenedTypographyVariables]);
+  }, [scoped, strippedHslColors, flattenedTypographyVariables]);
 
   return (
     <ThemeContext.Provider value={themeContextValue}>

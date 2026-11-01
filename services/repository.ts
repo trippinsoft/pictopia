@@ -41,7 +41,7 @@ export const DELETION_ATTEMPT = "deletionAttempt",
  * `release` is set, items awaiting deletion verification stop being tracked because the user
  * no longer wants them deleted; the returned values must be saved with the media change.
  */
-async function deletionGuard(ids: string[], release: boolean) {
+export async function deletionGuard(ids: string[], release: boolean) {
   const attempt = await storage.getValue<DeletionAttempt | null>(DELETION_ATTEMPT);
   if (attempt?.ids?.some((id) => ids.includes(id)))
     throw Error("This item is part of a deletion that is still being checked. Try again shortly.");
@@ -74,6 +74,8 @@ export const repository = {
                 decision: old.decision,
                 size: m.size ?? old.size,
                 systemFavorite: m.systemFavorite ?? old.systemFavorite,
+                // A transient metadata failure must not unclassify a known screenshot.
+                screenshot: m.screenshot || old.screenshot,
                 scan: old.modified === m.modified ? old.scan : undefined,
                 scanError: old.modified === m.modified ? old.scanError : undefined,
               }

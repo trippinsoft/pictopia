@@ -65,4 +65,24 @@
     font-weight: var(--button-fontWeight);
     font-style: var(--button-fontStyle);
   }
+  .text-display {
+    font-size: var(--display-fontSize);
+    font-family: var(--display-fontFamily);
+    font-weight: var(--display-fontWeight);
+    font-style: var(--display-fontStyle);
+  }
+
+  .text-mark {
+    font-size: var(--mark-fontSize);
+    font-family: var(--mark-fontFamily);
+    font-weight: var(--mark-fontWeight);
+    font-style: var(--mark-fontStyle);
+  }
+
+  .text-headline {
+    font-size: var(--headline-fontSize);
+    font-family: var(--headline-fontFamily);
+    font-weight: var(--headline-fontWeight);
+    font-style: var(--headline-fontStyle);
+  }
 }

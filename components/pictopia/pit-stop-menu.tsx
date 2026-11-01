@@ -1,0 +1,61 @@
+import { useCallback, useState } from "react";
+import { Pressable, StyleSheet, View } from "react-native";
+import { router, useFocusEffect } from "expo-router";
+import { Image } from "expo-image";
+import { RowGroup } from "./art-list";
+import { Icon, Text } from "./ui";
+import { usePictopia } from "./provider";
+import { PIT_STOPS, unavailable, type PitStop } from "@/lib/pictopia/pitstops";
+import { pitStopStore } from "@/services/pitstops";
+
+const PIT_STOP_ART: Record<PitStop, number> = {
+  guessYear: require("@/assets/images/pit-stops/guess-year.webp"),
+  whereWasThis: require("@/assets/images/pit-stops/where-was-this.webp"),
+  whichFirst: require("@/assets/images/pit-stops/which-first.webp"),
+  memoryMatch: require("@/assets/images/pit-stops/memory-match.webp"),
+};
+
+export function PitStopMenu({ compact = false }: { compact?: boolean }) {
+  const app = usePictopia();
+  const [library, setLibrary] = useState<Awaited<ReturnType<typeof pitStopStore.library>>>();
+  const [error, setError] = useState(false);
+  const [retry, setRetry] = useState(0);
+  useFocusEffect(useCallback(() => {
+    let alive = true;
+    setError(false);
+    void pitStopStore.library().then(value => { if (alive) setLibrary(value); })
+      .catch(() => { if (alive) setError(true); });
+    return () => { alive = false; };
+  }, [app.stats.photos, retry]));
+  if (error) return <Pressable accessibilityRole="button" onPress={() => setRetry(n => n + 1)} className="py-4"><Text className="text-body text-muted-foreground">Couldn’t read your photos. Tap to try again.</Text></Pressable>;
+  const rows = (Object.keys(PIT_STOPS) as PitStop[]).map((game, i) => {
+    const info = PIT_STOPS[game];
+    const reason = library ? unavailable(game, library) : "Checking your library…";
+    const open = () => router.push({ pathname: "/pit-stop", params: { game } });
+    return compact ? (
+      <Pressable key={game} accessibilityRole="button" accessibilityLabel={`${info.title}. ${reason ?? info.subtitle}`}
+        accessibilityState={{ disabled: !!reason }} disabled={!!reason} onPress={open}
+        className="min-w-0 w-[48%] rounded-2xl border border-border bg-card p-3 active:opacity-70">
+        <View className="mb-3 aspect-square w-full overflow-hidden rounded-xl">
+          <Image source={PIT_STOP_ART[game]} style={StyleSheet.absoluteFill} contentFit="cover" accessible={false} />
+        </View>
+        <Text className="text-h6 text-foreground">{info.title}</Text>
+        <Text className="mt-1 text-caption leading-[17px] text-muted-foreground">{reason ?? info.subtitle}</Text>
+      </Pressable>
+    ) : (
+      <Pressable key={game} accessibilityRole="button" accessibilityLabel={`${info.title}. ${reason ?? info.subtitle}`}
+        accessibilityState={{ disabled: !!reason }} disabled={!!reason} onPress={open}
+        className={`min-h-[108px] flex-row items-center gap-4 px-4 py-3 active:bg-secondary ${i === 0 ? "" : "border-t border-border"}`}>
+        <View className="h-20 w-20 overflow-hidden rounded-2xl">
+          <Image source={PIT_STOP_ART[game]} style={StyleSheet.absoluteFill} contentFit="cover" accessible={false} />
+        </View>
+        <View className="flex-1">
+          <Text className="text-h5 text-foreground">{info.title}</Text>
+          <Text className="mt-0.5 text-caption leading-[17px] text-muted-foreground">{reason ?? info.subtitle}</Text>
+        </View>
+        {!reason && <Icon name="ChevronRight" size={18} className="text-muted-foreground" />}
+      </Pressable>
+    );
+  });
+  return compact ? <View className="flex-row flex-wrap justify-between gap-y-3">{rows}</View> : <RowGroup>{rows}</RowGroup>;
+}

@@ -4,6 +4,7 @@ import UIKit
 import CryptoKit
 
 public class PictopiaAnalysisModule: Module {
+  private let review = PictopiaReview()
   private let lock = NSLock()
   private var currentRequest: PHAssetResourceDataRequestID?
   private let queue = DispatchQueue(label: "pictopia.analysis", qos: .utility)
@@ -17,6 +18,13 @@ public class PictopiaAnalysisModule: Module {
       self.lock.lock(); let request = self.currentRequest; self.lock.unlock()
       if let request = request { PHAssetResourceManager.default().cancelDataRequest(request) }
     }
+    AsyncFunction("reviewFavorite") { (id: String) -> Bool in try PictopiaReview.asset(id).isFavorite }
+    AsyncFunction("setReviewFavorite") { (id: String, value: Bool, promise: Promise) in self.review.favorite(id, value: value, promise: promise) }
+    AsyncFunction("reviewThumbnail") { (id: String, version: String, promise: Promise) in self.review.thumbnail(id, version: version, promise: promise) }
+    AsyncFunction("shareReviewAsset") { (id: String, promise: Promise) in
+      self.review.share(id, presenter: self.appContext?.utilities?.currentViewController(), promise: promise)
+    }.runOnQueue(.main)
+    AsyncFunction("cancelReviewShare") { self.review.cancelShare() }.runOnQueue(.main)
     AsyncFunction("canScan") { () -> Bool in
       return !ProcessInfo.processInfo.isLowPowerModeEnabled && ProcessInfo.processInfo.thermalState.rawValue < ProcessInfo.ThermalState.serious.rawValue
     }
@@ -87,6 +95,7 @@ public class PictopiaAnalysisModule: Module {
 }
 private enum AnalysisError: Error { case unavailable }
 private final class AnalysisState: @unchecked Sendable {
+  private let review = PictopiaReview()
   private let lock = NSLock()
   private var digest = SHA256()
   private var bytes = 0
@@ -105,6 +114,7 @@ private final class AnalysisState: @unchecked Sendable {
   }
 }
 private final class ImageBox: @unchecked Sendable {
+  private let review = PictopiaReview()
   private let lock = NSLock()
   private var value: UIImage?
   func set(_ image: UIImage?) { lock.lock(); value = image; lock.unlock() }

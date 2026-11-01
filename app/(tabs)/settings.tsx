@@ -1,8 +1,9 @@
-import React, { useState } from "react";
-import { View, Pressable, Switch, Modal, Platform } from "react-native";
+import React, { useCallback, useState } from "react";
+import { View, Pressable, Switch, Modal, Platform, ScrollView } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import Constants from "expo-constants";
-import { router } from "expo-router";
-import { Page, Text, Icon, Button } from "@/components/pictopia/ui";
+import { router, useFocusEffect } from "expo-router";
+import { Text, Icon, Button } from "@/components/pictopia/ui";
 import { usePictopia } from "@/components/pictopia/provider";
 import { useTheme } from "@/theming/ThemeProvider";
 import { repository } from "@/services/repository";
@@ -10,11 +11,26 @@ import { mediaService } from "@/services/media";
 import { Preferences } from "@/lib/pictopia/types";
 import { openLegal, manageSubscription } from "@/lib/pictopia/links";
 import { bytes } from "@/lib/pictopia/logic";
+import { plural } from "@/lib/pictopia/text";
+import { adventureStore } from "@/services/adventures";
 export default function Settings() {
   const app = usePictopia();
   const { theme } = useTheme();
   const [confirm, setConfirm] = useState<"reset" | "cache" | null>(null),
     [working, setWorking] = useState(false);
+  const [journey, setJourney] = useState<Awaited<ReturnType<typeof adventureStore.journey>>>();
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      void adventureStore
+        .journey()
+        .then((j) => alive && setJourney(j))
+        .catch(() => {});
+      return () => {
+        alive = false;
+      };
+    }, []),
+  );
   const toggles: { key: keyof Preferences; title: string; desc: string }[] = [
     { key: "haptics", title: "Gentle haptics", desc: "A little feedback with every decision" },
     { key: "autoplay", title: "Autoplay videos", desc: "Play videos when you open a preview" },
@@ -55,29 +71,16 @@ export default function Settings() {
     }
   }
   return (
-    <Page title="Make yourself at home" subtitle="Your preferences. Your privacy. Your pace.">
-      <View className="mb-7 flex-row items-center justify-between rounded-3xl bg-accent p-6">
-        <View>
-          <View className="mb-2 flex-row items-center gap-2">
-            <Icon name="Sparkles" size={20} className="text-primary" />
-            <Text className="text-h3 text-foreground">
-              {app.pro ? "Pictopia Pro" : "A smarter kind of clean"}
-            </Text>
-          </View>
-          <Text className="max-w-xs text-body leading-6 text-muted-foreground">
-            {app.pro
-              ? "Your Pro tools are unlocked."
-              : "Manual cleanup is always free. Go Pro for deeper local analysis."}
-          </Text>
-        </View>
-        <Pressable
-          onPress={() => router.push("/paywall")}
-          className="ml-3 rounded-full bg-primary p-3"
-        >
-          <Icon name="ArrowRight" size={21} className="text-primary-foreground" />
-        </Pressable>
-      </View>
-      <Text className="mb-3 text-h3 text-foreground">A little more you</Text>
+    <SafeAreaView className="flex-1 bg-background" edges={["top", "left", "right"]}>
+    <ScrollView><View className="mx-auto w-full max-w-md px-6 pb-8 pt-6">
+      <Text accessibilityRole="header" className="text-h1 text-foreground">Settings</Text>
+      <Text className="mb-7 mt-2 text-body text-muted-foreground">Your photos. Your preferences. Your pace.</Text>
+      <Pressable accessibilityRole="button" onPress={() => router.push("/queue")} className="mb-5 flex-row items-center gap-4 rounded-3xl border border-border bg-card p-4">
+        <View className="h-12 w-12 items-center justify-center rounded-2xl bg-secondary"><Icon name="Trash2" size={23} className="text-destructive" /></View>
+        <View className="flex-1"><Text className="text-h5 text-foreground">Pending deletions</Text><Text className="mt-1 text-caption text-muted-foreground">{plural(app.stats.pending, "photo")} in your deletion queue</Text></View>
+        <Icon name="ChevronRight" size={18} className="text-muted-foreground" />
+      </Pressable>
+      <Text className="mb-3 text-h3 text-foreground">Preferences</Text>
       <View className="mb-7 rounded-3xl border border-border bg-card p-5">
         <Text className="mb-3 text-h5 text-foreground">Appearance</Text>
         <View className="mb-4 flex-row gap-2">
@@ -157,9 +160,45 @@ export default function Settings() {
           <Text className="text-body text-muted-foreground">Clear local analysis cache</Text>
         </Pressable>
       </View>
+      {!!journey?.adventures && (
+        <>
+          <Text className="mb-3 text-h3 text-foreground">Your journey</Text>
+          <View className="mb-7 rounded-3xl border border-border bg-card p-5">
+            {[
+              ["Explored on Adventures", plural(journey.explored, "photo")],
+              ["Decided", plural(journey.reviewed, "photo")],
+              ["Set aside (reversible)", plural(journey.setAside, "photo")],
+              ["In the deletion queue", plural(journey.queued, "photo")],
+              ["Deleted from your library", plural(journey.deleted, "photo")],
+              [
+                "Space recovered",
+                journey.deleted
+                  ? `${bytes(journey.recoveredBytes)}${journey.unknownSizes ? ` + ${plural(journey.unknownSizes, "item")} of unknown size` : ""}`
+                  : "None yet",
+              ],
+            ].map(([label, value], i) => (
+              <View
+                key={label}
+                className={`flex-row items-center justify-between py-3 ${i ? "border-t border-border" : ""}`}
+              >
+                <Text className="text-body text-foreground">{label}</Text>
+                <Text className="text-body text-muted-foreground">{value}</Text>
+              </View>
+            ))}
+            <Text className="mt-2 text-caption leading-5 text-muted-foreground">
+              Each photo counts once, however many Adventures it appears in. Space is only counted
+              after a deletion your device confirmed, using sizes Pictopia knows.
+            </Text>
+          </View>
+        </>
+      )}
       <Text className="mb-3 text-h3 text-foreground">The important stuff</Text>
       <View className="mb-7 overflow-hidden rounded-3xl border border-border bg-card">
         {[
+          { title: "Photos set aside on adventures", onPress: () => router.push("/set-aside") },
+          { title: "Classic timed sessions", onPress: () => router.push("/(tabs)/swipe") },
+          { title: "Smart Clean", onPress: () => router.push("/(tabs)/smart") },
+          { title: "Deletion queue", onPress: () => router.push("/queue") },
           { title: "Cleanup insights", onPress: () => router.push("/statistics") },
           { title: "Restore purchases", onPress: () => void action(app.restorePurchases) },
           {
@@ -186,6 +225,33 @@ export default function Settings() {
           </Pressable>
         ))}
       </View>
+      <View className="mb-7 flex-row items-center justify-between rounded-3xl bg-accent p-6">
+        <View>
+          <View className="mb-2 flex-row items-center gap-2">
+            <Icon name="Sparkles" size={20} className="text-primary" />
+            <Text className="text-h3 text-foreground">
+              {app.pro ? "Pictopia Pro" : "A smarter kind of clean"}
+            </Text>
+          </View>
+          <Text className="max-w-xs text-body leading-6 text-muted-foreground">
+            {app.pro
+              ? "Your Pro tools are unlocked."
+              : "Manual cleanup is always free. Go Pro for deeper local analysis."}
+          </Text>
+        </View>
+        <Pressable
+          onPress={() => router.push("/paywall")}
+          className="ml-3 rounded-full bg-primary p-3"
+        >
+          <Icon name="ArrowRight" size={21} className="text-primary-foreground" />
+        </Pressable>
+      </View>
+      {/* Long-press the version line to open the developer-only Adventure Lab on any build. */}
+      <Pressable
+        accessibilityRole="text"
+        onLongPress={() => router.push("/adventure-lab")}
+        delayLongPress={800}
+      >
       <Text className="text-caption text-center text-muted-foreground">
         Pictopia {Constants.expoConfig?.version ?? "1.0.0"} • Build{" "}
         {Constants.expoConfig?.ios?.buildNumber ??
@@ -193,6 +259,7 @@ export default function Settings() {
           "1"}
         {"\n"}Keep the memories. Lose the clutter.
       </Text>
+      </Pressable>
       <Modal
         visible={!!confirm}
         transparent
@@ -218,6 +285,6 @@ export default function Settings() {
           </View>
         </View>
       </Modal>
-    </Page>
+    </View></ScrollView></SafeAreaView>
   );
 }

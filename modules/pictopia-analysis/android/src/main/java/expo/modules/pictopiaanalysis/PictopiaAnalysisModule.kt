@@ -5,7 +5,12 @@ import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.ModuleDefinition
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import android.app.Activity
 import android.app.ActivityManager
+import android.content.Intent
+import android.content.ClipData
+import expo.modules.kotlin.Promise
+import expo.modules.kotlin.functions.Queues
 import android.os.PowerManager
 import android.os.Build
 import android.provider.MediaStore
@@ -16,9 +21,55 @@ import java.io.File
 import java.security.MessageDigest
 
 class PictopiaAnalysisModule : Module() {
+  private var favoritePromise: Promise? = null
+  private var favoriteId: String? = null
   @Volatile private var cancelled = false
   override fun definition() = ModuleDefinition {
     Name("PictopiaAnalysis")
+    AsyncFunction("reviewFavorite") Coroutine { id: String ->
+      withContext(Dispatchers.IO) { PictopiaReview.favorite(appContext.reactContext ?: error("Context unavailable"), id) }
+    }
+    AsyncFunction("reviewThumbnail") Coroutine { id: String, version: String ->
+      withContext(Dispatchers.IO) { PictopiaReview.thumbnail(appContext.reactContext ?: error("Context unavailable"), id, version) }
+    }
+    AsyncFunction("setReviewFavorite") { id: String, value: Boolean, promise: Promise ->
+      if (Build.VERSION.SDK_INT < 30) { promise.reject("UNSUPPORTED", "Native favorites require Android 11 or later.", null) }
+      else if (favoritePromise != null) { promise.reject("BUSY", "A favorite change is already awaiting approval.", null) }
+      else {
+        try {
+          val activity = appContext.currentActivity ?: error("Activity unavailable")
+          val uri = PictopiaReview.uri(activity, id)
+          val request = MediaStore.createFavoriteRequest(activity.contentResolver, listOf(uri), value)
+          favoritePromise = promise; favoriteId = id
+          activity.startIntentSenderForResult(request.intentSender, 55931, null, 0, 0, 0)
+        } catch (error: Exception) { favoritePromise = null; favoriteId = null; promise.reject("FAVORITE_FAILED", error.message, error) }
+      }
+    }.runOnQueue(Queues.MAIN)
+    OnActivityResult { activity, (requestCode, resultCode, _) ->
+      if (requestCode == 55931) {
+        val promise = favoritePromise; val id = favoriteId
+        favoritePromise = null; favoriteId = null
+        if (promise != null && id != null) {
+          if (resultCode != Activity.RESULT_OK) promise.reject("FAVORITE_CANCELLED", "The favorite change was canceled.", null)
+          else try { promise.resolve(PictopiaReview.favorite(activity, id)) }
+          catch (error: Exception) { promise.reject("FAVORITE_UNVERIFIED", "The favorite change could not be checked.", error) }
+        }
+      }
+    }
+    AsyncFunction("shareReviewAsset") { id: String ->
+      val activity = appContext.currentActivity ?: error("Sharing is unavailable right now.")
+      val uri = PictopiaReview.uri(activity, id)
+      val send = Intent(Intent.ACTION_SEND).apply {
+        type = activity.contentResolver.getType(uri) ?: "image/*"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        clipData = ClipData.newUri(activity.contentResolver, "Photograph", uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+      }
+      activity.startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+      "opened" // Android cannot confirm a destination received the asset.
+    }.runOnQueue(Queues.MAIN)
+    AsyncFunction("cancelReviewShare") { /* No temporary export: Android shares the authorized content URI. */ }
+    OnDestroy { favoritePromise?.reject("CANCELLED", "The photo-library request was interrupted.", null); favoritePromise = null; favoriteId = null }
     Function("cancel") { cancelled = true }
     AsyncFunction("canScan") {
       val context = appContext.reactContext ?: error("Context unavailable")
@@ -34,15 +85,16 @@ class PictopiaAnalysisModule : Module() {
         val projection = mutableListOf("_id")
         if (Build.VERSION.SDK_INT >= 30) projection.add("is_favorite")
         if (Build.VERSION.SDK_INT >= 29) projection.add("relative_path")
+        else projection.add("_data") // API 24–28: metadata only; never open or alter this path.
         val result = mutableListOf<Map<String, Any>>()
         if (ids.isNotEmpty()) context.contentResolver.query(MediaStore.Files.getContentUri("external"), projection.toTypedArray(), "_id IN (${ids.joinToString(",") { "?" }})", ids.toTypedArray(), null)?.use { cursor ->
           while (cursor.moveToNext()) {
             val id = cursor.getString(0)
             val favoriteIndex = cursor.getColumnIndex("is_favorite")
-            val pathIndex = cursor.getColumnIndex("relative_path")
+            val pathIndex = cursor.getColumnIndex(if (Build.VERSION.SDK_INT >= 29) "relative_path" else "_data")
             val favorite = favoriteIndex >= 0 && cursor.getInt(favoriteIndex) == 1
             val path = if (pathIndex >= 0) cursor.getString(pathIndex) ?: "" else ""
-            result.add(mapOf("id" to id, "favorite" to favorite, "screenshot" to path.lowercase().split('/').any { it == "screenshots" || it == "screenshot" }))
+            result.add(mapOf("id" to id, "favorite" to favorite, "screenshot" to path.lowercase(java.util.Locale.ROOT).split('/').dropLast(if (Build.VERSION.SDK_INT < 29) 1 else 0).any { it == "screenshots" || it == "screenshot" }))
           }
         }
         result

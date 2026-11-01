@@ -1,14 +1,19 @@
+import { useState } from "react";
+import { reviewGuidance } from "@/services/review-guidance";
 import { View, Linking } from "react-native";
 import { Page, Text, Button } from "@/components/pictopia/ui";
 export default function Help() {
+  const [replayMessage, setReplayMessage] = useState<string>();
   const email = process.env.EXPO_PUBLIC_SUPPORT_EMAIL;
   return (
     <Page title="A little help">
       <View className="mx-auto max-w-2xl gap-6">
+        <Button secondary onPress={() => { void reviewGuidance.reset().then(() => setReplayMessage("The tips will appear in your next adventure review, using your own photos.")).catch(() => setReplayMessage("The instructions couldn’t be reset. Please try again.")); }}>Replay review instructions</Button>
+        {replayMessage && <Text accessibilityLiveRegion="polite" className="text-body text-muted-foreground">{replayMessage}</Text>}
         {[
           [
             "How do I delete photos?",
-            "Swipe left to set items aside. Open the queue, review your choices, then request deletion. Your device asks for authorization. Nothing is deleted while you swipe.",
+            "In an adventure, swipe either sideways direction to mark a photo for deletion. Scroll freely without making decisions; use the thumbnails to revisit and Restore. Open the queue, review your choices, then request deletion. Your device asks for authorization. Nothing is deleted while you swipe.",
           ],
           [
             "Why didn’t my free storage change?",
@@ -28,7 +33,7 @@ export default function Help() {
           ],
           [
             "Where are my favorites?",
-            "Favorites marked here are local Pictopia preferences. They don’t change the favorite flag in your device’s Photos app. Existing iOS favorites are also excluded by default when their metadata is available.",
+            "The heart in Adventure review updates Photos favorites on iOS or device MediaStore favorites on Android 11 and later, after any required system approval. Android favorites do not imply Google Photos cloud synchronization. Browser favorites and older Android versions are unsupported. Classic review’s older app favorites remain local to Pictopia.",
           ],
         ].map(([title, body]) => (
           <View key={title}>

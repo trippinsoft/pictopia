@@ -69,6 +69,10 @@ module.exports = {
         notification: {
           DEFAULT: 'hsl(var(--notification) / <alpha-value>)',
         },
+        stage: {
+          DEFAULT: 'hsl(var(--stage) / <alpha-value>)',
+          foreground: 'hsl(var(--stageForeground) / <alpha-value>)',
+        },
       },
       borderWidth: {
         hairline: hairlineWidth(),

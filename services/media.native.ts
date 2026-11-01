@@ -67,7 +67,7 @@ export const mediaService: MediaService = {
       try {
         const albums = await MediaLibrary.getAlbumsAsync();
         for (const album of albums)
-          if (/screenshots?/i.test(album.title)) screenshotAlbums.add(album.id);
+          if (/^screenshots?$/i.test(album.title.trim())) screenshotAlbums.add(album.id);
       } catch {
         /* Album metadata is optional. */
       }
@@ -88,17 +88,20 @@ export const mediaService: MediaService = {
         } catch {
           /* Use platform metadata below when the module cannot query an asset. */
         }
-      } else if (Platform.OS === "ios") {
+      }
+      // Also recover missing or failed module rows, not only a missing native module.
+      if (Platform.OS === "ios") {
         for (let offset = 0; offset < r.assets.length; offset += 20) {
           await Promise.all(
             r.assets.slice(offset, offset + 20).map(async (a) => {
+              if (metadata.has(a.id)) return;
               try {
                 const info = await MediaLibrary.getAssetInfoAsync(a.id, {
                   shouldDownloadFromNetwork: false,
                 });
                 metadata.set(a.id, {
                   favorite: info.isFavorite ?? false,
-                  screenshot: a.mediaSubtypes?.includes("screenshot") ?? false,
+                  screenshot: info.mediaSubtypes?.includes("screenshot") ?? false,
                 });
               } catch {
                 /* Inaccessible media is handled during review. */

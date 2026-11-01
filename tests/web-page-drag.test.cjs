@@ -148,6 +148,7 @@ test("release stays active through sparse smooth-scroll events, so the feed sett
   const controller = new ExploreFeedController(
     {
       read: () => session,
+      pages: () => [...session.ids, "end"],
       save: async (action) => {
         const built = typeof action === "function" ? action(session) : action;
         actions.push(built);
@@ -159,8 +160,11 @@ test("release stays active through sparse smooth-scroll events, so the feed sett
       onError(message) {
         assert.fail(message);
       },
+      onDeparting() {},
+      arrived: async () => {},
+      onEntrance() {},
     },
-    0,
+    session.activeId,
   );
   // Mirrors the feed's quiet-scroll settle.
   const schedule = () => {
@@ -191,7 +195,7 @@ test("release stays active through sparse smooth-scroll events, so the feed sett
     t.mock.timers.tick(140);
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(controller.page, origin - direction);
-    assert.equal(session.position, origin - direction);
+    assert.equal(session.activeId, session.ids[origin - direction]);
   }
   assert.deepEqual(actions.map((action) => action.id), ["a", "b", "c", "b"]);
   assert.deepEqual(session.ids, ["a", "b", "c", "d"]);

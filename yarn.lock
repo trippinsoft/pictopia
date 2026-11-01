@@ -1450,6 +1450,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@expo-google-fonts/fraunces@npm:^0.4.1":
+  version: 0.4.1
+  resolution: "@expo-google-fonts/fraunces@npm:0.4.1"
+  checksum: 10c0/b9bc153e51eb7fff711909b1cc132bce739f5d4a173c229a1041ccfff2fea7ebc721685462c8733ad076e6f41e81e180161e1b27655222f1d9b397ddcfd30b2e
+  languageName: node
+  linkType: hard
+
 "@expo-google-fonts/inter@npm:^0.4.1":
   version: 0.4.1
   resolution: "@expo-google-fonts/inter@npm:0.4.1"
@@ -9910,6 +9917,7 @@ __metadata:
     "@eslint/compat": "npm:^1.4.1"
     "@eslint/js": "npm:^8.57.0"
     "@expo-google-fonts/dev": "npm:^0.4.86"
+    "@expo-google-fonts/fraunces": "npm:^0.4.1"
     "@expo-google-fonts/inter": "npm:^0.4.1"
     "@expo/metro-runtime": "npm:~55.0.12"
     "@expo/vector-icons": "npm:^15.0.3"

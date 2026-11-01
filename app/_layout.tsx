@@ -26,6 +26,9 @@ import {
   Inter_600SemiBold,
   Inter_700Bold,
 } from "@expo-google-fonts/inter";
+// Editorial serif for headings; per-weight imports bundle only these two files.
+import { Fraunces_500Medium } from "@expo-google-fonts/fraunces/500Medium";
+import { Fraunces_600SemiBold } from "@expo-google-fonts/fraunces/600SemiBold";
 import { PortalHost } from "@rn-primitives/portal";
 import { WebPortalContext } from "@/components/WebPortalContext";
 import * as SplashScreen from "expo-splash-screen";
@@ -52,6 +55,8 @@ function RootContent() {
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
+    Fraunces_500Medium,
+    Fraunces_600SemiBold,
   });
   const isLoadingFonts = !fontsLoaded && !fontError;
   const appearanceReady =
@@ -145,6 +150,9 @@ function RootContent() {
             headerShown: false,
           })}
         >
+          <Stack.Screen name="time-machine" options={{ title: "Time Machine" }} />
+          <Stack.Screen name="pit-stops" options={{ title: "Pit Stops" }} />
+          <Stack.Screen name="pit-stop" options={{ title: "Pit Stop" }} />
           <Stack.Screen
             name="index"
             options={{

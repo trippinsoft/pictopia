@@ -104,12 +104,13 @@ export const storage: Storage = {
     });
     return s;
   },
-  async months() {
+  async months(photographsOnly = false) {
     const groups = new Map<string, Month>();
     await each((m) => {
-      if (!m.active) return;
-      const g = groups.get(m.month) ?? { key: m.month, count: 0, reviewed: 0, cover: m.uri };
+      if (!m.active || (photographsOnly && (m.type !== "photo" || m.screenshot))) return;
+      const g = groups.get(m.month) ?? { key: m.month, count: 0, photos: 0, reviewed: 0, cover: m.uri };
       g.count++;
+      if (m.type === "photo") g.photos = (g.photos ?? 0) + 1;
       if (m.decision) g.reviewed++;
       groups.set(m.month, g);
     });
