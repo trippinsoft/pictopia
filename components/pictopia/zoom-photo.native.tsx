@@ -3,7 +3,7 @@ import Animated, { useSharedValue, useAnimatedStyle } from "react-native-reanima
 import { MediaImage } from "./media-image";
 import { ZoomPhotoProps } from "./zoom-photo.types";
 const fill = { flex: 1 };
-export function ZoomPhoto({ media }: ZoomPhotoProps) {
+export function ZoomPhoto({ media, onSettled }: ZoomPhotoProps) {
   const scale = useSharedValue(1),
     saved = useSharedValue(1),
     x = useSharedValue(0),
@@ -48,7 +48,7 @@ export function ZoomPhoto({ media }: ZoomPhotoProps) {
   return (
     <GestureDetector gesture={Gesture.Simultaneous(pinch, pan, tap)}>
       <Animated.View collapsable={false} style={[fill, style]}>
-        <MediaImage media={media} fit="contain" style={fill} />
+        <MediaImage onSettled={onSettled} media={media} fit="contain" style={fill} />
       </Animated.View>
     </GestureDetector>
   );

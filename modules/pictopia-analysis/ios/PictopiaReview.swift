@@ -1,3 +1,4 @@
+import AVFoundation
 import ExpoModulesCore
 import Photos
 import UIKit
@@ -16,6 +17,25 @@ final class PictopiaReview {
       throw NSError(domain: "Pictopia", code: 1, userInfo: [NSLocalizedDescriptionKey: "This photo is unavailable. Check Photos access."])
     }
     return asset
+  }
+  // Public PhotoKit file URLs, local only. No private fileSize KVC, data streaming or download.
+  func localSize(_ id: String, promise: Promise) {
+    queue.async {
+      do {
+        let asset = try Self.asset(id)
+        // A still URL alone cannot represent the paired motion resource of a Live Photo.
+        guard !asset.mediaSubtypes.contains(.photoLive) else { promise.resolve(nil); return }
+        let options = PHContentEditingInputRequestOptions()
+        options.isNetworkAccessAllowed = false
+        asset.requestContentEditingInput(with: options) { input, _ in
+          let url = asset.mediaType == .video ? (input?.audiovisualAsset as? AVURLAsset)?.url : input?.fullSizeImageURL
+          guard let url = url, url.isFileURL,
+            let values = try? url.resourceValues(forKeys: [.fileSizeKey]),
+            let size = values.fileSize, size > 0 else { promise.resolve(nil); return }
+          promise.resolve(Double(size))
+        }
+      } catch { promise.resolve(nil) }
+    }
   }
   func favorite(_ id: String, value: Bool, promise: Promise) {
     do {

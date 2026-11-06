@@ -16,7 +16,10 @@
 | Recent / On This Day | Real date-filtered queries; prior years for On This Day | Logic exercised; calendar-date device tests required |
 | Random Shuffle | Stable session order, reviewed items excluded by preference | Seeded shuffle tested; device library scenarios pending |
 | Screenshots | iOS subtype; Android platform path/album metadata | Device/OEM verification required; not inferred from dimensions |
-| Videos / Favorites | Separate real collections | Browser favorites tested; native metadata tests pending |
+| Videos / Favorites | Videos collection (oldest first, largest first) in the shared review | Browser tested; native playback, iCloud and deletion pending device checks |
+| Albums / Folders | Explore section from the native media library (iOS albums, Android folders) | Service tests on host; never run on a device yet |
+| Duplicate Hunt | Built, Pro-gated, closed for release | Needs on-device scan and keeper checks before `RELEASED.duplicateHunt` |
+| Review endings | Completion, recap, Ready to delete, Result | Browser and host tests pass; OS deletion prompts and Result wording need device checks |
 | Large Videos | Available original sizes, largest first | Requires Pro; unknown sizes remain explicitly unknown |
 | Swipe right / left | Native UI-thread gestures; browser pointer gestures | Browser drag and decisions tested; native performance pending |
 | Vertical Explore internal prototype | Free fixed 200-still-photo snapshot, native up/down paging and peeking, synchronized sideways provisional discards, separate restore-only collection, persisted undo/resume/replay | Host SQLite/IndexedDB and logic tests; browser entry/intro visual checks; physical-iPhone/native build acceptance pending in `VERTICAL_EXPLORE_QA.md` |
@@ -84,3 +87,7 @@ Actual executable results are recorded in `docs/VERIFICATION.md`. Device tests a
 ## Algorithm limits
 
 Perceptual matches are suggestions, not identity guarantees. Rotation, cropping, edited versions, burst timing, extreme lighting, formats unavailable to the native decoder, cloud-only originals, and low-detail scenes can affect results. Native original-file scanning is asynchronous and streaming; the browser caps whole-file SHA-256 at 64 MB and never labels a larger unhashed file an exact duplicate. iOS resource reads have a timeout and never request cloud downloads. Recently Deleted/Trash can retain physical storage after an authorized deletion.
+
+## Consolidated physical-device QA gate
+
+The [24-finding QA report](CONSOLIDATED_QA.md) is the current acceptance checklist. Do not release on host-test results alone: exercise the new native local-size bridge, local/cloud video pipeline, badge reconciliation, review/back/Undo sequence and 150-item interruption/resumption through a new Publishing build on iOS and Android. No device sign-off is recorded.

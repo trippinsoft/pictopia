@@ -13,6 +13,7 @@ exports.makeLoader = (mocks = {}) => {
       compilerOptions: {
         module: ts.ModuleKind.CommonJS,
         target: ts.ScriptTarget.ES2022,
+        jsx: ts.JsxEmit.ReactJSX,
         esModuleInterop: true,
       },
     }).outputText;
@@ -24,7 +25,8 @@ exports.makeLoader = (mocks = {}) => {
           : path.resolve(path.dirname(file), name);
         if (!path.extname(resolved)) {
           if (fs.existsSync(resolved + ".web.ts")) resolved += ".web.ts";
-          else resolved += ".ts";
+          else if (fs.existsSync(resolved + ".ts")) resolved += ".ts";
+          else resolved += ".tsx";
         }
         return load(resolved);
       }

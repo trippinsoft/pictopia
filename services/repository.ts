@@ -1,4 +1,5 @@
 import { storage } from "./storage";
+import { recordActivity, type Activity, type ActivityEvent } from "@/lib/pictopia/daily";
 import {
   Media,
   Session,
@@ -23,6 +24,7 @@ import {
   SCAN_VERSION,
 } from "@/lib/pictopia/logic";
 import { sessionTally } from "@/lib/pictopia/sessions";
+import { qualifiedEncounterTime } from "@/lib/pictopia/photo-encounter";
 export { storage };
 let tail = Promise.resolve();
 export function serialize<T>(work: () => Promise<T>) {
@@ -50,7 +52,77 @@ export async function deletionGuard(ids: string[], release: boolean) {
   const next = pending.filter((p) => !ids.includes(p.id));
   return next.length === pending.length ? {} : { [DELETION_PENDING]: next };
 }
+/** Called within the repository serializer, including adventure transactions. */
+export async function firstSeenUpdates(ids: string[], at = Date.now()) {
+  const updates: Media[] = [];
+  for (const id of new Set(ids)) {
+    const m = await storage.get(id);
+    // Videos keep their own first-seen record too; photo progress queries count photos only.
+    if (m && (!m.firstSeenAt || at < m.firstSeenAt)) updates.push({ ...m, firstSeenAt: at });
+  }
+  return updates;
+}
+export const DAILY_ACTIVITY = "dailyActivity:v1";
+
+/** Activity values for a meaningful encounter or mark, to merge into the same atomic
+ * `storage.put` as the first-seen update. Must run inside the repository serializer, and
+ * before the first-seen update is written, so "first time" is judged correctly. */
+export async function activityValues(ids: string[], at: number, marked = false) {
+  if (!ids.length) return {};
+  const events: ActivityEvent[] = [];
+  for (const id of new Set(ids)) {
+    const m = await storage.get(id);
+    if (m) events.push({ type: "view", id, video: m.type === "video", firstTime: !m.firstSeenAt, marked });
+  }
+  return { [DAILY_ACTIVITY]: recordActivity(await storage.getValue<Activity>(DAILY_ACTIVITY), events, at) };
+}
+export async function deletionActivityValues(count: number, at = Date.now()) {
+  if (!count) return {};
+  return { [DAILY_ACTIVITY]: recordActivity(await storage.getValue<Activity>(DAILY_ACTIVITY), [{ type: "deleted", count }], at) };
+}
+
 export const repository = {
+  async touchSession(id: string) {
+    return serialize(async () => {
+      const s = await storage.getValue<Session>("session");
+      if (!s || s.id !== id || s.complete) return;
+      const next = { ...s, activeAt: Date.now() };
+      await storage.put([], { session: next, [`session:${id}`]: next });
+    });
+  },
+  /** displayedAt is emitted only after the foreground visibility dwell has completed.
+   * Such an event remains valid if another save advances the session before it commits. */
+  async encounter(id: string, sessionId?: string, displayedAt?: number) {
+    return serialize(async () => {
+      const current = sessionId ? await storage.getValue<Session>("session") : undefined;
+      const s = sessionId && current?.id !== sessionId ? await storage.getValue<Session>(`session:${sessionId}`) : current;
+      const qualified = qualifiedEncounterTime(displayedAt, s?.started);
+      if (displayedAt !== undefined && !qualified) return;
+      if (sessionId && (!s || s.id !== sessionId || !s.ids.includes(id) || (!qualified && (current?.id !== sessionId || s.complete || s.ids[s.position] !== id)))) return;
+      const at = displayedAt ?? Date.now();
+      const next = s ? { ...s, activeAt: Math.max(s.activeAt ?? s.started ?? 0, at) } : undefined;
+      const daily = await activityValues([id], at);
+      await storage.put(await firstSeenUpdates([id], at), { ...daily, ...(next ? { ...(current?.id === next.id ? { session: next } : {}), [`session:${next.id}`]: next } : {}) });
+    });
+  },
+  async migrateProgress() {
+    return serialize(async () => {
+      if (await storage.getValue<boolean>("libraryProgress:migrated")) return;
+      await storage.migrateSeen();
+      const index = await storage.getValue<import("@/lib/pictopia/adventures").AdventureIndex>("adventures:v1");
+      for (const id of new Set([...(index?.started ?? []), ...(index?.slots ?? []), ...(index?.parked ?? [])])) {
+        const s = await storage.getValue<import("@/lib/pictopia/explore").ExploreSession>(`adventure:${id}:explore`);
+        const ids = (s?.ids ?? []).filter(id => s?.records?.[id]?.encountered);
+        await storage.put(await firstSeenUpdates(ids));
+      }
+      // Decisions in classic history remain evidence even after Undo cleared the current decision.
+      for (const id of (await storage.getValue<string[]>("sessionHistory")) ?? []) {
+        const s = await storage.getValue<Session>(`session:${id}`);
+        await storage.put(await firstSeenUpdates(s?.history?.map(h => h.id) ?? []));
+      }
+      await storage.setValue("libraryProgress:migrated", true);
+    });
+  },
   async update(id: string, fn: (m: Media) => Media) {
     return serialize(async () => {
       const latest = await storage.get(id);
@@ -70,16 +142,19 @@ export const repository = {
           same
             ? {
                 ...m,
+                firstSeenAt: old.firstSeenAt,
                 favorite: old.favorite,
                 decision: old.decision,
-                size: m.size ?? old.size,
+                size: m.size ?? (old.modified === m.modified ? old.size : undefined),
                 systemFavorite: m.systemFavorite ?? old.systemFavorite,
                 // A transient metadata failure must not unclassify a known screenshot.
                 screenshot: m.screenshot || old.screenshot,
                 scan: old.modified === m.modified ? old.scan : undefined,
                 scanError: old.modified === m.modified ? old.scanError : undefined,
               }
-            : m,
+            // Editing dimensions or correcting a capture date does not make a library ID
+            // unexplored again. Decision/analysis invalidation retains its existing rules.
+            : { ...m, firstSeenAt: old?.firstSeenAt },
         );
         seen[`seen:${m.id}`] = epoch;
       }
@@ -118,7 +193,19 @@ export const repository = {
   ) {
     return serialize(async () => {
       const active = await storage.getValue<Session>("session");
-      if (active && !active.complete) return active;
+      if (active && !active.complete && active.collection === collection) return active;
+      const history = (await storage.getValue<string[]>("sessionHistory")) ?? [];
+      if (active?.id && !history.includes(active.id)) history.push(active.id);
+      const archive = active ? { [`session:${active.id}`]: active } : {};
+      const resumeFrom = (await storage.getValue<number>("sessionResumeFrom")) ?? 0;
+      for (const id of history.slice(resumeFrom).reverse()) {
+        const saved = id === active?.id ? active : await storage.getValue<Session>(`session:${id}`);
+        if (saved?.collection === collection && !saved.complete) {
+          const resumed = { ...saved, activeAt: Date.now() };
+          await storage.put([], { ...archive, session: resumed, [`session:${id}`]: resumed });
+          return resumed;
+        }
+      }
       if (![2, 5, 10].includes(minutes)) throw Error("Choose a 2, 5, or 10-minute session.");
       const smart = ["quick", "memory", "best"].includes(collection);
       const target = minutes * 6;
@@ -214,8 +301,8 @@ export const repository = {
         history: [],
         complete: items.length === 0,
       };
-      const history = (await storage.getValue<string[]>("sessionHistory")) ?? [];
       await storage.put([], {
+        ...archive,
         session,
         [`session:${session.id}`]: session,
         sessionHistory: [...history, session.id],
@@ -255,7 +342,7 @@ export const repository = {
         throw Error("This photo is no longer the current item.");
       const m = await storage.get(s.ids[s.position]);
       if (!m?.active) throw Error("This item is no longer accessible. Skip it to continue.");
-      const next = applyDecision(s, m, decision);
+      const next = applyDecision({ ...s, activeAt: Date.now() }, { ...m, ...(m.type === "photo" ? { firstSeenAt: m.firstSeenAt ?? Date.now() } : {}) }, decision);
       const values = await deletionGuard([m.id], decision !== "delete");
       await storage.put([next.media], {
         ...values,
@@ -352,7 +439,7 @@ export const repository = {
     if (clearScan) {
       await storage.setValue("groups", []);
       await storage.setValue("scan", { status: "idle", processed: 0, total: 0, skipped: 0 });
-    } else await storage.setValue("session", null);
+    } else await serialize(async () => storage.put([], { session: null, sessionResumeFrom: ((await storage.getValue<string[]>("sessionHistory")) ?? []).length }));
   },
   async groups(signal?: AbortSignal) {
     const groups: Group[] = [];

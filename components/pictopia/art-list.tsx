@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { Pressable, View } from "react-native";
-import { router } from "expo-router";
 import { Icon, Text } from "./ui";
 import { Illustration, type ArtName } from "./illustration";
 
@@ -54,22 +53,5 @@ export function ArtRow({
     </Pressable>
   );
 }
-/** Back arrow plus a centered serif title, for pushed screens. */
-export function ScreenHeader({ title, subtitle, fallback }: { title: string; subtitle?: string; fallback: string }) {
-  return (
-    <View className="pb-2">
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Back"
-        onPress={() => (router.canGoBack() ? router.back() : router.replace(fallback as never))}
-        className="-ml-2 h-11 w-11 items-center justify-center"
-      >
-        <Icon name="ChevronLeft" size={24} className="text-foreground" />
-      </Pressable>
-      <Text accessibilityRole="header" className="text-center text-h1 text-foreground">
-        {title}
-      </Text>
-      {!!subtitle && <Text className="mt-1.5 text-center text-body text-muted-foreground">{subtitle}</Text>}
-    </View>
-  );
-}
+/** The common header is shared by all secondary screens. */
+export { ScreenHeader } from "./navigation-header";

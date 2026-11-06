@@ -1,3 +1,4 @@
+import { lastExploreDiscard } from "./explore";
 import type { DiscardDirection, ExploreAction, ExploreSession } from "./explore";
 
 /** How a photo arrives in the shown slot: from a side (undo) or sliding in vertically. */
@@ -19,6 +20,8 @@ interface FeedDependencies {
   onPage(page: number): void;
   /** The user deliberately passed the last photo, or its discard finished landing. */
   onEnd?(): void;
+  /** The final page is the daily-limit page, not completion: reaching it never finishes. */
+  limited?(): boolean;
   onBusy(busy: boolean): void;
   onError(message: string): void;
   /** `departing` stays rendered even once saved as discarded; `hidden` is removed even
@@ -59,7 +62,7 @@ export class ExploreFeedController {
     if (this.busy || page === this.page || !Number.isInteger(page) || page < 0 || page > last)
       return;
     this.show(page, false);
-    if (this.deps.read().review && this.activeId === null) this.deps.onEnd?.();
+    if (this.deps.read().review && this.activeId === null) { if (!this.deps.limited?.()) this.deps.onEnd?.(); }
     else void this.persist(availableIds);
   }
   jump(id: string, availableIds: string[]) {
@@ -73,7 +76,7 @@ export class ExploreFeedController {
     const target = Math.min(this.page + 1, this.deps.pages().length - 1);
     if (target === this.page) return;
     this.show(target, true);
-    if (this.deps.read().review && this.activeId === null) this.deps.onEnd?.();
+    if (this.deps.read().review && this.activeId === null) { if (!this.deps.limited?.()) this.deps.onEnd?.(); }
     else void this.persist(availableIds);
   }
   /** A sideways gesture or tap began on `page`, the photo the user can see, possibly before
@@ -83,10 +86,12 @@ export class ExploreFeedController {
   claim(page: number, availableIds: string[], snap: boolean) {
     const last = this.deps.pages().length - 1;
     if (this.busy || !Number.isInteger(page) || page < 0 || page > last || (this.hasCompletionPage && page === last)) return false;
-    if (page !== this.page) {
-      this.show(page, snap);
+    if (page !== this.page || this.activeId !== this.idAt(page)) {
+      // Stop residual momentum immediately; an animated snap here competes with the
+      // horizontal gesture that is already active.
+      this.show(page, false);
       void this.persist(availableIds);
-    } else if (snap) this.deps.scrollTo(page, true);
+    } else if (snap) this.deps.scrollTo(page, false);
     return true;
   }
   /** A sideways gesture may start only on the photo that is shown. */
@@ -138,7 +143,9 @@ export class ExploreFeedController {
    * The final forward photograph holds input until it lands and its mark is saved, then
    * requests completion. The mark is still only ever a reversible queue decision. */
   private async discardInReview(id: string, direction: DiscardDirection, animation: Promise<void>, landed?: Promise<void>) {
-    const finalPhoto = this.deps.completionPage === true && this.deps.read().ids.at(-1) === id;
+    // The last photograph still in the sequence (not merely the snapshot's last id): marking
+    // it moves on to the end card, or to the daily-limit page when the allowance cut is next.
+    const finalPhoto = this.deps.completionPage === true && this.isLastLive(id);
     this.setDiscarding(true);
     this.departing.add(id);
     this.publish();
@@ -183,8 +190,16 @@ export class ExploreFeedController {
     if (finalPhoto) {
       await landed;
       this.setDiscarding(false);
-      if (this.deps.read().records[id]?.queued && this.activeId === null) this.deps.onEnd?.();
+      if (this.deps.read().records[id]?.queued && this.activeId === null && !this.deps.limited?.()) this.deps.onEnd?.();
     }
+  }
+  private isLastLive(id: string) {
+    const pages = this.deps.pages();
+    const from = pages.indexOf(id);
+    if (from < 0) return false;
+    for (let page = from + 1; page < pages.length - 1; page++)
+      if (!this.departing.has(pages[page]) && !this.hidden.has(pages[page])) return false;
+    return true;
   }
   /** The photograph a review moves to once `id` is marked: the next one still in the
    * sequence, else the nearest earlier one, else nothing left to show. */
@@ -203,13 +218,13 @@ export class ExploreFeedController {
   }
   /** Restores the latest outstanding discard into its original slot and shows it. */
   async undo() {
-    if (this.undoing || (this.discarding && !this.deps.read().review) || (!this.discarding && !this.deps.read().history.length)) return;
+    if (this.undoing || (this.discarding && !this.deps.read().review) || (!this.discarding && !lastExploreDiscard(this.deps.read()))) return;
     this.undoing = true;
     this.deps.onBusy(true);
     let entry: ExploreSession["history"][number] | undefined;
     try {
       const saved = await this.deps.save((s) => {
-        entry = s.history[s.history.length - 1];
+        entry = lastExploreDiscard(s);
         return { type: "undo", id: entry?.id };
       });
       if (entry && saved.activeId === entry.id) {
@@ -289,22 +304,33 @@ export class ExploreFeedController {
     const page = this.indexOf(id);
     if (page >= 0) this.show(page, false);
   }
-  private async persist(availableIds: string[]) {
+  /** Saves the shown photograph as the place. The result is checked, never assumed: a save
+   * that throws is retried once, and only if the user is still on that photograph does a
+   * final failure fall back to the saved place, so the screen and the store always agree. */
+  private async persist(availableIds: string[], attempt = 0): Promise<void> {
     const toId = this.activeId;
+    // A review's end card and daily-limit page are never saved places.
+    if (toId === null && this.deps.read().review) return;
+    let saved: ExploreSession | undefined;
     try {
-      await this.deps.save((s) => ({
-        type: "page",
-        id: s.activeId,
-        revision: s.revision,
-        toId,
-        availableIds,
-      }));
+      saved = await this.deps.save((s) => ({ type: "page", id: s.activeId, revision: s.revision, toId, availableIds }));
     } catch {
-      this.resync();
+      saved = undefined;
     }
+    if (saved?.activeId === toId) return;
+    // The user has moved on: their newer page save is already queued and supersedes this.
+    if (this.activeId !== toId) return;
+    if (!saved && attempt === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      if (this.activeId === toId) return this.persist(availableIds, 1);
+      return;
+    }
+    // Saved but refused: the photograph left the sequence meanwhile (marked elsewhere).
+    // Either way, show the place that is actually saved.
+    this.resync(!saved);
   }
-  private resync() {
-    this.deps.onError("Couldn’t save your place. You’re back on your last saved photo.");
+  private resync(failed = true) {
+    if (failed) this.deps.onError("Couldn’t save your place. You’re back on your last saved photo.");
     this.focus(this.deps.read().activeId);
   }
   private show(page: number, animated: boolean) {

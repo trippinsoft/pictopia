@@ -29,13 +29,19 @@ export default function Paywall() {
     monthly && annual && monthly.currency === annual.currency && monthly.amount > 0
       ? Math.floor((1 - annual.amount / (monthly.amount * 12)) * 100)
       : 0;
+  /** Back to exactly where Pro was offered. A review stopped by the daily limit is still
+   * open underneath, at the same photo, and now continues without a limit. */
+  function leave() {
+    if (router.canGoBack()) router.back();
+    else router.replace("/(tabs)/home");
+  }
   async function buy() {
     setWorking(true);
     setError("");
     try {
       const e = await purchaseService.purchase(selected);
       await app.setEntitlement(e);
-      if (e.active) router.replace("/(tabs)/smart");
+      if (e.active) leave();
       else
         setError(
           "The store has not confirmed active Pro access yet. Try Restore Purchases after approval.",
@@ -49,13 +55,6 @@ export default function Paywall() {
   return (
     <Page title="A little extra brilliance">
       <View className="mx-auto max-w-xl">
-        <Pressable
-          accessibilityLabel="Close paywall"
-          onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/home"))}
-          className="mb-4 self-end p-3"
-        >
-          <Icon name="X" size={24} className="text-muted-foreground" />
-        </Pressable>
         <View className="items-center">
           <View className="mb-5 h-20 w-20 items-center justify-center rounded-3xl bg-accent">
             <Icon name="Sparkles" size={38} className="text-primary" />
@@ -88,6 +87,8 @@ export default function Paywall() {
               const o = offers.find((x) => x.kind === kind);
               return (
                 <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: o?.id === selected, disabled: !o || working }}
                   disabled={!o || working}
                   key={kind}
                   onPress={() => {
@@ -95,23 +96,17 @@ export default function Paywall() {
                   }}
                   className={`flex-row items-center justify-between rounded-2xl border p-5 ${o?.id === selected ? "border-primary bg-accent" : "border-border bg-card"}`}
                 >
-                  <View>
-                    <Text className="text-h5 text-foreground">
-                      {kind === "monthly"
-                        ? "Monthly Pro"
-                        : kind === "annual"
-                          ? "Annual Pro"
-                          : "Lifetime Pro"}
-                    </Text>
-                    <Text className="mt-1 text-caption text-muted-foreground">
-                      {kind === "lifetime"
-                        ? "One payment. Ongoing Pro access."
-                        : kind === "annual" && savings > 0
-                          ? `Save ${savings}% compared with monthly`
-                          : "Renews automatically. Cancel anytime."}
+                  <View className="w-full gap-1">
+                    <View className="flex-row items-start justify-between gap-3">
+                      <Text className="min-w-0 flex-1 text-h5 text-foreground">
+                        {kind === "monthly" ? "Monthly Pro" : kind === "annual" ? "Annual Pro" : "Lifetime Pro"}
+                      </Text>
+                      <Text className="max-w-[50%] text-right text-h5 text-primary">{o?.price ?? "Unavailable"}</Text>
+                    </View>
+                    <Text className="text-caption text-muted-foreground">
+                      {kind === "lifetime" ? "One payment. Ongoing Pro access." : kind === "annual" && savings > 0 ? `Save ${savings}% compared with monthly` : "Renews automatically. Cancel anytime."}
                     </Text>
                   </View>
-                  <Text className="text-h5 text-primary">{o?.price ?? "Unavailable"}</Text>
                 </Pressable>
               );
             })}
@@ -140,7 +135,6 @@ export default function Paywall() {
         <Text className="mt-4 text-caption text-center leading-5 text-muted-foreground">
           Payment is charged to your store account. Subscriptions renew unless cancelled at least 24
           hours before the end of the current period. Manage or cancel in your store account.
-          Lifetime is a one-time purchase. Manual cleanup remains free.
         </Text>
         <View className="mt-5 flex-row flex-wrap justify-center gap-1">
           {[
@@ -150,6 +144,7 @@ export default function Paywall() {
                 setWorking(true);
                 void app
                   .restorePurchases()
+                  .then(leave)
                   .catch((e) => setError(e.message))
                   .finally(() => setWorking(false));
               },

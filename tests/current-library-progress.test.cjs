@@ -1,0 +1,70 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { DatabaseSync, media, platform, boot } = require('./native-harness.cjs');
+const { explorationPercent } = require('./loader.cjs').makeLoader()('lib/pictopia/library-progress.ts');
+test('current percentage follows deletions, imports, reopened months and access while lifetime credit survives', async () => {
+  const db = new DatabaseSync(':memory:'), app = await boot(db, platform());
+  const rows = Array.from({ length: 100 }, (_, i) => media(String(i), { firstSeenAt: i < 60 ? 1 : undefined, month: '2025-06' }));
+  await app.storage.put(rows);
+  const percent = async () => { const p = await app.storage.progress(); return explorationPercent(p.accessibleExplored, p.accessible); };
+  assert.equal(await percent(), 60);
+  await app.storage.put(rows.slice(0, 10).map(m => ({ ...m, active: false, deletedAt: 2 })));
+  assert.equal(await percent(), 55);
+  assert.equal((await app.storage.progress()).explored, 60);
+  await app.storage.put(rows);
+  await app.repository.ingest(Array.from({ length: 20 }, (_, i) => media(`new${i}`, { month: '2025-06' })), 2);
+  assert.equal(await percent(), 50);
+  await app.storage.put(rows.slice(0, 40).map(m => ({ ...m, firstSeenAt: 1 })));
+  await app.repository.ingest(rows.slice(0, 40), 3); await app.repository.reconcile(3);
+  assert.equal(await percent(), 100);
+  await app.repository.ingest([media('new-month-photo', { month: '2025-06' })], 3);
+  assert.equal((await app.storage.calendarProgress())[0].remaining, 1);
+  assert.equal(await percent(), 97);
+  assert.equal((await app.storage.progress()).explored, 60);
+  await app.repository.encounter('0'); await app.repository.encounter('0');
+  assert.equal((await app.storage.progress()).explored, 60);
+  await app.repository.reconcile(9);
+  assert.equal(await percent(), undefined, 'empty access is not completed');
+  assert.equal((await app.storage.progress()).explored, 60);
+  db.close();
+});
+test('calendar includes screenshots, excludes videos, and isolates missing dates', async () => {
+  const db = new DatabaseSync(':memory:'), app = await boot(db, platform());
+  await app.storage.put([media('photo', { firstSeenAt: 1 }), media('screen', { screenshot: true }), media('video', { type: 'video' }), media('unknown', { created: 0, month: '1970-01' })]);
+  const months = await app.storage.calendarProgress();
+  assert.equal(months.find(m => m.key === '2025-06').total, 2);
+  assert.equal(months.find(m => m.key === '2025-06').explored, 1);
+  assert.equal(months.find(m => m.key === 'unknown').total, 1);
+  assert.deepEqual((await app.storage.query({ month: 'unknown' })).map(m => m.id), ['unknown']);
+  db.close();
+});
+
+test('IndexedDB uses the same accessible progress, calendar grouping and stable cursor semantics', async () => {
+  require('fake-indexeddb/auto');
+  const { storage } = require('./loader.cjs').makeLoader()('services/storage.web.ts');
+  await storage.init();
+  await storage.put([media('a', { firstSeenAt: 1 }), media('b'), media('gone', { active: false, firstSeenAt: 1 }), media('shot', { screenshot: true }), media('unknown', { created: 0 }), media('video', { type: 'video' })]);
+  const p = await storage.progress();
+  assert.equal(p.explored, 2); assert.equal(p.accessible, 4); assert.equal(p.accessibleExplored, 1);
+  const calendar = await storage.calendarProgress();
+  assert.equal(calendar.find(m => m.key === '2025-06').total, 3);
+  assert.equal(calendar.find(m => m.key === 'unknown').remaining, 1);
+  assert.equal((await storage.calendarProgress(true))[0].total, 1);
+  const first = await storage.query({ type: 'photo', year: '2025', order: 'oldest', limit: 1 });
+  const next = await storage.query({ type: 'photo', year: '2025', order: 'oldest', cursor: { created: first[0].created, id: first[0].id } });
+  assert.equal(next.length, 2); assert.ok(next.every(m => m.id !== first[0].id));
+});
+
+test('a limited scope uses only accessible explored photos in its numerator', async () => {
+  const db = new DatabaseSync(':memory:'), app = await boot(db, platform());
+  const rows = Array.from({ length: 100 }, (_, i) => media(String(i), { firstSeenAt: i < 60 ? 1 : undefined }));
+  await app.storage.put(rows);
+  await app.repository.ingest([...rows.slice(0, 30), ...rows.slice(60, 70)], 4); await app.repository.reconcile(4);
+  let p = await app.storage.progress();
+  assert.equal(explorationPercent(p.accessibleExplored, p.accessible), 75);
+  assert.equal(p.explored, 60); assert.equal(p.deleted, 0);
+  await app.repository.ingest(rows, 5); await app.repository.reconcile(5);
+  p = await app.storage.progress();
+  assert.equal(explorationPercent(p.accessibleExplored, p.accessible), 60); assert.equal(p.explored, 60);
+  db.close();
+});

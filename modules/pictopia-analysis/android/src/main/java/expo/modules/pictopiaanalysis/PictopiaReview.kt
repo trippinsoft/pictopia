@@ -31,6 +31,14 @@ object PictopiaReview {
   }
   @Synchronized
   @Suppress("DEPRECATION")
+  fun localSize(context: Context, id: String): Double? {
+    val source = uri(context, id)
+    return context.contentResolver.query(source, arrayOf(MediaStore.MediaColumns.SIZE), null, null, null)?.use { cursor ->
+      val column = cursor.getColumnIndex(MediaStore.MediaColumns.SIZE)
+      if (!cursor.moveToFirst() || column < 0 || cursor.isNull(column)) null
+      else cursor.getLong(column).takeIf { it > 0 }?.toDouble()
+    }
+  }
   fun thumbnail(context: Context, id: String, version: String): String {
     val source = uri(context, id) // verify access before returning even a cached thumbnail
     val directory = File(context.cacheDir, "pictopia-thumbnails").apply { mkdirs() }

@@ -34,6 +34,8 @@ export interface Media {
   active: boolean;
   /** Set only when Pictopia verified this item was deleted from the device. */
   deletedAt?: number;
+  /** First meaningful display; independent of decisions and library membership. */
+  firstSeenAt?: number;
   scan?: Analysis;
   scanError?: string;
 }
@@ -50,6 +52,9 @@ export interface Query {
   limit?: number;
   order?: "newest" | "oldest" | "size";
   month?: string;
+  year?: string;
+  unseen?: boolean;
+  cursor?: { created: number; id: string };
   before?: number;
   blurry?: boolean;
   day?: string;
@@ -73,6 +78,7 @@ export interface Session {
   kept: number;
   marked: number;
   started: number;
+  activeAt?: number;
   minutes?: SessionMinutes;
   elapsedMs?: number;
   finishedEarly?: boolean;
@@ -82,6 +88,8 @@ export interface Session {
 }
 export interface Preferences {
   appearance: "system" | "light" | "dark";
+  /** Playful Adventure background theme id (see theming/pastels.ts). */
+  theme: string;
   haptics: boolean;
   autoplay: boolean;
   includeFavorites: boolean;
@@ -91,6 +99,7 @@ export interface Preferences {
 }
 export const defaultPreferences: Preferences = {
   appearance: "system",
+  theme: "sky",
   haptics: true,
   autoplay: false,
   includeFavorites: false,
@@ -159,6 +168,7 @@ export interface DeletionAttempt {
   sizes?: Record<string, number>;
   scope?: AccessScope;
   started: number;
+  activeAt?: number;
   phase?: "requested" | "returned";
   os?: OsDeletion;
 }

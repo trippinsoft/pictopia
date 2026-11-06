@@ -141,6 +141,12 @@ test("Text, muted copy and main/destructive buttons have readable contrast in bo
       ["primaryForeground", "primary"],
       ["destructiveForeground", "destructive"],
       ["secondaryForeground", "secondary"],
+      ["primary", "background"],
+      ["primary", "secondary"],
+      ["tertiary", "background"],
+      ["tertiary", "accent"],
+      ["mutedForeground", "secondary"],
+      ["mutedForeground", "accent"],
     ]) {
       const ratio = contrast(colors[fg], colors[bg]);
       assert.ok(ratio >= 4.5, mode + " " + fg + "/" + bg + " contrast " + ratio);

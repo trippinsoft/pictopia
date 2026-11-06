@@ -73,7 +73,7 @@ export default function Smart() {
     router.push("/(tabs)/swipe");
   }
   return (
-    <Page title="A smarter kind of clean" subtitle="Find the clutter. Keep the best moments.">
+    <Page showQueue fallback="/settings" title="A smarter kind of clean" subtitle="Find the clutter. Keep the best moments.">
       <View className="mb-7 rounded-3xl bg-accent p-7">
         <View className="mb-4 flex-row items-center gap-2">
           <Icon name="Sparkles" size={23} className="text-primary" />
@@ -179,7 +179,7 @@ export default function Smart() {
         <View className="flex-1">
           <Text className="text-h5 text-foreground">Screenshots</Text>
           <Text className="mt-1 text-caption text-muted-foreground">
-            A simple cleanup, included for everyone
+            Review your saved screenshots
           </Text>
         </View>
         <Icon name="ArrowRight" className="text-primary" size={20} />
@@ -262,8 +262,7 @@ export default function Smart() {
         )
       ) : (
         <Text className="text-body leading-6 text-muted-foreground">
-          Manual swiping, Quick Clean, screenshots, undo, and safe deletion are always free. Pro
-          adds local analysis without changing your control over the originals.
+          Pro adds local analysis without changing your control over the originals.
         </Text>
       )}
     </Page>

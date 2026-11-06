@@ -38,7 +38,7 @@ test("every committed decision persists and resumes at the exact position after 
   assert.equal(s.position, 3);
   assert.equal(s.ids[s.position], "d");
   assert.equal((await restarted.storage.get("b")).decision, "delete");
-  assert.equal((await restarted.repository.start("random", prefs)).id, s.id, "resumes, not new");
+  assert.equal((await restarted.repository.start(s.collection, prefs)).id, s.id, "resumes, not new");
   // Undo works across the persistence boundary and is itself durable.
   s = await restarted.repository.undo();
   assert.equal(s.position, 2);

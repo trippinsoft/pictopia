@@ -1,15 +1,13 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { AppState, Pressable, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AppState, Platform, Pressable, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { Icon, Text } from "./ui";
 import { useTheme } from "@/theming/ThemeProvider";
 import { reviewMedia } from "@/services/review-media";
 import type { FavoriteState } from "@/services/review-media.types";
 import type { Media } from "@/lib/pictopia/types";
-export function ReviewActions({ media, disabled, queued, legacy, highlighted, trailing, onRestore, onUsed }: {
+export function ReviewActions({ media, disabled, queued, legacy, highlighted, onRestore, onUsed }: {
   media?: Media; disabled: boolean; queued: boolean; legacy: boolean; highlighted: boolean;
-  /** The trash, which belongs in this row but outlives any single photograph. */
-  trailing?: ReactNode;
   onRestore(): void; onUsed(): void;
 }) {
   const { theme } = useTheme();
@@ -38,17 +36,14 @@ export function ReviewActions({ media, disabled, queued, legacy, highlighted, tr
     } catch (error) { if (generation.current === token) setMessage(error instanceof Error ? error.message : "That action couldn’t finish. Please try again."); }
     finally { if (generation.current === token) { lock.current = false; setWorking(false); } }
   }
-  return <View>
-    <View className="min-h-14 flex-row items-center justify-center">
-      <View className={`flex-row items-center justify-center gap-2 rounded-xl border ${highlighted ? "border-primary" : "border-transparent"}`}>
-      {(queued || legacy) && <Pressable accessibilityRole="button" accessibilityLabel="Restore this photograph" disabled={disabled} onPress={onRestore} className="absolute right-full h-12 w-12 items-center justify-center"><Icon name="Undo2" size={17} className="text-foreground" /></Pressable>}
-      <Pressable accessibilityRole="button" accessibilityLabel={favorite?.value ? "Remove native favorite" : "Add native favorite"} accessibilityState={{ selected: favorite?.value, disabled: disabled || working || !media }} disabled={disabled || working || !media} onPress={() => void act("favorite")} className="h-12 w-12 items-center justify-center">
-        <Icon name="Heart" size={26} fill={favorite?.value ? theme.colors.destructive : "none"} className={favorite?.value ? "text-destructive" : "text-muted-foreground"} />
-      </Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel="Share original photograph" disabled={disabled || working || !media} onPress={() => void act("share")} className="h-12 w-12 items-center justify-center"><Icon name="Share" size={26} className="text-muted-foreground" /></Pressable>
-      </View>
-      <View className="absolute right-0">{trailing}</View>
-    </View>
-    {!!message && <Text pointerEvents="none" accessibilityLiveRegion="polite" className="absolute bottom-full left-3 right-3 rounded-xl bg-card px-3 py-2 text-center text-caption text-foreground">{message}</Text>}
+  // The browser can't favorite or share library originals, so the controls aren't offered.
+  const native = Platform.OS !== "web";
+  return <View className="flex-row items-center gap-2.5">
+    {(queued || legacy) && <Pressable accessibilityRole="button" accessibilityLabel="Restore this photograph" disabled={disabled} onPress={onRestore} className="h-12 flex-row items-center gap-1.5 rounded-full bg-card/90 px-4 active:opacity-70"><Icon name="RotateCcw" size={18} className="text-foreground" /><Text className="text-button text-foreground">Restore</Text></Pressable>}
+    {native && <Pressable accessibilityRole="button" accessibilityLabel={favorite?.value ? "Remove from Favorites" : "Add to Favorites"} accessibilityState={{ selected: favorite?.value, disabled: disabled || working || !media }} disabled={disabled || working || !media} onPress={() => void act("favorite")} className={`h-12 w-12 items-center justify-center rounded-full bg-card/90 active:opacity-70 ${highlighted ? "border-2 border-sun" : ""}`}>
+      <Icon name="Heart" size={22} fill={favorite?.value ? theme.colors.destructive : "none"} className={favorite?.value ? "text-destructive" : "text-foreground"} />
+    </Pressable>}
+    {native && <Pressable accessibilityRole="button" accessibilityLabel="Share original photograph" disabled={disabled || working || !media} onPress={() => void act("share")} className="h-12 w-12 items-center justify-center rounded-full bg-card/90 active:opacity-70"><Icon name="Share" size={21} className="text-foreground" /></Pressable>}
+    {!!message && <Text pointerEvents="none" accessibilityLiveRegion="polite" className="absolute bottom-full right-0 mb-2 w-64 rounded-xl bg-card px-3 py-2 text-center text-caption text-foreground">{message}</Text>}
   </View>;
 }

@@ -1,6 +1,6 @@
-import { View, Pressable } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
-import { Page, Text, Icon } from "@/components/pictopia/ui";
+import { View } from "react-native";
+import { useLocalSearchParams } from "expo-router";
+import { Page, Text } from "@/components/pictopia/ui";
 const privacy = [
   [
     "Your photos stay local",
@@ -60,13 +60,8 @@ export default function Legal() {
     <Page
       title={isPrivacy ? "Privacy policy" : "Terms of service"}
       subtitle="Release draft • Publisher details pending"
+      fallback="/settings"
     >
-      <Pressable
-        onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/settings"))}
-        className="mb-5 self-start p-3"
-      >
-        <Icon name="ArrowLeft" className="text-primary" />
-      </Pressable>
       <View className="mx-auto max-w-2xl gap-7">
         {(isPrivacy ? privacy : terms).map(([title, body]) => (
           <View key={title}>

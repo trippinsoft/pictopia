@@ -47,4 +47,42 @@
 - On This Day, Time Machine, and Detour use compressed photorealistic art with live photo windows drawn from each Adventure’s saved library selection.
 - Personal Adventure photos now sit in separate white-bordered cards over clean photorealistic backgrounds, so their placement does not depend on baked-in blank frames.
 - Personal Adventure prints preserve each library photo's full portrait or landscape composition instead of cropping it to a fixed frame.
-- The Unexpected Detour cover now shows a three-photo stack from its saved selection when three photos are available.
+- The Unexpected Detour cover places a two-photo stack with perspective on the stone below the camera.
+- Pit Stop menus use compressed photorealistic scenes with eligible library photos shown in their printed photo areas.
+- Pit Stop menu scenes omit baked-in blank prints so real library photos can sit in separate scene-specific cards with realistic size, overlap, and shadows.
+- Memory Match menu artwork retains the original tabletop and hand-held cards so library photos align with their printed perspective; Guess the Year uses a larger photo print.
+
+- Native photo review coordinates scroll and horizontal pan simultaneously, with UI-thread ownership and immediate page claims rather than competing snap animations.
+
+- Keep the photo accessibility wrapper materialized across active-state changes to preserve native gesture ancestry while retaining screen-reader actions.
+
+- Home experiments with resume/start cleaning, compact Featured adventures and direct cleanup rows while preserving existing curation, review sessions and deletion safeguards.
+
+- Unified photo exploration persists first-seen history independently of decisions; Home has a compact percentage ring and one most-recent Continue, with Library Progress in More.
+
+- Meaningful photo encounters use foreground visibility evidence rather than paging/preload state; delayed saves retain the original photo and earliest timestamp without changing decisions or navigation.
+
+- Primary exploration measures the accessible photo library; lifetime exploration stays separate. Full chronological and direct photo collections share first-seen history and resume independently in bounded scrolling-review batches.
+
+- Home / Explore / Progress separates rediscovery, collections and accomplishments; Settings moves to the Progress gear, with purple/sunset themes and existing artwork. Review, progress, resume and purchase rules remain unchanged.
+- Purchases move to native StoreKit 2 / Play Billing (expo-iap, monthly and annual Pro, no server or accounts); videos play inside the shared review; albums and a developer Device checks report support early on-device validation.
+- Playful Adventure foundation: ten saved pastel themes, Fredoka, three tabs with Settings sheet, fixed adventure catalog, calendar-day streaks with Restore Streak, seven badge families, and a 150/day free swipe allowance enforced in the shared review.
+- Theme set: Stone restored and Seafoam retired (saved Seafoam choices switch to Mint); Cloud kept.
+- Shared review redesign: ✕/progress header, always-visible Undo, two-step coach, end card Finish, recap card on exit, Completion → Ready to delete → Result with confirmed-only wording; the daily limit pauses a review and the paywall returns to it.
+- Collections gained Albums (iOS) / Folders (Android), Videos (oldest first, largest first) and continuous 120-photo stretches.
+- Duplicate Hunt is built and Pro-gated but closed for release until scanning and keeper suggestions are verified on devices (Lab can open it per device).
+- Review-state fix: a review's saved place is always a real photo (never “past the end”); marks act on the visible photo; page saves are verified. Review header uses a back arrow, drops the daily countdown, and shows month/year top-right.
+
+- Progress and badges share retained serialized snapshots; adventure achievements require supported distinct completion evidence, preserve legacy awards for audit, and explain earned versus next levels.
+
+- Explore uses compact two-column album cards, accessible-member cover fallbacks and wrapping video rows; album names wrap fully when opened, while membership and review calculations stay unchanged.
+
+- Secondary screens share upper-left Back controls, wrapping titles and relevant header actions; Help/legal navigation stays visible, review exits preserve their callbacks and cleanup alone opts into the queue shortcut.
+
+- All decorative artwork returns to the existing designed SVG illustration system across Home, Explore, Settings, Pit Stops and completion; real photos remain in library content, never decorative scene overlays.
+
+- Badge details use a centered enlarging, two-sided medal dialog instead of a bottom sheet, with reversible rotation, scrollable achievement facts and Reduce Motion support.
+
+- Consolidated QA separates verified badges from archived claims, locks the approved 150-item daily allowance, strengthens completion/Undo evidence, isolates video playback from posters, adds local-only size metadata, and clarifies session progress, potential savings and collection actions.
+
+- Time Machine is now The Yearbook: choose a year from Home or Explore and independently resume saved years; internal IDs, artwork and Time Capsule behavior remain unchanged.

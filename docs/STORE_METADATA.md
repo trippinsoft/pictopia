@@ -14,7 +14,7 @@ Keep the memories. Lose the clutter. Pictopia helps you review your photos and v
 
 Your originals stay untouched while you review. When you're ready, check the deletion queue and authorize the request through your device. Deleted media may remain in Recently Deleted or Trash.
 
-Manual cleanup is free, with unlimited review, no daily swipe limits, and no account required. Pictopia Pro adds local exact-duplicate analysis, similar-shot comparisons, best-shot suggestions, likely-blur review, and large-video prioritization. Analysis runs on your device; personal media is not uploaded for analysis.
+No account is required. Pictopia Pro adds local exact-duplicate analysis, similar-shot comparisons, best-shot suggestions, likely-blur review, and large-video prioritization. Analysis runs on your device; personal media is not uploaded for analysis.
 
 Pro plans are monthly, annual, or a one-time lifetime purchase. Store prices and terms appear before purchase. Subscriptions renew automatically unless cancelled according to your store's terms. Manage or restore purchases from Settings.
 
@@ -40,4 +40,4 @@ Permission purpose: read only the photos/videos the user authorizes to help revi
 
 ## Review notes draft
 
-Core cleanup is available without subscribing. Use a disposable native test library. Set-aside decisions do not delete media. Open the queue and explicitly authorize native deletion. Pro is tied to one RevenueCat `pro` entitlement. Lifetime is non-consumable. The browser preview has file selection and review only; native features require the submitted binary.
+Use a disposable native test library. Set-aside decisions do not delete media. Open the queue and explicitly authorize native deletion. Pro is tied to one RevenueCat `pro` entitlement. Lifetime is non-consumable. The browser preview has file selection and review only; native features require the submitted binary.

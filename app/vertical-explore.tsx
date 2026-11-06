@@ -1,4 +1,6 @@
+import { NavigationBack } from "@/components/pictopia/navigation-header";
 import { AdventureReview } from "@/components/pictopia/adventure-review";
+import { adventureLabel } from "@/lib/pictopia/catalog";
 import { useEffect, useRef, useState } from "react";
 import { FlatList, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -97,7 +99,7 @@ function PrototypeExplore() {
       ? "Set aside"
       : "Discarded Photos"
     : adventureId
-      ? (adventure?.hint.title ?? "Adventure")
+      ? ((adventure ? adventureLabel(adventure) : undefined) ?? "Adventure")
       : "Vertical Explore";
   // Adventures open straight into the photos; only the original prototype explains itself.
   const showIntro = !adventureId && !session?.instructionsDismissed;
@@ -115,14 +117,7 @@ function PrototypeExplore() {
       />
       <View className="mx-auto w-full max-w-3xl flex-1 px-4">
         <View className="min-h-14 flex-row items-center justify-between gap-3">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={collection ? "Back to exploration" : "Exit exploration"}
-            onPress={() => (collection ? setCollection(false) : exit())}
-            className="h-12 w-12 items-center justify-center"
-          >
-            <Icon name="ArrowLeft" size={22} className="text-foreground" />
-          </Pressable>
+          <NavigationBack label={collection ? "Back to exploration" : "Exit exploration"} onPress={() => (collection ? setCollection(false) : exit())} />
           <Text className="text-caption text-muted-foreground">
             {hasPhotos && !collection && !complete && shown.total > 0
               ? `${Math.min(shown.index, shown.total - 1) + 1} / ${shown.total}`
@@ -305,11 +300,12 @@ function PrototypeExplore() {
           <AdventureFinish
             adventure={adventure}
             explored={counts.explored}
-            setAside={counts.discarded}
+            marked={counts.discarded}
             unavailable={counts.unavailable}
             canUndo={!!session?.history.length}
             pending={pending}
             onReview={() => setCollection(true)}
+            onDone={exit}
             onUndo={undo}
             onPrevious={() => apply({ type: "back" })}
           />

@@ -1,4 +1,5 @@
 import {
+  type ReactNode,
   forwardRef,
   useCallback,
   useEffect,
@@ -9,6 +10,7 @@ import {
   useState,
 } from "react";
 import {
+  AppState,
   FlatList,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -16,8 +18,9 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import { reviewTrace, tracePhoto, REVIEW_TRACE_MARKER } from "@/lib/pictopia/review-trace";
 import { Gesture } from "react-native-gesture-handler";
-import { useReducedMotion } from "react-native-reanimated";
+import { runOnJS, useReducedMotion, useSharedValue } from "react-native-reanimated";
 import type { Media } from "@/lib/pictopia/types";
 import type {
   DiscardDirection,
@@ -59,6 +62,12 @@ interface Props {
   onError(message: string): void;
   /** A discard undone while the feed wasn't shown; it slides in once the feed mounts. */
   initialEntrance?: ExploreDiscard;
+  /** Free daily allowance: the feed ends before this photo with `limitPage` instead of the
+   * completion page. Photos before it (already counted or revisits) stay fully usable. */
+  stopBefore?: string;
+  limitPage?: ReactNode;
+  /** The card after the last photograph (a review's Finish card). */
+  endPage?: ReactNode;
   /** Hands a committed discard to the flight that carries the photograph to the trash.
    * Without it, the photo flies off the side as the original explorer always has. */
   flight?: DiscardFlight;
@@ -90,12 +99,14 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
         !feed.hidden.has(id)),
   );
   const idsKey = ids.join("\n");
+  const cut = props.stopBefore ? ids.indexOf(props.stopBefore) : -1;
   const data = useMemo(() => {
     let endId = "explore-completion";
     while (ids.includes(endId)) endId += "-";
-    return [...ids, endId];
+    return [...(cut >= 0 ? ids.slice(0, cut) : ids), endId];
     // The store returns fresh arrays on every save; only a changed feed re-lays out the pager.
-  }, [idsKey, session.review]);
+  }, [idsKey, session.review, cut]);
+  const limited = cut >= 0;
   const endId = data[data.length - 1];
   // What the pager has actually rendered. Updated with the commit, before paint.
   const pages = useRef(data);
@@ -117,7 +128,14 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
   const prepared = useRef<(() => void)[]>([]);
   // A programmatic page move in flight. Settling elsewhere mid-animation is ignored.
   const seeking = useRef<{ target: number; until: number } | undefined>(undefined);
-  const nativeScroll = useMemo(() => Gesture.Native(), []);
+  const nativeOffset = useSharedValue(0);
+  const horizontal = useSharedValue(false);
+  const motion = useMemo(() => ({ offset: nativeOffset, horizontal }), [nativeOffset, horizontal]);
+  const nativeScroll = useMemo(() => Gesture.Native()
+    .onBegin(e => { runOnJS(reviewTrace)("native.begin", { handler: e.handlerTag, state: e.state, oldState: e.oldState }); })
+    .onStart(e => { runOnJS(reviewTrace)("native.start", { handler: e.handlerTag, state: e.state, oldState: e.oldState }); })
+    .onEnd((e, success) => { runOnJS(reviewTrace)("native.end", { handler: e.handlerTag, state: e.state, oldState: e.oldState, success }); })
+    .onFinalize((e, success) => { runOnJS(reviewTrace)("native.finalize", { handler: e.handlerTag, state: e.state, oldState: e.oldState, success }); }), []);
   const reducedMotion = useReducedMotion();
   const latest = useRef({ props, reducedMotion });
   latest.current = { props, reducedMotion };
@@ -151,6 +169,7 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
           save: (action) => latest.current.props.change(action),
           scrollTo: (target, animated) => {
             if (!alive.current || !pageHeight.current) return;
+            reviewTrace("feed.scrollTo", { target, animated, offset: offset.current, height: pageHeight.current, horizontal: horizontal.value });
             seeking.current = animated ? { target, until: Date.now() + 1500 } : undefined;
             if (!animated) offset.current = target * pageHeight.current;
             list.current?.scrollToOffset({
@@ -168,6 +187,7 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
             resetDeparted();
           },
           onEnd: () => latest.current.props.onEnd?.(),
+          limited: () => !!latest.current.props.stopBefore && pages.current.indexOf(latest.current.props.stopBefore) < 0,
           onBusy: (busy) => {
             if (!alive.current) return;
             setDiscarding(busy);
@@ -230,28 +250,38 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
    * callbacks may still describe the previous touch, so claim the page at the live offset
    * instead of rejecting a valid sideways swipe on a stale vertical-drag flag. */
   const claim = useCallback(
-    (id: string) => {
+    (id: string, nativeOffset?: number) => {
       const h = pageHeight.current;
-      if (!h) return false;
-      const current = readOffset();
+      if (!h) { reviewTrace("claim.rejected", { photo: tracePhoto(id), reason: "no-height" }); return false; }
+      const jsOffset = offset.current;
+      const current = nativeOffset ?? readOffset();
+      offset.current = current;
       const page = Math.max(0, Math.min(pages.current.length - 1, Math.round(current / h)));
       const off = Math.abs(current - page * h) >= 1.5;
-      if (pages.current[page] !== id) return false;
+      reviewTrace("claim.request", { photo: tracePhoto(id), nativeOffset, jsOffset, current, height: h, page, nearest: tracePhoto(pages.current[page]), active: tracePhoto(controller.activeId), stored: tracePhoto(latest.current.props.getSession().activeId), dragging: dragging.current, momentum: momentum.current, discarding: controller.discarding, undoing: controller.undoing });
+      if (pages.current[page] !== id) { reviewTrace("claim.rejected", { photo: tracePhoto(id), reason: "nearest-id-mismatch" }); return false; }
       // This horizontal recognizer owns the touch now. A missing native scroll-end event
       // must not keep later swipes or page saves behind a stale vertical-drag flag.
       dragging.current = false;
       clearTimeout(quietTimer.current);
       momentum.current = false;
-      return controller.claim(page, availableIds(), off);
+      const accepted = controller.claim(page, availableIds(), off);
+      reviewTrace("claim.result", { photo: tracePhoto(id), accepted, off, active: tracePhoto(controller.activeId), busy: controller.busy });
+      return accepted;
     },
     [availableIds, controller, readOffset],
   );
   const canBegin = useCallback(
-    (id: string) => claim(id) && controller.canDiscard(id),
+    (id: string, nativeOffset?: number) => {
+      const accepted = claim(id, nativeOffset) && controller.canDiscard(id);
+      reviewTrace("feed.canBegin", { photo: tracePhoto(id), accepted, active: tracePhoto(controller.activeId), busy: controller.busy, queued: !!latest.current.props.getSession().records[id]?.queued });
+      return accepted;
+    },
     [claim, controller],
   );
   const discard = useCallback(
     async (id: string, direction: DiscardDirection, animation: Promise<void>, landed?: Promise<void>) => {
+      reviewTrace("feed.discard", { photo: tracePhoto(id), active: tracePhoto(controller.activeId), stored: tracePhoto(latest.current.props.getSession().activeId), busy: controller.busy, canDiscard: controller.canDiscard(id), direction });
       if (latest.current.props.session.review) void animation.then(() => { if (alive.current) latest.current.props.onDiscard?.(); });
       await controller.discard(id, direction, animation, landed);
       if (alive.current && !latest.current.props.session.review) latest.current.props.onDiscard?.();
@@ -275,6 +305,7 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
     if (alive.current) setEntering((entry) => (entry?.id === id ? undefined : entry));
   }, []);
   const settle = useCallback(() => {
+    reviewTrace("feed.settle", { offset: offset.current, nativeOffset: nativeOffset.value, height: pageHeight.current, active: tracePhoto(controller.activeId), dragging: dragging.current, momentum: momentum.current, horizontal: horizontal.value, busy: controller.busy });
     clearTimeout(quietTimer.current);
     if (!pageHeight.current || dragging.current) return;
     // A quiet scroll means motion has stopped, even if momentum end was never delivered.
@@ -338,8 +369,12 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
   }, [controller, data, report]);
   useEffect(() => {
     alive.current = true;
+    reviewTrace("feed.mount", { marker: REVIEW_TRACE_MARKER, active: tracePhoto(controller.activeId), appState: AppState.currentState });
+    const appState = AppState.addEventListener("change", state => reviewTrace("app.state", { state }));
     report(controller.page);
     return () => {
+      reviewTrace("feed.unmount", { active: tracePhoto(controller.activeId), horizontal: horizontal.value });
+      appState.remove();
       alive.current = false;
       clearTimeout(quietTimer.current);
       clearTimeout(resetTimer.current);
@@ -382,6 +417,7 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
       onLayout={(event) => {
         const measured = event.nativeEvent.layout.height;
         if (measured > 0 && Math.abs(measured - pageHeight.current) >= 1) {
+          reviewTrace("feed.layout", { marker: REVIEW_TRACE_MARKER, from: pageHeight.current, to: measured, active: tracePhoto(controller.activeId), nativeOffset: nativeOffset.value });
           pageHeight.current = measured;
           offset.current = controller.page * measured;
           setHeight(measured);
@@ -394,6 +430,7 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
           key={height}
           ref={list}
           nativeScroll={nativeScroll}
+          motion={motion}
           onPointerDragChange={(active) => {
             if (!alive.current) return;
             dragging.current = active;
@@ -424,6 +461,7 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
           removeClippedSubviews={false}
           onScroll={onScroll}
           onScrollBeginDrag={() => {
+            reviewTrace("scroll.drag.begin", { offset: offset.current, nativeOffset: nativeOffset.value });
             // The finger takes over, including catching a page that is still moving.
             dragging.current = true;
             lastDrag.current = Date.now();
@@ -432,22 +470,29 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
             clearTimeout(quietTimer.current);
           }}
           onScrollEndDrag={(event) => {
+            reviewTrace("scroll.drag.end", { offset: event.nativeEvent.contentOffset.y, nativeOffset: nativeOffset.value });
             dragging.current = false;
             lastDrag.current = Date.now();
             offset.current = event.nativeEvent.contentOffset.y;
             scheduleSettle();
           }}
           onMomentumScrollBegin={() => {
+            reviewTrace("scroll.momentum.begin", { offset: offset.current, nativeOffset: nativeOffset.value });
             momentum.current = true;
           }}
           onMomentumScrollEnd={(event) => {
+            reviewTrace("scroll.momentum.end", { offset: event.nativeEvent.contentOffset.y, nativeOffset: nativeOffset.value });
             momentum.current = false;
             offset.current = event.nativeEvent.contentOffset.y;
             settle();
           }}
           renderItem={({ item: id }) => (
             <View style={[styles.page, { height }]}>
-              {id === endId ? (
+              {id === endId && limited ? (
+                props.limitPage
+              ) : id === endId && props.endPage ? (
+                props.endPage
+              ) : id === endId ? (
                 <View style={styles.end}>
                   <Text className="text-h2 text-foreground">Exploration complete</Text>
                   <Text className="mt-3 text-body text-muted-foreground">Saving your place…</Text>
@@ -461,6 +506,7 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
                   entrance={entering?.id === id ? entering.from : undefined}
                   pageHeight={height}
                   nativeScroll={nativeScroll}
+                  motion={motion}
                   onBegin={canBegin}
                   onZoomBegin={claim}
                   onAction={discard}

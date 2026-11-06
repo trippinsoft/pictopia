@@ -5,6 +5,7 @@ import Animated, { cancelAnimation, useAnimatedStyle, useReducedMotion, useShare
 import { Icon, Text } from "./ui";
 import { nextReviewStep, REVIEW_HINTS, REVIEW_STEPS, type ReviewGuidance, type ReviewStep } from "@/lib/pictopia/review-guidance";
 import { reviewGuidance } from "@/services/review-guidance";
+
 export function useReviewGuidance(enabled: boolean) {
   const [done, setDone] = useState<ReviewGuidance>();
   const alive = useRef(true), state = useRef(done); state.current = done;
@@ -24,23 +25,38 @@ export function useReviewGuidance(enabled: boolean) {
   }, []);
   return { step: enabled && done ? nextReviewStep(done) : undefined, complete, skip };
 }
-const HINT_ICONS: Record<ReviewStep, "ArrowUp" | "ArrowRight" | "Trash2" | "Undo2" | "Heart"> = {
-  browse: "ArrowUp", discard: "ArrowRight", trash: "Trash2", restore: "Undo2", actions: "Heart",
-};
+
+/** The two-step coach. Each step completes when the user actually does it (or taps Got it);
+ * nothing here makes a decision about a photo. */
 export function ReviewHint({ step, onNext, onSkip }: { step?: ReviewStep; onNext(step: ReviewStep): void; onSkip(): void }) {
   const reduced = useReducedMotion(), motion = useSharedValue(0);
   useEffect(() => {
     motion.value = 0;
-    if (step && !reduced && (step === "browse" || step === "discard")) motion.value = withRepeat(withSequence(withTiming(9, { duration: 600 }), withTiming(0, { duration: 600 })), 2);
-    if (step) AccessibilityInfo.announceForAccessibility(REVIEW_HINTS[step]);
+    if (step && !reduced) motion.value = withRepeat(withSequence(withTiming(1, { duration: 650 }), withTiming(0, { duration: 650 })), -1);
+    if (step) AccessibilityInfo.announceForAccessibility(`${REVIEW_HINTS[step].title}. ${REVIEW_HINTS[step].body}`);
     return () => cancelAnimation(motion);
   }, [step, reduced, motion]);
-  const animated = useAnimatedStyle(() => ({ transform: step === "browse" ? [{ translateY: -motion.value }] : [{ translateX: motion.value }] }));
+  const animated = useAnimatedStyle(() => ({ transform: step === "browse" ? [{ translateY: -10 * motion.value }] : [{ translateX: 14 * motion.value }, { rotate: `${8 * motion.value}deg` }] }));
   if (!step) return null;
-  return <View className="mx-4 flex-row items-center gap-2 rounded-2xl bg-card px-3 py-1">
-    <Animated.View style={animated}><Icon name={HINT_ICONS[step]} size={18} className="text-primary" /></Animated.View>
-    <Text accessibilityLiveRegion="polite" className="flex-1 text-body text-foreground">{REVIEW_HINTS[step]}</Text>
-    <Pressable accessibilityRole="button" accessibilityLabel={step === "actions" ? "Finish review tips" : "Next review tip, no photo decision required"} onPress={() => onNext(step)} className="h-11 w-9 items-center justify-center"><Icon name="Check" size={17} className="text-primary" /></Pressable>
-    <Pressable accessibilityRole="button" accessibilityLabel="Skip all review tips" onPress={onSkip} className="h-11 w-9 items-center justify-center"><Icon name="X" size={17} className="text-muted-foreground" /></Pressable>
+  const hint = REVIEW_HINTS[step];
+  return <View pointerEvents="box-none" className="absolute bottom-3 left-4 right-4 items-center">
+    <View accessibilityLiveRegion="polite" className="w-full max-w-sm flex-row items-center gap-3 rounded-[22px] bg-card/95 p-3 pr-2">
+      <View className="h-12 w-12 items-center justify-center rounded-full bg-sun">
+        <Animated.View style={animated}><Icon name={step === "browse" ? "Hand" : "MoveHorizontal"} size={22} className="text-primary-foreground" /></Animated.View>
+      </View>
+      <View className="flex-1">
+        <Text className="text-caption text-muted-foreground">{`Tip ${REVIEW_STEPS.indexOf(step) + 1} of ${REVIEW_STEPS.length}`}</Text>
+        <Text className="text-headline text-foreground">{hint.title}</Text>
+        <Text className="text-caption leading-5 text-muted-foreground">{hint.body}</Text>
+      </View>
+      <View className="items-end">
+        <Pressable accessibilityRole="button" accessibilityLabel={step === "discard" ? "Got it, finish tips" : "Got it, next tip"} onPress={() => onNext(step)} className="min-h-11 justify-center rounded-full bg-sun px-4">
+          <Text className="text-button text-primary-foreground">Got it</Text>
+        </Pressable>
+        {step === "browse" && <Pressable accessibilityRole="button" accessibilityLabel="Skip tips" onPress={onSkip} className="min-h-9 justify-center px-2">
+          <Text className="text-caption text-muted-foreground">Skip</Text>
+        </Pressable>}
+      </View>
+    </View>
   </View>;
 }

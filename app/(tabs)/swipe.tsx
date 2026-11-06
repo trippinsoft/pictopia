@@ -7,7 +7,7 @@ import {
   StyleSheet,
   Platform,
 } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { Image as ExpoImage } from "expo-image";
 import { useSharedValue } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
@@ -17,8 +17,9 @@ import { SwipeCard, SwipeCardHandle } from "@/components/pictopia/swipe-card";
 import { usePictopia } from "@/components/pictopia/provider";
 import { useSessionTally } from "@/components/pictopia/use-session-tally";
 import { useSwipeDeck } from "@/components/pictopia/use-swipe-deck";
+import { usePhotoEncounter } from "@/components/pictopia/use-photo-encounter";
 import { useReviewClock } from "@/components/pictopia/use-review-clock";
-import { storage } from "@/services/repository";
+import { storage, repository } from "@/services/repository";
 import { Media, Collection, Decision } from "@/lib/pictopia/types";
 import { sessionTitle, remainingSeconds, milestone } from "@/lib/pictopia/sessions";
 import { decisionDirection } from "@/lib/pictopia/swipe-physics";
@@ -26,6 +27,7 @@ import { plural } from "@/lib/pictopia/text";
 import { SCAN_VERSION, bytes } from "@/lib/pictopia/logic";
 export default function Swipe() {
   const app = usePictopia();
+  const [loaded, setLoaded] = useState<Record<string, boolean>>({});
   const params = useLocalSearchParams<{ collection?: string }>();
   const [reduced, setReduced] = useState(false),
     [keeper, setKeeper] = useState<Media>(),
@@ -39,6 +41,9 @@ export default function Swipe() {
   const card = useRef<SwipeCardHandle>(null);
   const actionLock = useRef(false);
   const session = app.session;
+  useFocusEffect(useCallback(() => {
+    if (session?.id && !session.complete) void repository.touchSession(session.id).catch(() => {});
+  }, [session?.id, session?.complete]));
   const reversed = app.prefs.reverseSwipe;
   const tally = useSessionTally(session, app.revision);
   const haptic = useCallback(
@@ -71,6 +76,7 @@ export default function Swipe() {
   });
   const seconds = session ? remainingSeconds({ ...session, elapsedMs }) : 0;
   const item = deck.topRecord;
+  usePhotoEncounter(item?.id, !!item && loaded[item.id] === true && deck.reviewing && !deck.state.committing, session?.id, undefined, app.setError);
   const group = app.pro ? session?.groups?.find((g) => g.ids.includes(deck.top ?? "")) : undefined;
   const validGroup =
     group &&
@@ -168,13 +174,13 @@ export default function Swipe() {
   const unavailable = !!deck.top && item === null;
   if (!app.ready)
     return (
-      <Page compactHeader title="One memory at a time">
+      <Page showQueue fallback="/settings" compactHeader title="One memory at a time">
         <Loading />
       </Page>
     );
   if (!app.stats.total)
     return (
-      <Page compactHeader title="One memory at a time">
+      <Page showQueue fallback="/settings" compactHeader title="One memory at a time">
         <Empty
           title="Let’s meet your camera roll"
           description="Connect your photos to start. Every decision is saved, and nothing is deleted while you swipe."
@@ -184,7 +190,7 @@ export default function Swipe() {
     );
   if (!session)
     return (
-      <Page compactHeader title="One memory at a time">
+      <Page showQueue fallback="/settings" compactHeader title="One memory at a time">
         <Empty
           title="Ready for a little reset?"
           description="Start with a small batch of unreviewed memories. You can stop and pick up where you left off."
@@ -198,7 +204,7 @@ export default function Swipe() {
     const didReview = session.reviewed > 0;
     const reviewed = tally?.reviewed ?? 0;
     return (
-      <Page compactHeader title={sessionTitle(session.collection)}>
+      <Page showQueue fallback="/settings" compactHeader title={sessionTitle(session.collection)}>
         <View className="mx-auto w-full max-w-lg gap-4">
           <View className="items-center rounded-3xl border border-border bg-card px-6 py-9">
             <View className="mb-5 h-16 w-16 items-center justify-center rounded-full bg-primary">
@@ -275,7 +281,7 @@ export default function Swipe() {
     );
   }
   return (
-    <Page compactHeader scroll={false} title={sessionTitle(session.collection)}>
+    <Page showQueue fallback="/settings" compactHeader scroll={false} title={sessionTitle(session.collection)}>
       <View className="mx-auto w-full max-w-xl flex-1">
         <View className="mb-3 flex-row items-center justify-between">
           <Text className="text-body text-muted-foreground">
@@ -347,7 +353,7 @@ export default function Swipe() {
               drag={drag}
               onCommit={() => false}
               onAnimated={() => {}}
-              onSettled={() => deck.settled(deck.below!)}
+              onSettled={state => { deck.settled(deck.below!); setLoaded(values => ({ ...values, [deck.below!]: state === "loaded" })); }}
               onOpen={() => {}}
             />
           )}
@@ -366,7 +372,7 @@ export default function Swipe() {
               enterFrom={enter?.id === deck.top ? enter.from : undefined}
               onCommit={onCommit}
               onAnimated={() => deck.animated(deck.top!)}
-              onSettled={() => deck.settled(deck.top!)}
+              onSettled={state => { deck.settled(deck.top!); setLoaded(values => ({ ...values, [deck.top!]: state === "loaded" })); }}
               onOpen={() => item && router.push({ pathname: "/preview", params: { id: item.id } })}
             />
           )}

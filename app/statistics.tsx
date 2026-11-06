@@ -32,11 +32,11 @@ export default function Statistics() {
     });
   }, [app.revision]);
   return (
-    <Page title="A little progress adds up" subtitle="Honest numbers. A lighter library.">
+    <Page title="Cleanup history" subtitle="Honest numbers. A lighter library." fallback="/(tabs)/progress">
       {!app.pro ? (
         <Empty
           title="Deeper insights with Pro"
-          description="Your basic progress remains available on Home and in Settings. Cleanup history is retained even without Pro."
+          description="Your library progress remains available in the Progress tab. Cleanup history is retained even without Pro."
           action={<Button onPress={() => router.push("/paywall")}>View Pro plans</Button>}
         />
       ) : (

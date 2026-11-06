@@ -1,3 +1,11 @@
+/** Both browser handlers use the same decision when a coalesced move crosses both
+ * thresholds at once. A predominantly sideways swipe tolerates vertical finger drift. */
+export function browserDragAxis(dx: number, dy: number): "horizontal" | "vertical" | undefined {
+  if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.15) return "horizontal";
+  if (Math.abs(dy) > 12) return "vertical";
+  return undefined;
+}
+
 export interface PagePointer {
   id: number;
   x: number;
@@ -59,12 +67,7 @@ export class WebPageDrag {
     if (!p || p.id !== sample.id || !surface) return false;
     const dx = sample.x - p.x,
       dy = sample.y - p.y;
-    if (!p.axis) {
-      // Mirrors native failure-before-activation: vertical/diagonal intent wins if
-      // Y leaves the dead zone before a horizontal pan has been established.
-      if (Math.abs(dy) > 12) p.axis = "vertical";
-      else if (Math.abs(dx) > 12) p.axis = "horizontal";
-    }
+    if (!p.axis) p.axis = browserDragAxis(dx, dy);
     const dt = sample.time - p.lastTime;
     if (dt > 0) p.velocity = ((sample.y - p.lastY) * 1000) / dt;
     p.lastY = sample.y;

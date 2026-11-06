@@ -1,3 +1,4 @@
+import { calendarMonth } from "./library-progress";
 import { Media, Query, Session, Decision, Analysis, Entitlement } from "./types";
 export const SCAN_VERSION = "sha256-dhash-laplacian-v1";
 export function dateKeys(timestamp: number) {
@@ -13,7 +14,10 @@ export function identity(m: Media) {
 export function matches(m: Media, q: Query) {
   return (
     m.active &&
-    (!q.month || m.month === q.month) &&
+    (!q.month || calendarMonth(m) === q.month) &&
+    (!q.year || calendarMonth(m).startsWith(`${q.year}-`)) &&
+    (!q.unseen || !m.firstSeenAt) &&
+    (!q.cursor || (q.order === "oldest" ? m.created > q.cursor.created || (m.created === q.cursor.created && m.id > q.cursor.id) : m.created < q.cursor.created || (m.created === q.cursor.created && m.id < q.cursor.id))) &&
     (q.before === undefined || m.created < q.before) &&
     (!q.blurry || (m.scan?.sharpness !== undefined && m.scan.sharpness < 30)) &&
     (!q.day || m.day === q.day) &&

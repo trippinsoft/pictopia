@@ -69,6 +69,10 @@ export const mediaService: MediaService = {
       onProgress(++n, result.assets.length);
     }
   },
+  async size(m) {
+    const file = await storage.getValue<Blob>(`file:${m.id}`);
+    return file?.size ?? m.size;
+  },
   async resolve(m) {
     let uri = urls.get(m.id);
     if (!uri) {

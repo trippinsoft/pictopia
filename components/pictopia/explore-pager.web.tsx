@@ -13,7 +13,7 @@ import { useReducedMotion } from "react-native-reanimated";
 import { WebPageDrag, type PagePointer, type PageSurface } from "@/lib/pictopia/web-page-drag";
 import type { ExplorePagerProps } from "./explore-pager.types";
 export const ExplorePager = forwardRef<FlatList<string>, ExplorePagerProps>(function ExplorePager(
-  { nativeScroll: _nativeScroll, onPointerDragChange, pendingPage, ...props },
+  { motion: _motion, nativeScroll: _nativeScroll, onPointerDragChange, pendingPage, ...props },
   ref,
 ) {
   const list = useRef<FlatList<string>>(null);

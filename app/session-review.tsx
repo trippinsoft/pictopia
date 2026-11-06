@@ -1,3 +1,4 @@
+import { ScreenHeader } from "@/components/pictopia/navigation-header";
 import React, { useEffect, useState } from "react";
 import { View, FlatList, Pressable } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
@@ -43,23 +44,7 @@ export default function SessionReview() {
   return (
     <SafeAreaView edges={["top", "left", "right"]} className="flex-1 bg-background">
       <View className="mx-auto w-full max-w-4xl flex-1 px-5">
-        <View className="my-5 flex-row items-center gap-2">
-          <Pressable
-            accessibilityLabel="Back"
-            onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/swipe"))}
-            className="p-3"
-          >
-            <Icon name="ArrowLeft" className="text-foreground" />
-          </Pressable>
-          <View className="flex-1">
-            <Text accessibilityRole="header" className="text-h2 text-foreground">
-              This session
-            </Text>
-            <Text className="mt-1 text-body text-muted-foreground">
-              Tap a photo to see it larger. Change your mind anytime.
-            </Text>
-          </View>
-        </View>
+        <ScreenHeader title="This session" subtitle="Tap a photo to see it larger. Change your mind anytime." fallback="/(tabs)/swipe" />
         <View accessibilityRole="tablist" className="mb-4 flex-row rounded-2xl bg-secondary p-1">
           {(
             [

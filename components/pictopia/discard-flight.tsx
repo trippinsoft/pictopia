@@ -132,7 +132,7 @@ export function useDiscardFlights({
       ))}
     </View>
   );
-  return { flight, layer, flying: flights.length };
+  return { flight, layer, flying: flights.length, flyingIds: new Set(flights.map(entry => entry.id)) };
 }
 /** Carries the curve on the UI thread: one timing value drives position, scale, tilt and the
  * moment it disappears into the can, so nothing re-renders while it travels. */

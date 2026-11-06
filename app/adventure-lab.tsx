@@ -1,8 +1,11 @@
-import { type ReactNode, useCallback, useState } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { ScreenHeader } from "@/components/pictopia/navigation-header";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { Platform, Pressable, ScrollView, Share, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, Stack, useFocusEffect } from "expo-router";
 import { Button, Icon, Loading, Text } from "@/components/pictopia/ui";
+import { developerFlags } from "@/services/features";
+import type { DeveloperFlags } from "@/lib/pictopia/features";
 import { AdventureRating } from "@/components/pictopia/adventure-rating";
 import {
   adventureComplete,
@@ -13,7 +16,11 @@ import {
   type LabExperiment,
 } from "@/lib/pictopia/adventures";
 import { CURATION_WEIGHTS } from "@/lib/pictopia/curation";
+import Constants from "expo-constants";
+import { reviewTraceSnapshot } from "@/lib/pictopia/review-trace";
 import { adventureStore, type AdventureSlot } from "@/services/adventures";
+import { repository } from "@/services/repository";
+import { usePictopia } from "@/components/pictopia/provider";
 
 type Lab = Awaited<ReturnType<typeof adventureStore.lab>>;
 const EXPERIMENTS: { key: LabExperiment; letter: string; name: string; brief: string }[] = [
@@ -44,6 +51,21 @@ export default function AdventureLab() {
   const [home, setHome] = useState<AdventureSlot[]>();
   const [busy, setBusy] = useState<LabExperiment>(),
     [message, setMessage] = useState<string>();
+  const pictopia = usePictopia();
+  const [confirmReset, setConfirmReset] = useState<"reset" | "cache">();
+  // Moved from Settings: two taps, never touches original photos or videos.
+  async function resetData(kind: "reset" | "cache") {
+    if (confirmReset !== kind) return setConfirmReset(kind);
+    setConfirmReset(undefined);
+    try {
+      pictopia.pauseScan();
+      await repository.reset(kind === "cache");
+      await pictopia.refresh();
+      setMessage(kind === "cache" ? "Analysis cache cleared." : "Cleanup decisions reset. No photos were deleted.");
+    } catch (e) {
+      setMessage((e as Error).message);
+    }
+  }
   const load = useCallback(async () => {
     try {
       const [state, pair] = await Promise.all([adventureStore.lab(), adventureStore.home()]);
@@ -58,6 +80,12 @@ export default function AdventureLab() {
       void load();
     }, [load]),
   );
+  async function exportGestureTrace() {
+    if (Platform.OS === "web") { setMessage("The iPhone gesture trace must be exported from the native app."); return; }
+    try {
+      await Share.share({ message: JSON.stringify({ ...reviewTraceSnapshot(), app: Constants.expoConfig?.version, nativeBuild: Constants.nativeBuildVersion, platform: Platform.OS, osVersion: Platform.Version }, null, 2), title: "Pictopia gesture trace" });
+    } catch { setMessage("The gesture trace could not be shared. Try holding Developer only again."); }
+  }
   async function generate(key: LabExperiment) {
     if (busy) return;
     setBusy(key);
@@ -80,27 +108,25 @@ export default function AdventureLab() {
       setMessage("That experiment couldn’t be opened.");
     }
   }
+  const [flags, setFlags] = useState<DeveloperFlags>({});
+  useEffect(() => { void developerFlags.load().then(setFlags).catch(() => {}); }, []);
   return (
     <SafeAreaView className="flex-1 bg-background" edges={["top", "bottom", "left", "right"]}>
       <Stack.Screen options={{ title: "Adventure Lab", headerShown: false }} />
+      <View className="mx-auto w-full max-w-xl px-5"><ScreenHeader title="Adventure Lab" fallback="/settings" /></View>
       <ScrollView>
         <View className="mx-auto w-full max-w-xl px-5 pb-12 pt-2">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/settings"))}
-            className="-ml-3 h-12 w-12 items-center justify-center"
-          >
-            <Icon name="ArrowLeft" size={22} className="text-foreground" />
-          </Pressable>
-          <Text className="text-caption uppercase tracking-[2px] text-primary">Developer only</Text>
-          <Text accessibilityRole="header" className="mt-2 text-h1 text-foreground">
-            Adventure Lab
-          </Text>
+          <Text onLongPress={() => void exportGestureTrace()} className="text-caption uppercase tracking-[2px] text-primary">Developer only</Text>
           <Text className="mt-2 text-body leading-6 text-muted-foreground">
             Three experiments built from your real photos. Each stays frozen until you regenerate
             it. Progress counts toward your Journey; nothing is ever deleted here.
           </Text>
+          <View className="mt-4 gap-3">
+            <Button secondary onPress={() => router.push("/device-checks")}>Device checks</Button>
+            <Button secondary onPress={() => void developerFlags.set("duplicateHunt", !flags.duplicateHunt).then(setFlags).catch(() => setMessage("That setting couldn’t be saved."))}>{flags.duplicateHunt ? "Duplicate Hunt: open on this device (tap to close)" : "Duplicate Hunt: closed (tap to open for testing)"}</Button>
+            <Button secondary onPress={() => void resetData("cache")}>{confirmReset === "cache" ? "Tap again to clear analysis cache" : "Clear local analysis cache"}</Button>
+            <Button secondary onPress={() => void resetData("reset")}>{confirmReset === "reset" ? "Tap again: clears decisions, never photos" : "Reset cleanup decisions"}</Button>
+          </View>
           {!!message && <Text className="mt-4 text-body text-destructive">{message}</Text>}
           {!lab ? (
             <View className="mt-10">

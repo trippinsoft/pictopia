@@ -1,3 +1,4 @@
+import { NavigationBack, ScreenHeader } from "./navigation-header";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { AccessibilityInfo, AppState, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -83,7 +84,7 @@ export function MemoryMatchScreen() {
 }
 function MemoryHeader({ onExit, children }: { onExit(): void; children?: ReactNode }) {
   return <View className="min-h-14 flex-row items-center gap-2">
-    <Pressable accessibilityRole="button" accessibilityLabel="Back to Pit Stops" onPress={onExit} className="h-11 w-11 items-center justify-center"><Icon name="ChevronLeft" size={23} className="text-foreground" /></Pressable>
+    <NavigationBack label="Back to Pit Stops" onPress={onExit} />
     <Text accessibilityRole="header" className="flex-1 text-headline text-foreground">Memory Match</Text>{children}
   </View>;
 }
@@ -177,7 +178,8 @@ export function MemoryCompletion({ pairs, ids, reduced, onRestart, onExit }: { p
     } catch { if (alive.current) setError(true); }
     finally { busy.current = false; if (alive.current) setReviewing(false); }
   }
-  return <ScrollView contentContainerStyle={styles.center}>
+  return <><ScreenHeader title="Memory Match" onBack={onExit} />
+  <ScrollView contentContainerStyle={styles.center}>
     <Animated.View entering={FadeIn.duration(reduced ? 0 : 300).reduceMotion(ReduceMotion.System)} ><View className="gap-6 px-5 py-6">
       <View className="h-20 w-20 items-center justify-center self-center rounded-full bg-accent"><Icon name="Check" size={32} strokeWidth={1.5} className="text-primary" /></View>
       <View className="gap-2"><Text accessibilityRole="header" className="text-center text-h1 text-foreground">All together.</Text><Text accessibilityLiveRegion="polite" className="text-center text-body text-muted-foreground">{pairs} pairs found. A moment well spent.</Text></View>
@@ -188,7 +190,7 @@ export function MemoryCompletion({ pairs, ids, reduced, onRestart, onExit }: { p
       <Pressable accessibilityRole="button" disabled={reviewing} onPress={onExit} className="min-h-11 items-center justify-center"><Text className="text-h6 text-muted-foreground">Back to Pit Stops</Text></Pressable>
       {error && <Text accessibilityLiveRegion="polite" className="text-center text-body text-muted-foreground">These photos couldn’t be opened. Please try again.</Text>}
     </View></Animated.View>
-  </ScrollView>;
+  </ScrollView></>;
 }
 
 const styles = StyleSheet.create({ center: { flexGrow: 1, justifyContent: "center" }, board: { flexGrow: 1, justifyContent: "center", paddingVertical: 4 }, grid: { flexDirection: "row", flexWrap: "wrap" } });

@@ -1,11 +1,10 @@
-export const REVIEW_STEPS = ["browse", "discard", "trash", "restore", "actions"] as const;
+/** The two-step coach: scroll to explore, then swipe sideways to mark. Saved steps from the
+ * earlier five-step hints are ignored; anyone who finished those two isn't coached again. */
+export const REVIEW_STEPS = ["browse", "discard"] as const;
 export type ReviewStep = typeof REVIEW_STEPS[number];
 export type ReviewGuidance = Partial<Record<ReviewStep, boolean>>;
 export function nextReviewStep(done: ReviewGuidance): ReviewStep | undefined { return REVIEW_STEPS.find(step => !done[step]); }
-export const REVIEW_HINTS: Record<ReviewStep, string> = {
-  browse: "Scroll to explore. No decisions required.",
-  discard: "Don’t want it? Swipe it away.",
-  trash: "It’s in the trash, not deleted. Tap to look.",
-  restore: "Changed your mind? Restore it from the trash.",
-  actions: "Love it? Favorite it. Want to send it? Share it.",
+export const REVIEW_HINTS: Record<ReviewStep, { title: string; body: string }> = {
+  browse: { title: "Scroll up to explore", body: "Looking never decides anything." },
+  discard: { title: "Swipe sideways to mark", body: "It waits in the trash. Undo brings it straight back." },
 };

@@ -62,6 +62,7 @@ function reviewHarness(ids = ['a','b','c','d'], completionPage = false) {
 }
 test('free browsing and revisiting distinguish viewed, untouched, and queued photos', () => {
   let s = review(['a','b','c','d']);
+  s = reduceExplore(s, { type: 'seen', id: 'a' });
   s = page(s, 'd', ['a']);
   assert.deepEqual(Object.keys(s.records), ['a'], 'skipping past photographs does not count them');
   s = reduceExplore(s, { type: 'seen', id: 'd' });
@@ -131,21 +132,23 @@ test('a discarded photograph leaves the sequence, and the trash gives it back wh
   assert.deepEqual(exploreFeed(s), ['b','c'], 'and the marked one is out of the scrolling sequence');
   assert.equal(s.records.a.queued, true);
   s = page(s, 'c'); discard();
-  assert.equal(s.activeId, null, 'discarding the final original photograph never returns to an earlier one');
+  assert.equal(s.activeId, 'b', 'the saved place stays on a real photograph: the nearest earlier one (the end card is never a saved place)');
   assert.deepEqual(exploreFeed(s), ['b'], 'earlier photographs remain available and unmarked');
-  assert.equal(s.finished, false, 'the flight must land before completion is saved');
-  assert.equal(reconcileReview(s, []).finished, false);
+  assert.notEqual(s.finished, true, 'marking the final photograph never finishes');
+  assert.notEqual(reconcileReview(s, []).finished, true);
   assert.equal(adventureComplete(s), false);
   s = reduceExplore(s, { type: 'restore', id: 'c' });
   assert.deepEqual(exploreFeed(s), ['b','c']);
-  assert.equal(s.activeId, 'c', 'restoring the final photograph reopens its original place');
+  assert.equal(s.activeId, 'b', 'restoring never moves the user');
   assert.equal(s.records.c.queued, false);
   s = reduceExplore(s, { type: 'restore', id: 'a' });
   assert.deepEqual(exploreFeed(s), ['a','b','c'], 'in its original place');
-  assert.equal(s.activeId, 'c', 'without moving the user');
+  assert.equal(s.activeId, 'b', 'without moving the user');
   const explored = exploreCounts(s).explored;
   s = page(s, 'a'); s = page(s, 'b');
   assert.equal(exploreCounts(s).explored, explored, 'repeated browsing never inflates progress');
+  assert.equal(reduceExplore(s, { type: 'finish' }), s, 'a stale end callback from the middle is ignored');
+  s = page(s, 'c');
   s = reduceExplore(s, { type: 'finish' });
   assert.equal(s.finished, true); assert.equal(s.activeId, null);
   assert.equal(adventureComplete(s), true);
@@ -157,7 +160,10 @@ test('a discarded photograph leaves the sequence, and the trash gives it back wh
   assert.equal(only.finished, false);
 });
 test('reviews saved before the trash existed keep their finished state', () => {
-  const done = reconcileReview({ ...review(), activeId: null }, []);
+  const legacy = review();
+  legacy.ids.forEach(id => { legacy.records[id] = { encountered: true, unavailable: false, discarded: false, changedAt: 1 }; });
+  const done = reconcileReview({ ...legacy, activeId: null }, [], true);
+  assert.notEqual(reconcileReview({ ...review(), activeId: null }, []).finished, true, 'a null position alone proves no completion');
   assert.equal(done.finished, true);
   assert.equal(adventureComplete(done), true);
   const running = reconcileReview(review(), []);
@@ -292,7 +298,8 @@ test('discarding the final review photo finishes after its flight, even with ear
   assert.equal(h.controller.busy, false);
   assert.equal(h.ended.length, 1);
   assert.deepEqual(h.ended[0].queued, ['d']);
-  assert.equal(h.session().finished, false, 'the screen saves completion separately from the discard');
+  assert.notEqual(h.session().finished, true, 'only an explicit Finish completes');
+  assert.equal(h.session().activeId, 'c', 'the saved place stays on the last photograph still in the sequence');
 });
 test('jumping to the final photo and discarding it never navigates backward', async () => {
   const h = reviewHarness(['a','b','c'], true);
@@ -381,10 +388,10 @@ test('review instructions persist completion, interruption, dismissal and explic
   const { reviewGuidance } = makeLoader({ './repository': { storage: {getValue:async key=>saved.get(key),setValue:async(key,value)=>saved.set(key,value)}, serialize:fn=>{ const p=tail.then(fn);tail=p;return p; } } })('services/review-guidance.ts');
   assert.equal(nextReviewStep(await reviewGuidance.load()),'browse');
   await reviewGuidance.complete('browse'); assert.equal(nextReviewStep(await reviewGuidance.load()),'discard');
-  await reviewGuidance.complete('discard'); assert.equal(nextReviewStep(await reviewGuidance.load()),'trash');
-  await reviewGuidance.complete('trash'); assert.equal(nextReviewStep(await reviewGuidance.load()),'restore');
-  await reviewGuidance.complete('restore');
-  assert.equal(nextReviewStep(await reviewGuidance.load()),'actions');
+  await reviewGuidance.complete('discard'); assert.equal(nextReviewStep(await reviewGuidance.load()),undefined);
+  // Saved steps from the older five-step hints are harmless extras.
+  assert.equal(nextReviewStep({ browse: true, discard: true, trash: false }), undefined);
+  await reviewGuidance.reset(); assert.equal(nextReviewStep(await reviewGuidance.load()),'browse');
   await reviewGuidance.skip(); assert.equal(nextReviewStep(await reviewGuidance.load()),undefined);
   await reviewGuidance.reset(); assert.equal(nextReviewStep(await reviewGuidance.load()),'browse');
 });
@@ -413,4 +420,81 @@ test('undo restores an earlier explicit Keep decision, without creating new Keep
   await store.change({type:'undo'}); assert.equal((await app.storage.get('a')).decision,'keep');
   assert.equal((await app.storage.get('b')).decision,undefined); assert.equal((await app.storage.get('c')).decision,undefined);
   assert.deepEqual(p.requests,[]); db.close();
+});
+
+test('reopening a review whose active photo was queued elsewhere shows a swipeable survivor', async () => {
+  const db = new DatabaseSync(':memory:'), p = platform(), app = await boot(db, p);
+  await app.storage.put([media('a', { decision: 'delete' }), media('b'), media('c')], { [key]: review() });
+  const store = services(app, p).exploreStoreFor(key);
+  const loaded = await store.load();
+  assert.equal(loaded.activeId, 'b', 'active ID must identify the actual first visible photograph');
+  assert.deepEqual(exploreFeed(loaded), ['b', 'c']);
+  const saved = await store.change(s => ({ type: 'discard', id: 'b', revision: s.revision, direction: 'left' }));
+  assert.equal(saved.records.b.queued, true, 'the first visible photo accepts a discard');
+  assert.equal((await app.storage.get('b')).decision, 'delete');
+  db.close();
+});
+
+test('Undo can restore an existing queued photo after reopening without local discard history', async () => {
+  const db = new DatabaseSync(':memory:'), p = platform(), app = await boot(db, p);
+  await app.storage.put([media('a', { decision: 'delete' }), media('b'), media('c')], { [key]: review() });
+  const store = services(app, p).exploreStoreFor(key);
+  let s = await store.load();
+  const controller = new ExploreFeedController({
+    read: () => s, pages: () => [...exploreFeed(s), 'explore-completion'], completionPage: true,
+    save: async action => { s = await store.change(action); return s; },
+    scrollTo: () => {}, onPage: () => {}, onBusy: () => {}, onError: () => {},
+    onFeed: () => {}, prepare: async () => {},
+  }, s.activeId);
+  assert.equal(s.history.length, 0);
+  assert.equal(await controller.undo(), 'a');
+  assert.equal(s.activeId, 'a');
+  assert.equal(!!s.records.a?.queued, false);
+  assert.equal((await app.storage.get('a')).decision, undefined);
+  assert.deepEqual(p.requests, [], 'Undo never invokes OS deletion');
+  db.close();
+});
+
+test('browser nine-photo review resumes past queued photos, discards the first visible photo, and restores existing marks', async () => {
+  const { IDBFactory } = require('fake-indexeddb');
+  globalThis.indexedDB = new IDBFactory();
+  const load = makeLoader({ 'react-native': { Platform: { OS: 'web' } }, './media': { mediaService: { remove: () => { throw Error('Browser must never delete originals'); } } } });
+  const { storage } = load('services/repository.ts');
+  await storage.init();
+  const ids = ['a','b','c','d','e','f','g','h','i'];
+  await storage.put(ids.map(id => media(id, ['a','e','i'].includes(id) ? { decision: 'delete' } : {})), {
+    [key]: review(ids), 'file:b': new Blob(['original selected photograph']),
+  });
+  const store = load('services/explore.ts').exploreStoreFor(key);
+  let s = await store.load();
+  assert.equal(s.activeId, 'b');
+  assert.equal(s.ids.indexOf(s.activeId) + 1, 2, 'the count is the original snapshot position');
+  const controller = new ExploreFeedController({
+    read: () => s, pages: () => [...exploreFeed(s), 'explore-completion'], completionPage: true,
+    save: async action => { s = await store.change(action); return s; },
+    scrollTo: () => {}, onPage: () => {}, onBusy: () => {}, onError: () => {},
+    onFeed: () => {}, prepare: async () => {},
+  }, s.activeId);
+  assert.equal(controller.canDiscard('b'), true);
+  await controller.discard('b', 'left', Promise.resolve(), Promise.resolve());
+  assert.equal((await storage.get('b')).decision, 'delete');
+  assert.equal(await controller.undo(), 'b');
+  assert.equal((await storage.get('b')).decision, undefined);
+  assert.equal(s.history.length, 0);
+  assert.equal(await controller.undo(), 'i', 'existing queue marks remain restorable without local history');
+  assert.equal((await storage.get('i')).decision, undefined);
+  assert.equal(await (await storage.getValue('file:b')).text(), 'original selected photograph');
+});
+
+test('a mounted feed can claim its first visible page after its old active photo is queued elsewhere', () => {
+  const s = reconcileReview(review(), [media('a', { decision: 'delete' }), media('b'), media('c')]);
+  const controller = new ExploreFeedController({
+    read: () => s, pages: () => [...exploreFeed(s), 'explore-completion'], completionPage: true,
+    save: async () => s, scrollTo: () => {}, onPage: () => {}, onBusy: () => {}, onError: () => {},
+    onFeed: () => {}, prepare: async () => {},
+  }, 'a');
+  assert.equal(controller.canDiscard('b'), false);
+  assert.equal(controller.claim(0, ['b'], false), true);
+  assert.equal(controller.activeId, 'b');
+  assert.equal(controller.canDiscard('b'), true);
 });

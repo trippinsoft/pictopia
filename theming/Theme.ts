@@ -38,6 +38,15 @@ export interface Theme {
     /** Immersive photo stage behind the vertical feed (dark in both themes). */
     stage?: string;
     stageForeground?: string;
+    /** Playful Adventure: soft shadow under stickers and cards, set by the chosen pastel. */
+    tint?: string;
+    /** Streak flame and progress highlights (fills). */
+    sun?: string;
+    sunSoft?: string;
+    /** The "or" medallion and pending-deletion icon (fills). */
+    tomato?: string;
+    /** Progress bars and completion ticks (fills). */
+    grass?: string;
   };
   typography: {
     h1?: Typography;

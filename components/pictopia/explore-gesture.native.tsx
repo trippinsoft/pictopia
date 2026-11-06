@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { runOnJS, useSharedValue, withTiming } from "react-native-reanimated";
+import { gestureSample, type ReviewGestureSample } from "@/lib/pictopia/review-trace";
 import { exploreDirection } from "@/lib/pictopia/explore";
 import { DOUBLE_TAP_MS, ZOOM_SNAP, clampScale, clampTo, focalOffset, panLimit, toggleZoomAt } from "@/lib/pictopia/zoom-math";
 import type { ExploreGestureProps } from "./explore-gesture.types";
@@ -14,6 +15,8 @@ export function ExploreGesture({
   zoom,
   zoomed,
   nativeScroll,
+  motion,
+  onTrace,
   onTap,
   onStart,
   onCommit,
@@ -21,6 +24,8 @@ export function ExploreGesture({
   onZoomStart,
   onZoomEnd,
 }: ExploreGestureProps) {
+  const samples = useSharedValue<ReviewGestureSample[]>([]);
+  const panning = useSharedValue(false);
   const pinching = useSharedValue(false);
   const origin = useSharedValue({ scale: 1, x: 0, y: 0, fx: 0, fy: 0 });
   const gesture = useMemo(() => {
@@ -75,23 +80,38 @@ export function ExploreGesture({
         zoom.y.value = clampTo(origin.value.y + e.translationY, limit.y);
       });
     // One finger only: a second finger fails it, so pinching never discards.
+    const sample = (stage: string, e?: Parameters<typeof gestureSample>[1]) => {
+      "worklet";
+      return gestureSample(stage, e, motion.offset.value, locked.value, panning.value, pinching.value);
+    };
     const pan = Gesture.Pan()
         .enabled(enabled && !zoomed)
         .maxPointers(1)
         .activeOffsetX([-12, 12])
         .failOffsetY([-12, 12])
-        .blocksExternalGesture(nativeScroll)
-        .onStart(() => {
-          if (!locked.value) runOnJS(onStart)();
+        // UIScrollView may already be recognizing a touch that interrupts momentum.
+        // A failure dependency cannot transfer that touch reliably; coexist, then
+        // hold vertical scrolling on the UI thread only after horizontal intent wins.
+        .simultaneousWithExternalGesture(nativeScroll)
+        .onBegin((e) => { samples.value = [sample("begin", e)]; })
+        .onStart((e) => {
+          samples.value = [...samples.value, sample("start", e)];
+          if (locked.value) return;
+          panning.value = true;
+          motion.horizontal.value = true;
+          runOnJS(onStart)(motion.offset.value);
         })
         .onUpdate((e) => {
-          if (locked.value) return;
+          if (!panning.value || locked.value) return;
+          if (samples.value.length < 4 && !samples.value.some(value => value.stage === "move"))
+            samples.value = [...samples.value, sample("move", e)];
           // Once sideways intent wins, the photo moves freely under the thumb.
           x.value = e.translationX;
           y.value = e.translationY;
         })
         .onEnd((e, success) => {
-          if (locked.value) return;
+          samples.value = [...samples.value, { ...sample("end", e), success, direction: exploreDirection(e.translationX, 0, e.velocityX, 0) }];
+          if (!success || !panning.value || locked.value) return;
           // The horizontal recognizer has already won; vertical drift cannot switch axes.
           const direction =
             success && !pinching.value ? exploreDirection(e.translationX, 0, e.velocityX, 0) : null;
@@ -100,7 +120,14 @@ export function ExploreGesture({
             runOnJS(onCommit)(direction, e.velocityX);
           } else runOnJS(onCancel)();
         })
-        .onFinalize((_e, success) => {
+        .onFinalize((e, success) => {
+          if (onTrace) runOnJS(onTrace)([...samples.value, { ...sample("finalize", e), success }]);
+          samples.value = [];
+          // A pan that failed on vertical intent never moved a card and must not
+          // enqueue a JS spring/reset that can arrive during the next swipe.
+          if (!panning.value) return;
+          panning.value = false;
+          motion.horizontal.value = false;
           if (!success && !locked.value) runOnJS(onCancel)();
         });
     // Double tap zooms toward the tapped spot, or back to 1×. The single tap (undo, or leaving
@@ -131,6 +158,6 @@ export function ExploreGesture({
         if (success && !locked.value && !pinching.value) runOnJS(onTap)();
       });
     return Gesture.Simultaneous(pinch, Gesture.Race(zoomed ? look : pan, Gesture.Exclusive(doubleTap, tap)));
-  }, [enabled, tapEnabled, zoomed, x, y, locked, zoom, pinching, origin, nativeScroll, onTap, onStart, onCommit, onCancel, onZoomStart, onZoomEnd]);
+  }, [enabled, tapEnabled, zoomed, x, y, locked, zoom, pinching, origin, nativeScroll, motion, panning, samples, onTrace, onTap, onStart, onCommit, onCancel, onZoomStart, onZoomEnd]);
   return <GestureDetector gesture={gesture}>{children}</GestureDetector>;
 }

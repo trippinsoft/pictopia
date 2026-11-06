@@ -1,8 +1,9 @@
+import { ScreenHeader } from "@/components/pictopia/navigation-header";
 import { useCallback, useState } from "react";
 import { FlatList, Pressable, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router, Stack, useFocusEffect } from "expo-router";
-import { Icon, Loading, Text } from "@/components/pictopia/ui";
+import { Stack, useFocusEffect } from "expo-router";
+import { Loading, Text } from "@/components/pictopia/ui";
 import { MediaImage } from "@/components/pictopia/media-image";
 import { adventureStore } from "@/services/adventures";
 import { storage } from "@/services/storage";
@@ -47,17 +48,7 @@ export default function SetAside() {
     <SafeAreaView className="flex-1 bg-background" edges={["top", "bottom", "left", "right"]}>
       <Stack.Screen options={{ title: "Set aside", headerShown: false }} />
       <View className="mx-auto w-full max-w-3xl flex-1 px-5">
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/home"))}
-          className="-ml-2 mt-2 h-12 w-12 items-center justify-center"
-        >
-          <Icon name="ArrowLeft" size={22} className="text-foreground" />
-        </Pressable>
-        <Text accessibilityRole="header" className="mt-4 text-display leading-[42px] tracking-tight text-foreground">
-          Set aside
-        </Text>
+        <ScreenHeader title="Set aside" fallback="/(tabs)/home" />
         <Text className="mb-6 mt-2 text-body leading-6 text-muted-foreground">
           {items?.length
             ? `${plural(items.length, "photo")} you set aside on your adventures. They’re still in your library; restore any you’d like to keep in view.`

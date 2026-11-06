@@ -6,7 +6,7 @@ export default function Help() {
   const [replayMessage, setReplayMessage] = useState<string>();
   const email = process.env.EXPO_PUBLIC_SUPPORT_EMAIL;
   return (
-    <Page title="A little help">
+    <Page title="A little help" fallback="/settings">
       <View className="mx-auto max-w-2xl gap-6">
         <Button secondary onPress={() => { void reviewGuidance.reset().then(() => setReplayMessage("The tips will appear in your next adventure review, using your own photos.")).catch(() => setReplayMessage("The instructions couldn’t be reset. Please try again.")); }}>Replay review instructions</Button>
         {replayMessage && <Text accessibilityLiveRegion="polite" className="text-body text-muted-foreground">{replayMessage}</Text>}

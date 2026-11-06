@@ -1,9 +1,10 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 import Animated, {
   Easing,
   ReduceMotion,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withSequence,
   withTiming,
@@ -12,84 +13,84 @@ import { Icon, Text } from "./ui";
 import { plural } from "@/lib/pictopia/text";
 
 export interface ReviewTrashHandle {
-  /** A photograph has landed: the can takes the weight. */
   bounce(): void;
 }
-/** The one place a marked photograph lives until the user confirms or restores it. Quiet, in
- * the bottom row beside Favorite and Share, with a stable centre for flights to aim at. */
-export const ReviewTrash = forwardRef<
-  ReviewTrashHandle,
-  {
-    count: number;
-    disabled?: boolean;
-    highlighted?: boolean;
-    /** The can's centre in window coordinates, remeasured whenever it moves or resizes. */
-    onMeasure(centre: { x: number; y: number }): void;
-    onPress(): void;
-  }
->(function ReviewTrash({ count, disabled, highlighted, onMeasure, onPress }, ref) {
+const sizeLabel = (bytes: number) => bytes >= 1_000_000_000
+  ? `${(bytes / 1_000_000_000).toFixed(1)} GB`
+  : `${(bytes / 1_000_000).toFixed(1)} MB`;
+
+/** Persistent adventure trash. Its icon centre is the target for discarded photographs. */
+export const ReviewTrash = forwardRef<ReviewTrashHandle, {
+  count: number;
+  bytes: number;
+  unknownSizes: number;
+  disabled?: boolean;
+  highlighted?: boolean;
+  onMeasure(centre: { x: number; y: number }): void;
+  onPress(): void;
+}>(function ReviewTrash({ count, bytes, unknownSizes, disabled, highlighted, onMeasure, onPress }, ref) {
   const box = useRef<View>(null);
   const lid = useSharedValue(0);
   const pop = useSharedValue(0);
-  const shown = useRef(count);
-  useImperativeHandle(
-    ref,
-    () => ({
-      bounce() {
-        lid.value = withSequence(
-          withTiming(1, { duration: 110, easing: Easing.out(Easing.quad), reduceMotion: ReduceMotion.System }),
-          withTiming(0, { duration: 260, easing: Easing.elastic(1.6), reduceMotion: ReduceMotion.System }),
-        );
-      },
-    }),
-    [lid],
-  );
-  // The count's own small arrival, only when it actually changes.
+  const drift = useSharedValue(1);
+  const reduced = useReducedMotion();
+  const [addition, setAddition] = useState<string>();
+  const previous = useRef({ count, bytes });
+  const label = unknownSizes ? (bytes > 0 ? `≥ ${sizeLabel(bytes)}` : "Size unknown") : sizeLabel(bytes);
+  useImperativeHandle(ref, () => ({
+    bounce() {
+      lid.value = withSequence(
+        withTiming(1, { duration: 110, easing: Easing.out(Easing.quad), reduceMotion: ReduceMotion.System }),
+        withTiming(0, { duration: 260, easing: Easing.elastic(1.6), reduceMotion: ReduceMotion.System }),
+      );
+    },
+  }), [lid]);
   useEffect(() => {
-    if (shown.current === count) return;
-    shown.current = count;
+    const before = previous.current;
+    previous.current = { count, bytes };
+    if (count <= before.count && bytes <= before.bytes) return;
     pop.value = withSequence(
-      withTiming(1, { duration: 120, reduceMotion: ReduceMotion.System }),
-      withTiming(0, { duration: 180, reduceMotion: ReduceMotion.System }),
+      withTiming(1, { duration: 100, reduceMotion: ReduceMotion.System }),
+      withTiming(0, { duration: 240, reduceMotion: ReduceMotion.System }),
     );
-  }, [count, pop]);
+    if (bytes > before.bytes) {
+      setAddition(`+${sizeLabel(bytes - before.bytes)}`);
+      drift.value = 0;
+      drift.value = withTiming(1, { duration: 1000, easing: Easing.out(Easing.quad), reduceMotion: ReduceMotion.Never });
+    }
+  }, [count, bytes, pop, drift]);
   const canStyle = useAnimatedStyle(() => ({
     transform: [{ scale: 1 + lid.value * 0.22 }, { translateY: lid.value * 2 }],
   }));
-  const countStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: 1 + pop.value * 0.3 }],
+  const countStyle = useAnimatedStyle(() => ({ transform: [{ scale: 1 + pop.value * 0.24 }] }));
+  const additionStyle = useAnimatedStyle(() => ({
+    opacity: 1 - drift.value,
+    transform: [{ translateY: reduced ? 0 : drift.value * 18 }],
   }));
-  const measure = () =>
-    box.current?.measureInWindow((x, y, width, height) => {
-      if (width || height) onMeasure({ x: x + width / 2, y: y + height / 2 });
-    });
-  return (
-    <Pressable
-      ref={box}
-      onLayout={measure}
-      accessibilityRole="button"
-      accessibilityState={{ disabled }}
-      accessibilityLabel={
-        count
-          ? `Trash, ${plural(count, "photograph")} marked for deletion. Review or restore them.`
-          : "Trash, nothing marked for deletion yet"
-      }
-      disabled={disabled}
-      onPress={onPress}
-      className={`min-h-11 flex-row items-center gap-1.5 rounded-full border px-3 py-1.5 ${highlighted ? "border-primary" : "border-transparent"} ${count ? "bg-secondary/60" : ""}`}
-    >
-      <Animated.View style={canStyle}>
-        <Icon
-          name="Trash2"
-          size={24}
-          className={count ? "text-foreground" : "text-muted-foreground"}
-        />
+  const measure = () => box.current?.measureInWindow((x, y, width, height) => {
+    if (width || height) onMeasure({ x: x + width / 2, y: y + height / 2 });
+  });
+  return <Pressable
+    accessibilityRole="button"
+    accessibilityState={{ disabled }}
+    accessibilityLabel={`Trash, ${plural(count, "photograph")} marked for deletion. ${label}${unknownSizes ? `; ${plural(unknownSizes, "file size")} unavailable` : ""}. Review or restore them. Files are still in your library.`}
+    disabled={disabled}
+    onPress={onPress}
+    className={`h-12 w-12 items-center justify-center rounded-full bg-card/90 active:opacity-70 ${highlighted ? "border-2 border-sun" : ""}`}
+  >
+    <View ref={box} collapsable={false} onLayout={measure} className="h-8 w-8 items-center justify-center">
+      <Animated.View style={canStyle}><Icon name="Trash2" size={22} className="text-foreground" /></Animated.View>
+    </View>
+    {count > 0 && <View pointerEvents="none" className="absolute -right-1 -top-1">
+      <Animated.View style={countStyle}>
+        <View className="h-5 min-w-5 items-center justify-center rounded-full bg-sun px-1">
+          <Text className="text-[12px] font-bold text-primary-foreground" style={{ fontVariant: ["tabular-nums"] }}>{count}</Text>
+        </View>
       </Animated.View>
-      {count > 0 && (
-        <Animated.View style={countStyle}>
-          <Text className="text-caption text-foreground">{count}</Text>
-        </Animated.View>
-      )}
-    </Pressable>
-  );
+    </View>}
+    {bytes > 0 && <View pointerEvents="none" className="absolute -right-4 top-full mt-1 w-20"><Text numberOfLines={1} className="w-full text-center text-[11px] font-bold leading-4 text-destructive" style={{ fontVariant: ["tabular-nums"] }}>{label}</Text></View>}
+    {!!addition && <Animated.View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" className="absolute right-0 top-full mt-7 w-28 items-end" style={additionStyle}>
+      <Text numberOfLines={1} className="rounded-full bg-card px-2 py-0.5 text-caption text-foreground">{addition}</Text>
+    </Animated.View>}
+  </Pressable>;
 });

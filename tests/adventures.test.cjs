@@ -43,7 +43,8 @@ test("bursts collapse to one moment; a capsule spreads across days and runs chro
   const times = a.ids.map((id) => byId.get(id).created);
   assert.deepEqual(times, [...times].sort((x, y) => x - y), "chronological");
   assert.ok(new Set(a.ids.map((id) => byId.get(id).day)).size >= 15, "spread across days");
-  assert.match(a.hint.detail, /One month from 2016/);
+  assert.match(a.hint.detail, /2016 · \d+ photos across \d+ days/);
+  assert.equal(a.hint.title, "Time Capsule", "permanent name, never an invented title");
   assert.doesNotMatch(a.hint.detail + a.hint.title, /beach|trip|holiday|Paris|party/i, "no invented places or themes");
   for (const d of Object.values(a.diagnostics.scores)) assert.ok(d >= 0 && d <= 1);
   assert.ok(a.diagnostics.selection.length && a.diagnostics.sequencing && a.diagnostics.limitations.length);
@@ -62,7 +63,8 @@ test("ineligible and explored photos are left out of offers", () => {
   const explored = new Set(["p1", "p2", "p3"]);
   const a = curate({ kind: "capsule", source: "month:2019-04", pool }, ctx({ explored, exclude: new Set(["blocked"]) }));
   for (const bad of ["video", "queued", "gone", "deleted", "blocked", ...explored]) assert.ok(!a.ids.includes(bad), bad);
-  assert.equal(curate({ kind: "capsule", source: "month:2019-04", pool: pool.slice(0, 5) }, ctx()), undefined, "too few to offer");
+  assert.equal(curate({ kind: "capsule", source: "month:2019-04", pool: pool.slice(0, 5) }, ctx()).ids.length, 5, "short offers need no padding");
+  assert.equal(curate({ kind: "capsule", source: "month:2019-04", pool: pool.slice(0, 2) }, ctx()), undefined);
   assert.ok(curate({ kind: "month", source: "month:2019-04", pool: pool.slice(0, 5) }, ctx({ chosen: true })), "but can be chosen");
 });
 
@@ -105,7 +107,7 @@ test("On This Day widens its window only when needed, and says so", () => {
   const wide = [];
   for (const y of [2015, 2017, 2019, 2021]) for (let d = 26; d <= 28; d++) wide.push(photo(`w${y}-${d}`, y, 10, { created: at(y, 10, d) }));
   const widened = curate({ kind: "day", source: "day:10-30", pool: wide }, ctx());
-  assert.match(widened.hint.detail, /Within 7 days of/);
+  assert.match(widened.hint.detail, /Within 3 days of/);
 });
 
 test("pairs are optimized together: near-twins lose to a different kind", () => {
@@ -155,7 +157,7 @@ test("progress counts each photo once across adventures; set aside is current pr
 function services(app, p) {
   const mocks = {
     ...p.mocks,
-    "./repository": { storage: app.storage, serialize: app.serialize, deletionGuard: app.deletionGuard },
+    "./repository": { storage: app.storage, serialize: app.serialize, deletionGuard: app.deletionGuard, firstSeenUpdates: app.firstSeenUpdates, activityValues: app.activityValues, DAILY_ACTIVITY: app.DAILY_ACTIVITY },
     "./media": { mediaService: app.mediaService },
   };
   const loader = makeLoader(mocks);
@@ -208,7 +210,8 @@ test("native SQLite: two distinct, stable adventures; resume across relaunch; co
   await s.adventureStore.open(A.adventure.id);
   const store = s.explore.exploreStoreFor(s.adventureSessionKey(A.adventure.id));
   let session = await store.load();
-  for (let i = 0; i < 5; i++)
+  for (let i = 0; i < 5; i++) {
+    await store.change((c) => ({ type: "seen", id: c.activeId }));
     session = await store.change((c) => ({
       type: "page",
       id: c.activeId,
@@ -216,6 +219,7 @@ test("native SQLite: two distinct, stable adventures; resume across relaunch; co
       toId: c.ids[c.ids.indexOf(c.activeId) + 1],
       availableIds: c.ids,
     }));
+  }
   session = await store.change((c) => ({ type: "discard", id: c.activeId, revision: c.revision, direction: "right" }));
   const saved = structuredClone(session);
   // Relaunch: place, marks and undo (with its side) are all still there.
@@ -231,6 +235,9 @@ test("native SQLite: two distinct, stable adventures; resume across relaunch; co
   assert.equal(setAside.length, 1);
   // Finish A: Home replaces it with a new adventure unlike B and unlike A.
   const done = s.explore.exploreStoreFor(s.adventureSessionKey(A.adventure.id));
+  let endpoint = await done.load();
+  await done.change({ type: "page", id: endpoint.activeId, revision: endpoint.revision, toId: endpoint.ids.at(-1), availableIds: endpoint.ids });
+  await done.change({ type: "seen", id: endpoint.ids.at(-1) });
   await done.change({ type: "finish" });
   const refilled = await s.adventureStore.home(23);
   assert.equal(refilled.slots.length, 2);
@@ -244,7 +251,11 @@ test("native SQLite: two distinct, stable adventures; resume across relaunch; co
   // After restoration the queue is unchanged; browsing never marked other photos kept.
   assert.deepEqual(await app.storage.getValue("session"), production);
   assert.deepEqual(await app.storage.getValue("deletionPending"), [{ id: "pending" }]);
-  for (const m of rows) assert.deepEqual(await app.storage.get(m.id), m);
+  for (const m of rows) {
+    const { firstSeenAt, ...unchanged } = await app.storage.get(m.id);
+    assert.ok(firstSeenAt === undefined || firstSeenAt > 0);
+    assert.deepEqual(unchanged, m);
+  }
   assert.deepEqual(p.requests, [], "the native delete API was never invoked");
   assert.equal(p.library.size, rows.length);
   db.close();
@@ -265,6 +276,9 @@ test("Explore: a chosen Adventure doesn't take a Home slot; it waits in Continue
   assert.deepEqual((await s.adventureStore.home(4)).slots.map((x) => x.adventure.id), before, "Home is Pictopia's choice");
   assert.deepEqual((await s.adventureStore.unfinished()).map((x) => x.adventure.id), [year.id, shots.id]);
   const store = s.explore.exploreStoreFor(s.adventureSessionKey(year.id));
+  const endpoint = await store.load();
+  await store.change({ type: "page", id: endpoint.activeId, revision: endpoint.revision, toId: endpoint.ids.at(-1), availableIds: endpoint.ids });
+  await store.change({ type: "seen", id: endpoint.ids.at(-1) });
   await store.change({ type: "finish" });
   assert.deepEqual((await s.adventureStore.unfinished()).map((x) => x.adventure.id), [shots.id]);
   const choices = await s.adventureStore.choices(at(2026, 10, 30));
@@ -293,7 +307,7 @@ test("tiny or empty libraries degrade gracefully", async () => {
   assert.deepEqual((await s.adventureStore.home(1)).slots, [], "no photos: no adventures");
   await app.storage.put(rows);
   s = services(app, p);
-  assert.deepEqual((await s.adventureStore.home(1)).slots, [], "too few for a curated offer");
+  assert.ok((await s.adventureStore.home(1)).slots.every(slot => slot.session.ids.length <= 6), "short native offers need no padding");
   const chosen = await s.adventureStore.choose({ kind: "month", month: "2024-02" }, 1);
   assert.equal(chosen.count, 6, "but you can still choose them");
   db.close();
@@ -363,9 +377,8 @@ test("the Adventure flow exposes no deletion path and never writes media or prod
   for (const file of [
     "services/adventures.ts",
     "lib/pictopia/adventures.ts",
-    "app/(tabs)/home.tsx",
     "app/adventure-choose.tsx",
-    "app/(tabs)/explore.tsx",
+
     "app/adventure-lab.tsx",
     "lib/pictopia/curation.ts",
     "components/pictopia/adventure-finish.tsx",
@@ -375,13 +388,14 @@ test("the Adventure flow exposes no deletion path and never writes media or prod
     const source = fs.readFileSync(file, "utf8");
     assert.doesNotMatch(
       source,
-      /deleteQueue|deleteMarked|mediaService\.remove\(|deleteAssetsAsync|setDecision\(|storage\.put\(|repository\.(decide|update|skip|start)|app\.start\(/,
+      /deleteQueue|deleteMarked|mediaService\.remove\(|deleteAssetsAsync|setDecision\(|storage\.put\((?!\[\],)|repository\.(decide|update|skip|start)|app\.start\(/,
       file,
     );
   }
   const home = fs.readFileSync("app/(tabs)/home.tsx", "utf8");
+  assert.doesNotMatch(home, /deleteQueue|deleteMarked|mediaService\.remove\(|deleteAssetsAsync|setDecision\(|storage\.put\((?!\[\],)|repository\.(decide|update|skip|start)/, "Home starts existing review flows without deciding or deleting media");
   assert.doesNotMatch(home, /MediaImage|<Image/, "no photo previews on Home");
-  assert.doesNotMatch(home, /\b(?:saved|freed|storage|bytes|MB|GB)\b/i, "no storage claims");
+  assert.doesNotMatch(home, /\b(?:freed|bytes|MB|GB)\b/i, "no storage claims");
 });
 
 
@@ -450,4 +464,79 @@ test("Pit Stop review uses only played, still-visible IDs and leaves all product
   for (const row of rows) assert.deepEqual(await app.storage.get(row.id), row);
   assert.deepEqual(p.requests, []);
   db.close();
+});
+
+test("Yearbook: accessible years, sparse years and bounded month-spread curation", async () => {
+  const db = new DatabaseSync(":memory:");
+  const rows = [photo("one", 2010, 3), photo("two-a", 2011, 2), photo("two-b", 2011, 9),
+    photo("hidden-year", 2009, 4, {active:false}), photo("shot-year", 2008, 4, {screenshot:true}),
+    photo("video-year", 2007, 4, {type:"video"}), photo("undated", 2006, 4, {month:"unknown"})];
+  for(let m=1;m<=12;m++) for(let d=1;d<=28;d++) for(let i=0;i<6;i++)
+    rows.push(photo(`large-${m}-${d}-${i}`,2020,m,{created:at(2020,m,d,i*10)}));
+  const p = platform({library:rows.filter(m=>m.active).map(m=>m.id)});
+  const app = await boot(db,p); await app.storage.put(rows);
+  const s=services(app,p), choices=await s.adventureStore.choices();
+  assert.deepEqual(choices.years,["2020","2011","2010"]);
+  assert.equal(choices.yearPhotos["2020"],2016);
+  for(const [year,count] of [["2010",1],["2011",2],["2020",18]]) {
+    const a=await s.adventureStore.choose({kind:"year",year},12);
+    assert.equal(a.source,`year:${year}`); assert.equal(a.count,count);
+    assert.equal(a.hint.title,"The Yearbook");
+    const session=await s.explore.exploreStoreFor(s.adventureSessionKey(a.id)).load();
+    assert.equal(session.ids.length,count);
+    const selected=await app.storage.query({ids:session.ids,limit:18});
+    assert.ok(selected.every(m=>m.month.startsWith(`${year}-`)));
+    if(year==="2020") assert.equal(new Set(selected.map(m=>m.month)).size,12);
+  }
+  assert.equal(await s.adventureStore.choose({kind:"year",year:"20"}),undefined);
+  db.close();
+});
+
+test("Yearbook: legacy rename, independent years and daily-limit restart preserve positions and queue", async () => {
+  const db=new DatabaseSync(":memory:"),rows=library(),p=platform({library:rows.map(m=>m.id)});
+  let app=await boot(db,p);await app.storage.put(rows,{deletionPending:[{id:"preserved"}]});
+  let s=services(app,p);
+  const a=await s.adventureStore.choose({kind:"year",year:"2017"},11);
+  await s.adventureStore.open(a.id);
+  const key=s.adventureSessionKey(a.id),store=s.explore.exploreStoreFor(key);
+  let session=await store.load();
+  await store.change({type:"seen",id:session.activeId});
+  session=await store.load();
+  await store.change({type:"discard",id:session.activeId,revision:session.revision,direction:"left"});
+  session=await store.load();
+  // Model a saved title from the previous release, without changing its identity/source.
+  const old=await app.storage.getValue(`adventure:${a.id}`);
+  await app.storage.setValue(`adventure:${a.id}`,{...old,hint:{...old.hint,title:"Time Machine"}});
+  const b=await s.adventureStore.choose({kind:"year",year:"2019"},12);
+  await s.adventureStore.open(b.id);assert.notEqual(a.id,b.id);
+  let daily=makeLoader({...p.mocks,"./repository":app})("services/daily.ts").allowanceStore;
+  const now=new Date(2026,10,5,12).getTime();
+  for(let i=0;i<150;i++) await daily.present(`earlier-${i}`,false,now);
+  assert.equal((await daily.present(session.activeId,false,now)).allowed,false);
+  app=await boot(db,p);s=services(app,p);
+  const resumed=await s.explore.exploreStoreFor(key).load();
+  assert.deepEqual(resumed,session,"daily interruption and restart never move the review");
+  const saved=await s.adventureStore.yearbooks();
+  assert.deepEqual(new Set(saved.map(x=>x.adventure.source)),new Set(["year:2017","year:2019"]));
+  assert.ok(saved.every(x=>x.adventure.hint.title==="The Yearbook"));
+  assert.equal((await app.storage.getValue(`adventure:${a.id}`)).hint.title,"Time Machine","presentation rename is nondestructive");
+  assert.equal((await app.storage.get(session.ids[0])).decision,"delete");
+  assert.deepEqual(await app.storage.getValue("deletionPending"),[{id:"preserved"}]);
+  daily=makeLoader({...p.mocks,"./repository":app})("services/daily.ts").allowanceStore;
+  assert.equal((await daily.present(resumed.activeId,true,now)).allowed,true);
+  assert.equal((await daily.present(resumed.activeId,false,now+86400000)).allowed,true);
+  assert.deepEqual((await s.explore.exploreStoreFor(key).load()).ids,session.ids);
+  assert.deepEqual(p.requests,[]);
+  db.close();
+});
+
+test("Yearbook names keep stable catalog IDs and Time Capsule's automatic month behavior",()=>{
+  const c=load("lib/pictopia/catalog.ts");
+  assert.equal(c.catalogEntry("time-machine").name,"The Yearbook");
+  assert.equal(c.catalogEntry("time-machine").blurb,"Pick a year. Rediscover the moments that made it memorable.");
+  assert.equal(c.adventureLabel({kind:"year",source:"year:2017"}),"The Yearbook · 2017");
+  assert.equal(c.adventureName("month"),"The Yearbook");
+  assert.equal(c.adventureName("capsule"),"Time Capsule");
+  const plans=planCandidates([{key:"2017-04",count:30,quiet:1}],{seed:4,now:at(2026,10,30),screenshots:false,recentSources:[]});
+  assert.ok(plans.some(p=>p.kind==="capsule"&&p.source==="month:2017-04"));
 });

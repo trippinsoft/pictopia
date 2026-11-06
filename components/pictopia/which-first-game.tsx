@@ -1,5 +1,6 @@
+import { NavigationBack } from "./navigation-header";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { AccessibilityInfo, AppState, Platform, Pressable, View } from "react-native";
+import { AccessibilityInfo, AppState, Platform, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { Button, Icon, Text } from "./ui";
 import { MediaImage, type MediaSettled } from "./media-image";
@@ -20,7 +21,7 @@ export function WhichFirstGame({ rounds, photos, onFinish, onExit }: { rounds: O
   }
   return <View className="flex-1">
     <View className="min-h-12 flex-row items-center gap-2">
-      <Pressable accessibilityRole="button" accessibilityLabel="Back to Pit Stops" onPress={onExit} className="h-11 w-11 items-center justify-center"><Icon name="ChevronLeft" size={24} className="text-foreground" /></Pressable>
+      <NavigationBack label="Back to Pit Stops" onPress={onExit} />
       <Text accessibilityRole="header" className="flex-1 text-headline text-foreground">Which came first?</Text>
       <Text accessibilityLabel={`Question ${index + 1} of ${rounds.length}`} className="text-caption text-muted-foreground">{index + 1} of {rounds.length}</Text>
     </View>

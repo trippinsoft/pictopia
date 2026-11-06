@@ -27,7 +27,7 @@ async function fresh(items) {
   const all = await storage.query({ limit: 1000 });
   await storage.put(
     all.map((m) => ({ ...m, active: false })),
-    { session: null, groups: [] },
+    { session: null, sessionHistory: [], groups: [] },
   );
   await storage.put(items);
 }
@@ -60,7 +60,7 @@ test("Smart Sessions preserve decisions, timers, real recommendations and contin
     },
   );
   await t.test(
-    "Memory Lane is chronological; starting another collection resumes exact position and order",
+    "Memory Lane is chronological; reopening it resumes exact position and order",
     async () => {
       await fresh([asset("new", 30), asset("old", 10), asset("middle", 20)]);
       const s = await repository.start("memory", defaultPreferences, false, 2);
@@ -68,7 +68,7 @@ test("Smart Sessions preserve decisions, timers, real recommendations and contin
       await repository.decide("keep");
       await repository.addTime(s.id, 1000);
       await storage.init();
-      const resumed = await repository.start("random", defaultPreferences, false, 10);
+      const resumed = await repository.start("memory", defaultPreferences, false, 10);
       assert.equal(resumed.id, s.id);
       assert.equal(resumed.position, 1);
       assert.equal(resumed.elapsedMs, 1000);

@@ -27,6 +27,7 @@ export function DiscardTray({
   busy,
   onRestore,
   onClose,
+  onReview,
 }: {
   visible: boolean;
   /** Marked photographs in the adventure's own order. */
@@ -35,6 +36,8 @@ export function DiscardTray({
   busy: boolean;
   onRestore(id: string): void;
   onClose(): void;
+  /** Opens Ready to delete, where marks can be confirmed. */
+  onReview?(): void;
 }) {
   const reduced = useReducedMotion();
   const { height } = useWindowDimensions();
@@ -98,7 +101,7 @@ export function DiscardTray({
                 <Icon name="Trash2" size={26} className="text-muted-foreground" />
                 <Text className="text-body text-foreground">Nothing discarded yet.</Text>
                 <Text className="text-center text-caption text-muted-foreground">
-                  Swipe a photograph sideways and it lands here.
+                  Swipe a photo or video sideways and it lands here.
                 </Text>
               </View>
             ) : (
@@ -194,6 +197,13 @@ export function DiscardTray({
                     </Button>
                   </View>
                 </View>
+                {onReview && (
+                  <View className="mt-3">
+                    <Button icon="Trash2" disabled={busy} onPress={onReview}>
+                      Review & delete
+                    </Button>
+                  </View>
+                )}
               </View>
             )}
             </View>
@@ -201,7 +211,7 @@ export function DiscardTray({
           {inspecting && (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Close the larger photograph"
+              accessibilityLabel="Close the larger preview"
               onPress={() => setInspecting(undefined)}
               style={StyleSheet.absoluteFill}
               className="bg-background/95 p-4"
@@ -211,7 +221,7 @@ export function DiscardTray({
               ) : (
                 <View className="flex-1 items-center justify-center">
                   <Text className="text-body text-muted-foreground">
-                    This photograph can’t be shown right now.
+                    This item can’t be shown right now.
                   </Text>
                 </View>
               )}

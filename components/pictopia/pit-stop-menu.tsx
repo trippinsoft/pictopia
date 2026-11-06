@@ -1,19 +1,13 @@
 import { useCallback, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
-import { Image } from "expo-image";
 import { RowGroup } from "./art-list";
 import { Icon, Text } from "./ui";
 import { usePictopia } from "./provider";
 import { PIT_STOPS, unavailable, type PitStop } from "@/lib/pictopia/pitstops";
 import { pitStopStore } from "@/services/pitstops";
 
-const PIT_STOP_ART: Record<PitStop, number> = {
-  guessYear: require("@/assets/images/pit-stops/guess-year.webp"),
-  whereWasThis: require("@/assets/images/pit-stops/where-was-this.webp"),
-  whichFirst: require("@/assets/images/pit-stops/which-first.webp"),
-  memoryMatch: require("@/assets/images/pit-stops/memory-match.webp"),
-};
+import { Illustration } from "./illustration";
 
 export function PitStopMenu({ compact = false }: { compact?: boolean }) {
   const app = usePictopia();
@@ -37,7 +31,7 @@ export function PitStopMenu({ compact = false }: { compact?: boolean }) {
         accessibilityState={{ disabled: !!reason }} disabled={!!reason} onPress={open}
         className="min-w-0 w-[48%] rounded-2xl border border-border bg-card p-3 active:opacity-70">
         <View className="mb-3 aspect-square w-full overflow-hidden rounded-xl">
-          <Image source={PIT_STOP_ART[game]} style={StyleSheet.absoluteFill} contentFit="cover" accessible={false} />
+          <Illustration name={game} square />
         </View>
         <Text className="text-h6 text-foreground">{info.title}</Text>
         <Text className="mt-1 text-caption leading-[17px] text-muted-foreground">{reason ?? info.subtitle}</Text>
@@ -47,7 +41,7 @@ export function PitStopMenu({ compact = false }: { compact?: boolean }) {
         accessibilityState={{ disabled: !!reason }} disabled={!!reason} onPress={open}
         className={`min-h-[108px] flex-row items-center gap-4 px-4 py-3 active:bg-secondary ${i === 0 ? "" : "border-t border-border"}`}>
         <View className="h-20 w-20 overflow-hidden rounded-2xl">
-          <Image source={PIT_STOP_ART[game]} style={StyleSheet.absoluteFill} contentFit="cover" accessible={false} />
+          <Illustration name={game} square />
         </View>
         <View className="flex-1">
           <Text className="text-h5 text-foreground">{info.title}</Text>

@@ -94,7 +94,7 @@ test("purchase adapter uses localized store products and only real SDK entitleme
     "react-native-purchases": f.sdk,
     "react-native": { Platform: { OS: "ios" } },
   });
-  const { purchaseService } = load("services/purchases.native.ts");
+  const { purchaseService } = load("services/purchases.revenuecat.ts");
   let current;
   const stop = await purchaseService.init((e) => (current = e));
   assert.equal(current.active, false);
@@ -119,7 +119,7 @@ test("store cancellation and pending approval never unlock Pro", async () => {
     "react-native-purchases": f.sdk,
     "react-native": { Platform: { OS: "ios" } },
   });
-  const service = load("services/purchases.native.ts").purchaseService;
+  const service = load("services/purchases.revenuecat.ts").purchaseService;
   await service.init(() => {});
   await service.offers();
   await assert.rejects(() => service.purchase("monthly"), /cancelled/);

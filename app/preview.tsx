@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from "react";
-import { View, Pressable, ScrollView, Platform } from "react-native";
+import { ScreenHeader } from "@/components/pictopia/navigation-header";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { View, Pressable, ScrollView, Platform, AppState } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router, useLocalSearchParams } from "expo-router";
+import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import { LivePhoto } from "@/components/pictopia/live-photo";
+import { usePhotoEncounter } from "@/components/pictopia/use-photo-encounter";
 import { ZoomPhoto } from "@/components/pictopia/zoom-photo";
 
 import { useVideoPlayer, VideoView } from "expo-video";
@@ -10,16 +12,20 @@ import { Text, Icon, Empty, Loading, Button } from "@/components/pictopia/ui";
 import { usePictopia } from "@/components/pictopia/provider";
 import { repository, storage } from "@/services/repository";
 import { mediaService } from "@/services/media";
+import { CLOUD_ONLY } from "@/services/media-errors";
 import { Media } from "@/lib/pictopia/types";
 import { bytes } from "@/lib/pictopia/logic";
-function Video({ uri, autoplay }: { uri: string; autoplay: boolean }) {
+function Video({ uri, autoplay, onReady }: { uri: string; autoplay: boolean; onReady(): void }) {
   const player = useVideoPlayer(uri, (p) => {
     p.loop = false;
     if (autoplay) p.play();
   });
+  useFocusEffect(useCallback(() => () => player.pause(), [player]));
+  useEffect(() => { const sub = AppState.addEventListener("change", state => { if (state !== "active") player.pause(); }); return () => sub.remove(); }, [player]);
   return (
     <VideoView
       player={player}
+      onFirstFrameRender={onReady}
       style={videoStyle}
       nativeControls
       contentFit="contain"
@@ -30,12 +36,17 @@ function Video({ uri, autoplay }: { uri: string; autoplay: boolean }) {
 export default function Preview() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const app = usePictopia();
+  const downloadGeneration = useRef(0);
+  useEffect(() => () => { downloadGeneration.current++; }, [id]);
+  const [loadedId, setLoadedId] = useState<string>();
+  usePhotoEncounter(id, loadedId === id, undefined, undefined, app.setError);
   const [m, setM] = useState<Media>(),
     [uri, setUri] = useState<string>(),
     [error, setError] = useState(""),
     [details, setDetails] = useState(false),
     [motion, setMotion] = useState(false),
-    [changing, setChanging] = useState(false);
+    [changing, setChanging] = useState(false),
+    [downloading, setDownloading] = useState(false);
   async function change(decision: "keep" | "delete") {
     if (!m) return;
     setChanging(true);
@@ -54,16 +65,17 @@ export default function Preview() {
       .get(id)
       .then(async (item) => {
         if (!item) throw Error("This item is no longer available.");
-        const resolved = await mediaService.resolve(item).catch((e: Error) => {
+        if (active) setM(item);
+        const resolved = await mediaService.resolve(item).catch(async (e: Error) => {
           // Native photos display straight from the library (including iCloud originals),
           // so a missing local file only matters for video playback.
           if (Platform.OS !== "web" && item.type === "photo")
-            return { uri: item.uri } as { uri: string; size?: number; systemFavorite?: boolean };
+            return { uri: item.uri, size: await mediaService.size(item) } as { uri: string; size?: number; systemFavorite?: boolean };
           throw e;
         });
         const updated = {
           ...item,
-          size: resolved.size ?? item.size,
+          size: resolved.size ?? item.size ?? await mediaService.size(item),
           systemFavorite: resolved.systemFavorite ?? item.systemFavorite,
         };
         if (active) {
@@ -73,7 +85,7 @@ export default function Preview() {
         if ("size" in resolved)
           await repository.update(item.id, (latest) => ({
             ...latest,
-            size: resolved.size ?? latest.size,
+            size: latest.modified === item.modified ? updated.size ?? latest.size : latest.size,
             systemFavorite: resolved.systemFavorite ?? latest.systemFavorite,
           }));
       })
@@ -87,19 +99,12 @@ export default function Preview() {
   return (
     <SafeAreaView className="flex-1 bg-background">
       <View className="mx-auto w-full max-w-6xl flex-1">
-        <View className="flex-row items-center justify-between px-4 py-3">
-          <Pressable
-            accessibilityLabel="Close preview"
-            onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/swipe"))}
-            className="p-3"
-          >
-            <Icon name="X" size={25} className="text-foreground" />
-          </Pressable>
-          <Text className="text-h5 text-foreground">
-            {m?.type === "video" ? "Video preview" : "Photo preview"}
-          </Text>
-          <View className="flex-row">
+        <View className="px-5">
+          <ScreenHeader title={m?.type === "video" ? "Video preview" : "Photo preview"} fallback="/(tabs)/swipe" action={<View className="flex-row">
             <Pressable
+              accessibilityRole="button"
+              disabled={!m}
+              accessibilityState={{ disabled: !m }}
               accessibilityLabel={m?.favorite ? "Remove app favorite" : "Add app favorite"}
               onPress={() => {
                 if (m)
@@ -108,7 +113,7 @@ export default function Preview() {
                     .then(app.refresh)
                     .catch((e) => app.setError(e.message));
               }}
-              className="p-3"
+              className={`h-12 w-12 items-center justify-center rounded-full bg-card active:opacity-70 ${!m ? "opacity-40" : ""}`}
             >
               <Icon
                 name="Heart"
@@ -117,29 +122,37 @@ export default function Preview() {
               />
             </Pressable>
             <Pressable
+              accessibilityRole="button"
+              disabled={!m}
+              accessibilityState={{ disabled: !m }}
               accessibilityLabel="Media details"
               onPress={() => setDetails(!details)}
-              className="p-3"
+              className={`h-12 w-12 items-center justify-center rounded-full bg-card active:opacity-70 ${!m ? "opacity-40" : ""}`}
             >
               <Icon name="Info" size={23} className="text-muted-foreground" />
             </Pressable>
-          </View>
+          </View>} />
         </View>
         <View className="flex-1 overflow-hidden">
           {error ? (
             <Empty
               icon="CloudOff"
-              title="This memory isn’t available locally"
+              title={m?.type === "video" ? "Video unavailable" : "This photo isn’t available locally"}
               description={error}
+              action={m?.type === "video" && error === CLOUD_ONLY ? <Button disabled={downloading} onPress={() => {
+                const ticket = ++downloadGeneration.current;
+                setDownloading(true);
+                void mediaService.resolve(m, { download: true }).then(value => { if (ticket === downloadGeneration.current) { setUri(value.uri); setError(""); } }).catch(e => { if (ticket === downloadGeneration.current) setError(e instanceof Error ? e.message : "Video download failed. Try again."); }).finally(() => { if (ticket === downloadGeneration.current) setDownloading(false); });
+              }}>{downloading ? "Downloading from iCloud…" : "Download video from iCloud"}</Button> : undefined}
             />
           ) : !m || !uri ? (
             <Loading />
           ) : m.type === "video" ? (
-            <Video uri={uri} autoplay={app.prefs.autoplay} />
+            <Video uri={uri} autoplay={app.prefs.autoplay} onReady={() => setLoadedId(m.id)} />
           ) : motion && m.livePhoto ? (
             <LivePhoto id={m.id} />
           ) : (
-            <ZoomPhoto media={m} />
+            <ZoomPhoto media={m} onSettled={state => setLoadedId(state === "loaded" ? m.id : undefined)} />
           )}
         </View>
         {m?.livePhoto && Platform.OS === "ios" && (
@@ -159,7 +172,7 @@ export default function Preview() {
             <Text className="mt-3 text-body leading-7 text-muted-foreground">
               {new Date(m.created).toLocaleString()}
               {"\n"}
-              {m.width} × {m.height} • {bytes(m.size)}
+              {m.width} × {m.height}{m.size !== undefined ? ` • ${bytes(m.size)}` : ""}
               {m.duration ? `\n${Math.round(m.duration)} seconds` : ""}
               {"\n"}Favorites are saved in Pictopia; your original media is not modified.
             </Text>

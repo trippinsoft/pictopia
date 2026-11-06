@@ -18,7 +18,7 @@ export function useAdventures() {
       alive.current = false;
     };
   }, []);
-  const hasPhotos = app.ready && app.stats.photos > 0;
+  const hasPhotos = app.ready && app.stats.total > 0;
   const load = useCallback(async () => {
     if (!hasPhotos) return;
     if (loading.current) {
@@ -45,7 +45,10 @@ export function useAdventures() {
   }, [hasPhotos]);
   /** "Show me two more". Reports a new pair, exhaustion, or an error separately. */
   const refresh = useCallback(async () => {
-    if (!hasPhotos || loading.current) return "busy" as const;
+    if (!hasPhotos) return "busy" as const;
+    // Home may still be preparing its pair; wait for it rather than ignoring the tap.
+    for (let waited = 0; loading.current && waited < 15000; waited += 100) await new Promise((resolve) => setTimeout(resolve, 100));
+    if (loading.current) return "busy" as const;
     loading.current = true;
     try {
       const next = await adventureStore.refresh();

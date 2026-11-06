@@ -6,6 +6,7 @@ import Icon, { IconName } from "@/lib/icons/LucideIcon";
 import { usePictopia } from "./provider";
 import { useTheme } from "@/theming/ThemeProvider";
 import { router } from "expo-router";
+import { ScreenHeader } from "./navigation-header";
 export { Text, Icon };
 export function Button({
   children,
@@ -50,44 +51,33 @@ export function Page({
   title,
   subtitle,
   scroll = true,
-  compactHeader = false,
+  fallback = "/(tabs)/home",
+  showBack = true,
+  showQueue = false,
 }: {
   children: React.ReactNode;
   title: string;
   subtitle?: string;
   scroll?: boolean;
   compactHeader?: boolean;
+  fallback?: string;
+  showBack?: boolean;
+  showQueue?: boolean;
 }) {
   const app = usePictopia();
   const body = (
     <View className={`mx-auto w-full max-w-6xl px-5 md:px-10 ${scroll ? "pb-8" : "flex-1 pb-3"}`}>
-      <View
-        className={`${compactHeader ? "mb-4 mt-4" : "mb-7 mt-7"} flex-row items-center justify-between`}
-      >
-        <View className="flex-1 pr-3">
-          <Text className={`${compactHeader ? "text-h3" : "text-h1"} text-foreground`}>
-            {title}
-          </Text>
-          {!!subtitle && <Text className="mt-2 text-body text-muted-foreground">{subtitle}</Text>}
-        </View>
-        <Pressable
-          accessibilityLabel="Review deletion queue"
-          onPress={() => router.push("/queue")}
-          className="h-12 w-12 items-center justify-center rounded-full border border-border bg-card"
-        >
-          <Icon name="Trash2" size={21} className="text-foreground" />
-          {app.stats.pending > 0 && (
-            <View className="absolute -right-1 -top-1 min-w-5 items-center rounded-full bg-destructive px-1 py-0.5">
-              <Text className="text-caption text-destructive-foreground">{app.stats.pending}</Text>
-            </View>
-          )}
-        </Pressable>
-      </View>
       {children}
     </View>
   );
   return (
     <SafeAreaView edges={["top", "left", "right"]} className="flex-1 bg-background">
+      <View className="mx-auto w-full max-w-6xl px-5 md:px-10">
+        <ScreenHeader title={title} subtitle={subtitle} fallback={fallback} showBack={showBack} action={showQueue ? <Pressable accessibilityRole="button" accessibilityLabel={`Review deletion queue, ${app.stats.pending} pending`} onPress={() => router.push("/queue")} className="h-12 w-12 items-center justify-center rounded-full bg-card active:opacity-70">
+          <Icon name="Trash2" size={21} className="text-foreground" />
+          {app.stats.pending > 0 && <View className="absolute -right-1 -top-1 min-w-5 items-center rounded-full bg-destructive px-1 py-0.5"><Text className="text-caption text-destructive-foreground">{app.stats.pending}</Text></View>}
+        </Pressable> : undefined} />
+      </View>
       {scroll ? <ScrollView contentContainerStyle={scrollStyle}>{body}</ScrollView> : body}
     </SafeAreaView>
   );

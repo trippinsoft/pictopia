@@ -1,4 +1,5 @@
-import { Storage } from "./storage.types";
+import { calendarMonth } from "@/lib/pictopia/library-progress";
+import { Storage, CalendarProgress } from "./storage.types";
 import { Media, Stats, Month } from "@/lib/pictopia/types";
 import { matches } from "@/lib/pictopia/logic";
 let db: IDBDatabase;
@@ -43,6 +44,62 @@ export const storage: Storage = {
       r.onsuccess = () => resolve(r.result);
       r.onerror = () => reject(r.error);
     });
+  },
+  async migrateSeen() {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction("media", "readwrite");
+      const cursor = tx.objectStore("media").openCursor();
+      cursor.onsuccess = () => {
+        const c = cursor.result;
+        if (!c) return;
+        const m = c.value as Media;
+        if (m.type === "photo" && !m.firstSeenAt && (m.decision || m.deletedAt)) c.update({ ...m, firstSeenAt: Date.now() });
+        c.continue();
+      };
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  },
+  async progress() {
+    const result = { accessible: 0, accessibleExplored: 0, explored: 0, remaining: 0, pending: 0, deleted: 0, deletedBytes: 0, unknownSizes: 0 };
+    await each(m => {
+      if (m.type !== "photo") return;
+      if (m.firstSeenAt) result.explored++;
+      if (m.active && !m.deletedAt) {
+        result.accessible++;
+        if (m.firstSeenAt) result.accessibleExplored++;
+        else result.remaining++;
+      }
+      if (m.active && m.decision === "delete" && !m.deletedAt) result.pending++;
+      if (m.deletedAt) {
+        result.deleted++;
+        const size = m.size ?? m.scan?.size;
+        result.deletedBytes += size ?? 0;
+        if (size === undefined) result.unknownSizes++;
+      }
+    });
+    return result;
+  },
+  async videoProgress() {
+    const result = { total: 0, explored: 0, remaining: 0 };
+    await each(m => {
+      if (m.type !== "video" || !m.active || m.deletedAt) return;
+      result.total++;
+      if (m.firstSeenAt) result.explored++; else result.remaining++;
+    });
+    return result;
+  },
+  async calendarProgress(screenshotsOnly = false) {
+    const months = new Map<string, CalendarProgress>();
+    await each(m => {
+      if (!m.active || m.deletedAt || m.type !== "photo" || (screenshotsOnly && !m.screenshot)) return;
+      const key = calendarMonth(m);
+      const row = months.get(key) ?? { key, total: 0, explored: 0, remaining: 0, coverId: m.id };
+      row.total++;
+      if (m.firstSeenAt) row.explored++; else row.remaining++;
+      months.set(key, row);
+    });
+    return [...months.values()].sort((a, b) => b.key.localeCompare(a.key));
   },
   async get(id) {
     return await req(db.transaction("media", "readonly").objectStore("media").get(id));

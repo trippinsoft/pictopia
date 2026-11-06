@@ -4,6 +4,7 @@ import {
   DELETION_ATTEMPT,
   DELETION_PENDING,
   CONFIRMED_CLEANUP,
+  deletionActivityValues,
 } from "./repository";
 import { MediaService } from "./media.types";
 import { summarize, verdict } from "@/lib/pictopia/deletion";
@@ -55,7 +56,9 @@ async function commit(attemptId: string | null | undefined, outcome: Outcome): P
     const cleanup = (await storage.getValue<{ count: number; estimatedBytes: number }>(
       CONFIRMED_CLEANUP,
     )) ?? { count: 0, estimatedBytes: 0 };
+    const daily = await deletionActivityValues(confirmed.length);
     await storage.put(updates, {
+      ...daily,
       ...(attempt ? { [DELETION_ATTEMPT]: null } : {}),
       [DELETION_PENDING]: nextPending,
       ...(confirmed.length

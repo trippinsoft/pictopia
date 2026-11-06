@@ -40,7 +40,7 @@ export const artForKind = (kind: AdventureKind | undefined): ArtName =>
             : kind === "pitstop"
               ? "gameResult"
               : "timeMachine";
-/** A season for a calendar month or a year (used to vary Time Machine rows). */
+/** A season for a calendar month or a year (used to vary The Yearbook rows). */
 export const seasonFor = (month: number): ArtName =>
   month <= 2 || month === 12 ? "winter" : month <= 5 ? "spring" : month <= 8 ? "summer" : "autumn";
 
@@ -57,7 +57,7 @@ export const Illustration = memo(function Illustration({
   accessibilityLabel?: string;
 }) {
   const { theme } = useTheme();
-  const c = theme.name === "dark" ? darkArt : lightArt;
+  const c = theme.name === "dark" || theme.name === "adventure" ? darkArt : lightArt;
   return (
     <Svg
       width="100%"

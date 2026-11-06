@@ -3,6 +3,7 @@ import * as SQLite from "expo-sqlite";
 import { Storage } from "./storage.types";
 import { Query, Stats, Month } from "@/lib/pictopia/types";
 let db: SQLite.SQLiteDatabase;
+const calendarKey = "CASE WHEN created>0 AND length(month)=7 AND month GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]' AND substr(month,6,2) BETWEEN '01' AND '12' THEN month ELSE 'unknown' END";
 function conditions(q: Query) {
   let sql = "active=1";
   const args: (string | number)[] = [];
@@ -12,7 +13,17 @@ function conditions(q: Query) {
   };
   if (q.before !== undefined) add("created<?", q.before);
   if (q.blurry) add("json_extract(data,'$.scan.sharpness')<30");
-  if (q.month) add("month=?", q.month);
+  if (q.month) {
+    if (/^\d{4}-(0[1-9]|1[0-2])$/.test(q.month)) { add("month=?", q.month); add("created>0"); }
+    else add(`${calendarKey}=?`, q.month);
+  }
+  if (q.year) add(`${calendarKey} LIKE ?`, `${q.year}-%`);
+  if (q.unseen) add("json_extract(data,'$.firstSeenAt') IS NULL");
+  if (q.cursor) {
+    const comparison = q.order === "oldest" ? ">" : "<";
+    add(`(created${comparison}? OR (created=? AND id${comparison}?))`);
+    args.push(q.cursor.created, q.cursor.created, q.cursor.id);
+  }
   if (q.day) add("day=?", q.day);
   if (q.type) add("type=?", q.type);
   if (q.decision) add("decision=?", q.decision);
@@ -41,6 +52,35 @@ export const storage: Storage = {
     await db.execAsync(
       `PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS media(id TEXT PRIMARY KEY NOT NULL,data TEXT NOT NULL,created REAL,month TEXT,day TEXT,type TEXT,decision TEXT,favorite INTEGER,screenshot INTEGER,size REAL,active INTEGER,scanned INTEGER,hash TEXT);CREATE TABLE IF NOT EXISTS preferences(key TEXT PRIMARY KEY,value TEXT NOT NULL);CREATE INDEX IF NOT EXISTS media_date ON media(active,created DESC);CREATE INDEX IF NOT EXISTS media_month ON media(active,month);CREATE INDEX IF NOT EXISTS media_decision ON media(active,decision);CREATE INDEX IF NOT EXISTS media_hash ON media(hash);PRAGMA user_version=1;`,
     );
+  },
+  async migrateSeen() {
+    await db.runAsync("UPDATE media SET data=json_set(data,'$.firstSeenAt',?) WHERE type='photo' AND json_extract(data,'$.firstSeenAt') IS NULL AND (decision IS NOT NULL OR json_extract(data,'$.deletedAt') IS NOT NULL)", Date.now());
+  },
+  async progress() {
+    const row = await db.getFirstAsync<import("./storage.types").LibraryProgress>(`SELECT
+      COALESCE(SUM(active=1 AND json_extract(data,'$.deletedAt') IS NULL),0) accessible,
+      COALESCE(SUM(active=1 AND json_extract(data,'$.deletedAt') IS NULL AND json_extract(data,'$.firstSeenAt') IS NOT NULL),0) accessibleExplored,
+      COALESCE(SUM(json_extract(data,'$.firstSeenAt') IS NOT NULL),0) explored,
+      COALESCE(SUM(active=1 AND json_extract(data,'$.deletedAt') IS NULL AND json_extract(data,'$.firstSeenAt') IS NULL),0) remaining,
+      COALESCE(SUM(active=1 AND decision='delete' AND json_extract(data,'$.deletedAt') IS NULL),0) pending,
+      COALESCE(SUM(json_extract(data,'$.deletedAt') IS NOT NULL),0) deleted,
+      COALESCE(SUM(CASE WHEN json_extract(data,'$.deletedAt') IS NOT NULL THEN COALESCE(size,json_extract(data,'$.scan.size'),0) ELSE 0 END),0) deletedBytes,
+      COALESCE(SUM(json_extract(data,'$.deletedAt') IS NOT NULL AND COALESCE(size,json_extract(data,'$.scan.size')) IS NULL),0) unknownSizes
+      FROM media WHERE type='photo'`);
+    return row!;
+  },
+  async videoProgress() {
+    const row = await db.getFirstAsync<{ total: number; explored: number; remaining: number }>(`SELECT COUNT(*) total,
+      COALESCE(SUM(json_extract(data,'$.firstSeenAt') IS NOT NULL),0) explored,
+      COALESCE(SUM(json_extract(data,'$.firstSeenAt') IS NULL),0) remaining
+      FROM media WHERE active=1 AND type='video' AND json_extract(data,'$.deletedAt') IS NULL`);
+    return row ?? { total: 0, explored: 0, remaining: 0 };
+  },
+  async calendarProgress(screenshotsOnly = false) {
+    return db.getAllAsync<import("./storage.types").CalendarProgress>(`SELECT ${calendarKey} AS key, COUNT(*) total,
+      COALESCE(SUM(json_extract(data,'$.firstSeenAt') IS NOT NULL),0) explored,
+      COALESCE(SUM(json_extract(data,'$.firstSeenAt') IS NULL),0) remaining,
+      MAX(id) coverId FROM media WHERE active=1 AND type='photo' AND json_extract(data,'$.deletedAt') IS NULL ${screenshotsOnly ? 'AND screenshot=1' : ''} GROUP BY ${calendarKey} ORDER BY key DESC`);
   },
   async get(id) {
     const row = await db.getFirstAsync<{ data: string }>("SELECT data FROM media WHERE id=?", id);

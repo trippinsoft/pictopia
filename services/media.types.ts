@@ -17,7 +17,10 @@ export interface MediaService {
     onProgress: (count: number, total: number) => void,
     signal: AbortSignal,
   ): Promise<void>;
-  resolve(m: Media): Promise<{ uri: string; size?: number; systemFavorite?: boolean }>;
+  /** `download` fetches an iCloud original; without it a cloud-only item fails with `CLOUD_ONLY`. */
+  resolve(m: Media, options?: { download?: boolean }): Promise<{ uri: string; size?: number; systemFavorite?: boolean }>;
+  /** Known local byte size only; never downloads or hashes an original. */
+  size(m: Media): Promise<number | undefined>;
   /** Read-only presence lookup against the platform library; never prompts or deletes. */
   inspect(ids: string[]): Promise<{ scope: AccessScope; presence: Record<string, Presence> }>;
   remove(items: Media[], hooks: DeletionHooks): Promise<DeletionResult>;

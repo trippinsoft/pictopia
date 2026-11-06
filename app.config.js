@@ -5,7 +5,7 @@ module.exports = {
       backgroundColor: "#ddefe7"
     },
     package: "com.trippinsoft.pictopia",
-    versionCode: 15,
+    versionCode: 1,
     blockedPermissions: [
     "android.permission.RECORD_AUDIO",
     "android.permission.CAMERA",
@@ -18,7 +18,7 @@ module.exports = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: "com.trippinsoft.pictopia",
-    buildNumber: "15",
+    buildNumber: "1",
     infoPlist: { ITSAppUsesNonExemptEncryption: false }
   },
   name: "Pictopia",
@@ -41,6 +41,7 @@ module.exports = {
 
 
   "expo-sqlite",
+  "expo-iap",
   "expo-system-ui",
   ["expo-navigation-bar", { enforceContrast: false }],
   [
@@ -64,10 +65,11 @@ module.exports = {
 
 
 
+
   scheme: "pictopia",
   slug: "pictopia",
   userInterfaceStyle: "automatic",
-  version: "1.0.14",
+  version: "1.0.21",
   web: { bundler: "metro", output: "single", favicon: "./assets/images/favicon.png" },
   platforms: ["ios", "android", "web"]
 };

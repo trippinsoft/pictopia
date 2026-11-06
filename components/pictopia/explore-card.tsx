@@ -21,10 +21,13 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
+import { reviewTrace, tracePhoto, traceNativeGesture, type ReviewGestureSample } from "@/lib/pictopia/review-trace";
 import type { Media } from "@/lib/pictopia/types";
 import { ExploreGesture } from "./explore-gesture";
+import type { ExploreScrollMotion } from "./explore-pager.types";
 import type { DiscardFlight } from "./discard-flight";
 import { MediaImage } from "./media-image";
+import { VideoPage } from "./video-page";
 import { Icon, Text } from "./ui";
 
 export interface ExploreCardHandle {
@@ -40,8 +43,9 @@ interface Props {
   entrance?: "left" | "right" | "below" | "above";
   pageHeight: number;
   nativeScroll: NativeGesture;
-  /** Whether a sideways gesture may start: the feed is at rest on this photo. */
-  onBegin(id: string): boolean;
+  motion: ExploreScrollMotion;
+  /** Claim the photograph at the captured native offset, even during momentum. */
+  onBegin(id: string, offset?: number): boolean;
   onZoomBegin?(id: string): boolean;
   onAction(id: string, direction: "left" | "right", animation: Promise<void>, landed?: Promise<void>): Promise<void>;
   /** A short, still tap on this photo. */
@@ -67,6 +71,7 @@ export const ExploreCard = memo(
       entrance,
       pageHeight,
       nativeScroll,
+      motion,
       onBegin,
       onZoomBegin,
       onAction,
@@ -82,6 +87,10 @@ export const ExploreCard = memo(
     ref,
   ) {
     const { width } = useWindowDimensions();
+    const isVideo = media?.type === "video";
+    const [videoPlaying, setVideoPlaying] = useState(false);
+    const videoRef = useRef(isVideo);
+    videoRef.current = isVideo;
     // Pinch zoom, separate from the discard transform: it scales only the photo, in its page.
     const zoomScale = useSharedValue(1),
       zoomX = useSharedValue(0),
@@ -148,7 +157,9 @@ export const ExploreCard = memo(
     flightRef.current = flight;
     useEffect(() => {
       alive.current = true;
+      reviewTrace("card.mount", { photo: tracePhoto(id) });
       return () => {
+        reviewTrace("card.unmount", { photo: tracePhoto(id), started: started.current, inFlight: inFlight.current });
         alive.current = false;
       };
     }, []);
@@ -164,20 +175,23 @@ export const ExploreCard = memo(
       return () => clearTimeout(timer);
     }, [phase]);
     const cancel = useCallback(() => {
+      reviewTrace("card.cancel", { photo: tracePhoto(id), inFlight: inFlight.current, started: started.current, locked: locked.value, x: x.value, y: y.value });
       if (inFlight.current) return;
       started.current = false;
       locked.value = false;
       x.value = withSpring(0, SPRING);
       y.value = withSpring(0, SPRING);
-    }, [locked, x, y]);
+    }, [id, locked, x, y]);
     // Not gated on `active`: that prop trails the scroll, and the feed decides from the live
     // offset whether this is the photo on screen.
-    const begin = useCallback(() => {
-      started.current = !arriving.value && phase === "loaded" && onBegin(id);
+    const begin = useCallback((offset?: number) => {
+      started.current = !arriving.value && phase === "loaded" && onBegin(id, offset);
+      reviewTrace("card.begin", { photo: tracePhoto(id), accepted: started.current, offset, arriving: arriving.value, phase, locked: locked.value });
       if (!started.current) cancel();
     }, [arriving, phase, onBegin, id, cancel]);
     const discard = useCallback(
       (direction: "left" | "right", velocity = 0) => {
+        reviewTrace("card.discard", { photo: tracePhoto(id), direction, velocity, inFlight: inFlight.current, started: started.current, locked: locked.value, x: x.value, y: y.value });
         if (inFlight.current) return;
         unzoom(false);
         if (!started.current) begin();
@@ -197,15 +211,20 @@ export const ExploreCard = memo(
           // This card stops drawing it the moment the flight is on screen and is removed from
           // the feed right after, so the next photograph is swipeable almost at once.
           const watchdog = setTimeout(finish, 400);
+          reviewTrace("flight.launch", { photo: tracePhoto(id), direction, velocity });
           const flightRun = launcher.launch({ id, media, offset: { x: x.value, y: y.value }, direction, velocity });
           void flightRun.handoff
             .catch(() => {})
             .then(() => {
               if (alive.current && inFlight.current) shown.value = 0;
               clearTimeout(watchdog);
+              reviewTrace("flight.handoff", { photo: tracePhoto(id), alive: alive.current, inFlight: inFlight.current });
               finish();
             });
-          void onAction(id, direction, animation, flightRun.landed).catch(() => {
+          void onAction(id, direction, animation, flightRun.landed).then(() => {
+            reviewTrace("card.action.saved", { photo: tracePhoto(id) });
+          }).catch((error: unknown) => {
+            reviewTrace("card.action.rejected", { photo: tracePhoto(id), errorType: error instanceof Error ? error.name : typeof error });
             launcher.cancel(id);
             if (alive.current) {
               inFlight.current = false;
@@ -238,6 +257,7 @@ export const ExploreCard = memo(
       [begin, cancel, id, locked, media, onAction, shown, unzoom, width, x, y],
     );
     const reset = useCallback(() => {
+      reviewTrace("card.reset", { photo: tracePhoto(id), started: started.current, inFlight: inFlight.current });
       unzoom(false);
       x.value = 0;
       y.value = 0;
@@ -247,8 +267,9 @@ export const ExploreCard = memo(
       arrival.current = { from: undefined, animating: false };
       inFlight.current = false;
       started.current = false;
-    }, [x, y, shown, locked, arriving, unzoom]);
+    }, [id, x, y, shown, locked, arriving, unzoom]);
     const arrived = useCallback(() => {
+      reviewTrace("card.arrived", { photo: tracePhoto(id), started: started.current, inFlight: inFlight.current });
       arrival.current = { from: undefined, animating: false };
       shown.value = 1;
       locked.value = false;
@@ -297,21 +318,26 @@ export const ExploreCard = memo(
     // rebuilt (and briefly reconfigured on the UI thread) whenever the shown photo changes.
     const handlers = useRef({ begin, discard, cancel, onTap, onBegin, onZoomBegin, setZoom, unzoom });
     handlers.current = { begin, discard, cancel, onTap, onBegin, onZoomBegin, setZoom, unzoom };
-    const gestureStart = useCallback(() => handlers.current.begin(), []);
+    const gestureTrace = useCallback((samples: ReviewGestureSample[]) => traceNativeGesture(id, samples), [id]);
+    const gestureStart = useCallback((offset?: number) => handlers.current.begin(offset), []);
     const gestureCommit = useCallback(
       (direction: "left" | "right", velocity: number) => handlers.current.discard(direction, velocity),
       [],
     );
     const gestureCancel = useCallback(() => handlers.current.cancel(), []);
     // While zoomed, a tap returns the photo to its original size instead of undoing.
+    // A video's tap plays or pauses it; photos keep their existing tap behaviour.
     const gestureTap = useCallback(() => {
       if (zoomedRef.current) handlers.current.unzoom(true);
+      else if (videoRef.current) setVideoPlaying((p) => !p);
       else handlers.current.onTap(id);
     }, [id]);
     // Zooming claims the photo like a swipe does (snapping a page still settling); a photo
     // that isn't the one on screen, or a feed mid-discard, springs straight back.
     const zoomStart = useCallback(() => {
       if (zoomedRef.current) return;
+      // Videos have no zoom: pinching one springs straight back.
+      if (videoRef.current) return handlers.current.unzoom(true);
       if ((handlers.current.onZoomBegin ?? handlers.current.onBegin)(id)) handlers.current.setZoom(true);
       else handlers.current.unzoom(true);
     }, [id]);
@@ -342,7 +368,9 @@ export const ExploreCard = memo(
       labelStyle(arriving.value || !shown.value ? 0 : -x.value),
     );
     return (
-      <View style={styles.fill} accessible={active} accessibilityRole="image" accessibilityLabel="Photograph"
+      // Active accessibility must not flatten/unflatten this ancestor during a live pan.
+      // Keep its native parent stable while the touched photograph is claimed.
+      <View style={styles.fill} collapsable={false} accessible={active} accessibilityRole="image" accessibilityLabel="Photograph"
         accessibilityActions={[{ name: "increment", label: "Next photograph" }, { name: "decrement", label: "Previous photograph" }, { name: "mark", label: flight ? "Mark for deletion" : "Set aside photograph" }, { name: "undo", label: "Undo last discard" }]}
         onAccessibilityAction={event => {
           switch (event.nativeEvent.actionName) {
@@ -357,15 +385,17 @@ export const ExploreCard = memo(
         y={y}
         locked={locked}
         // Live on every loaded photo, including one the pager has only just reached, so the
-        // first sideways swipe after scrolling is recognized and holds the scroll view off.
+        // first sideways swipe after scrolling can claim the live native position.
         enabled={phase === "loaded"}
         tapEnabled
         zoom={zoom}
         zoomed={zoomed}
         nativeScroll={nativeScroll}
+        motion={motion}
         onTap={gestureTap}
         onZoomStart={zoomStart}
         onZoomEnd={zoomEnd}
+        onTrace={gestureTrace}
         onStart={gestureStart}
         onCommit={gestureCommit}
         onCancel={gestureCancel}
@@ -379,11 +409,15 @@ export const ExploreCard = memo(
                 fit="contain"
                 style={styles.fill}
                 showLoading
+                failureContent={isVideo ? <View className="flex-1 bg-background" /> : undefined}
                 onSettled={setPhase}
               />
             </Animated.View>
           )}
-          {phase === "failed" && (
+          {media && isVideo && (
+            <VideoPage media={media} active={active} playing={videoPlaying} onPlayingChange={setVideoPlaying} onReady={() => setPhase("loaded")} />
+          )}
+          {phase === "failed" && !isVideo && (
             <View
               style={StyleSheet.absoluteFill}
               className="items-center justify-center bg-background px-8"
@@ -394,7 +428,7 @@ export const ExploreCard = memo(
               </Text>
             </View>
           )}
-          {phase === "loading" && active && (
+          {phase === "loading" && active && !isVideo && (
             <View className="absolute bottom-4 self-center rounded-full bg-background px-4 py-2">
               <Text className="text-caption text-muted-foreground">
                 Loading photo · scroll to continue

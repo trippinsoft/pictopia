@@ -69,6 +69,19 @@ module.exports = {
         notification: {
           DEFAULT: 'hsl(var(--notification) / <alpha-value>)',
         },
+        tint: {
+          DEFAULT: 'hsl(var(--tint) / <alpha-value>)',
+        },
+        sun: {
+          DEFAULT: 'hsl(var(--sun) / <alpha-value>)',
+          soft: 'hsl(var(--sunSoft) / <alpha-value>)',
+        },
+        tomato: {
+          DEFAULT: 'hsl(var(--tomato) / <alpha-value>)',
+        },
+        grass: {
+          DEFAULT: 'hsl(var(--grass) / <alpha-value>)',
+        },
         stage: {
           DEFAULT: 'hsl(var(--stage) / <alpha-value>)',
           foreground: 'hsl(var(--stageForeground) / <alpha-value>)',

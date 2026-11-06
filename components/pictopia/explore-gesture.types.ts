@@ -1,6 +1,8 @@
+import type { ReviewGestureSample } from "@/lib/pictopia/review-trace";
 import type { ReactNode } from "react";
 import type { SharedValue } from "react-native-reanimated";
 import type { NativeGesture } from "react-native-gesture-handler";
+import type { ExploreScrollMotion } from "./explore-pager.types";
 /** The photo's own zoom, inside its page. Offsets are from the page centre. */
 export interface ExploreZoom {
   scale: SharedValue<number>;
@@ -23,8 +25,10 @@ export interface ExploreGestureProps {
   /** Zoomed in: one finger pans the photo and sideways discarding is off. */
   zoomed: boolean;
   nativeScroll: NativeGesture;
+  motion: ExploreScrollMotion;
+  onTrace?: (samples: ReviewGestureSample[]) => void;
   onTap: () => void;
-  onStart: () => void;
+  onStart: (offset?: number) => void;
   /** The sideways swipe is committed; `velocity` is its horizontal speed in points per
    * second, which sets how far the photograph carries on before it curves to the trash. */
   onCommit: (direction: "left" | "right", velocity: number) => void;

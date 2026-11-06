@@ -34,7 +34,7 @@ export default function Onboarding() {
     }
   }
   return (
-    <Page title="Welcome to Pictopia">
+    <Page title="Welcome to Pictopia" showBack={false}>
       <View className="mx-auto max-w-lg items-center py-8">
         <View className="mb-9 h-40 w-40 items-center justify-center rounded-[40px] bg-accent">
           <Icon name={item.icon} size={70} className="text-primary" />

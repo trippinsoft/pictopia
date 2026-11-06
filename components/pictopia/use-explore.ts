@@ -94,7 +94,7 @@ export function useExplore(key?: string) {
         const saved = await store.change(action);
         const queueChanged = saved.review && saved.ids.some(id => !!previous?.records[id]?.queued !== !!saved.records[id]?.queued);
         current.current = saved;
-        if (alive.current) setSession(saved);
+        if (alive.current) { setSession(saved); setError(undefined); }
         if (queueChanged) { void readMedia(saved).catch(() => { if (alive.current) setError("Your mark is saved, but photo details couldn’t refresh. Reopen this adventure."); }); void app.refresh().catch(() => {}); }
         return saved;
       } catch (e) {

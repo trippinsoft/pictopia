@@ -1,3 +1,4 @@
+import { ScreenHeader } from "@/components/pictopia/navigation-header";
 import { router } from "expo-router";
 import { View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -15,6 +16,7 @@ import { Button } from "@/components/ui/button";
 export default function NotFoundScreen() {
   return (
     <SafeAreaView className="flex-1 bg-background">
+      <View className="mx-auto w-full max-w-lg px-5"><ScreenHeader title="Page not found" /></View>
       <View className="flex-1 items-center justify-center px-6">
         <Card className="w-full max-w-sm">
           <CardHeader className="items-center">
@@ -31,9 +33,6 @@ export default function NotFoundScreen() {
           <CardFooter className="gap-3">
             <Button onPress={() => router.replace("/")} className="flex-1">
               <Text className="text-button text-primary-foreground">Go to Home</Text>
-            </Button>
-            <Button variant="outline" onPress={() => router.back()} className="flex-1">
-              <Text className="text-button text-foreground">Go Back</Text>
             </Button>
           </CardFooter>
         </Card>

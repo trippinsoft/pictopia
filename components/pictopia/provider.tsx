@@ -21,6 +21,8 @@ import {
   DeletionResult,
 } from "@/lib/pictopia/types";
 import { SCAN_VERSION, entitlementActive } from "@/lib/pictopia/logic";
+import { nativeScheme } from "@/theming/appearance";
+import { allowanceStore } from "@/services/daily";
 import { recoveryMessage } from "@/lib/pictopia/deletion";
 const emptyStats: Stats = {
   total: 0,
@@ -34,6 +36,7 @@ const emptyStats: Stats = {
 };
 interface Context {
   ready: boolean;
+  libraryReliable: boolean;
   stats: Stats;
   months: Month[];
   session: Session | null;
@@ -67,6 +70,7 @@ interface Context {
 }
 const Ctx = createContext<Context | null>(null);
 export function PictopiaProvider({ children }: { children: React.ReactNode }) {
+  const [libraryReliable, setLibraryReliable] = useState(false);
   const [ready, setReady] = useState(false),
     [stats, setStats] = useState(emptyStats),
     [months, setMonths] = useState<Month[]>([]),
@@ -119,6 +123,7 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
   async function sync(request: boolean) {
     if (syncRef.current || deletingRef.current) return false;
     setBusy(true);
+    setLibraryReliable(false);
     setError(null);
     const controller = new AbortController();
     syncRef.current = controller;
@@ -135,6 +140,7 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
       );
       if (Platform.OS !== "web" && !controller.signal.aborted) await repository.reconcile(epoch);
       await refresh();
+      setLibraryReliable(!controller.signal.aborted);
       return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Your library could not be loaded. Try again.");
@@ -152,15 +158,18 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
     storage
       .init()
       .then(async () => {
+        await repository.migrateProgress();
         const p = await repository.preferences();
         setPrefs(p);
-        Appearance.setColorScheme(p.appearance === "system" ? "unspecified" : p.appearance);
+        Appearance.setColorScheme(nativeScheme(p.appearance));
         setEnt((await storage.getValue<Entitlement>("entitlement")) ?? null);
         const saved = await storage.getValue<ScanState>("scan");
         if (saved) setScan(saved.status === "running" ? { ...saved, status: "paused" } : saved);
         setPermission(await mediaService.permission());
         await refresh();
+        setLibraryReliable(Platform.OS === "web");
         setReady(true);
+        void allowanceStore.refreshLimit().catch(() => {});
         stopPurchases = await purchaseService.init((e) => {
           void saveEnt(e);
         });
@@ -185,6 +194,7 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
         syncRef.current?.abort();
       } else if (alive.current) {
         setClock(Date.now());
+        void allowanceStore.refreshLimit().catch(() => {});
         void purchaseService
           .refresh()
           .then(saveEnt)
@@ -205,7 +215,7 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
   }, []);
   async function start(c: Collection, minutes: SessionMinutes = 5) {
     if (!ready) return;
-    if (session && !session.complete) return;
+    if (session && !session.complete && session.collection === c) return;
     if (
       (c === "large" || c === "blurry" || c.startsWith("group:")) &&
       !entitlementActive(entitlement)
@@ -226,7 +236,7 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
     const next = { ...prefs, ...p };
     await storage.setValue("preferences", next);
     setPrefs(next);
-    Appearance.setColorScheme(next.appearance === "system" ? "unspecified" : next.appearance);
+    Appearance.setColorScheme(nativeScheme(next.appearance));
   }
   async function scanLibrary() {
     if (!entitlementActive(entitlement)) throw Error("Smart analysis is part of Pictopia Pro.");
@@ -305,7 +315,8 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
     deletingRef.current = true;
     setBusy(true);
     try {
-      return await deleteMarked(items, mediaService);
+      const result = await deleteMarked(items, mediaService);
+      return result;
     } finally {
       deletingRef.current = false;
       setBusy(false);
@@ -314,6 +325,7 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
   }
   const value: Context = {
     ready,
+    libraryReliable,
     stats,
     months,
     session,

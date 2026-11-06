@@ -1,4 +1,4 @@
-/** The illustration palette: flat, warm and restrained, tuned to sit on the ivory/teal UI in
+/** The illustration palette: warm and vibrant, tuned to sit on the purple/sunset UI in
  * light mode and on the deep night background in dark mode. Illustrations read these values
  * directly (SVG needs raw colors); UI chrome keeps using the theme tokens. */
 export interface ArtPalette {
@@ -23,31 +23,31 @@ export interface ArtPalette {
 }
 export const lightArt: ArtPalette = {
   sky: "#F4E7CF",
-  skyAlt: "#DDEBE5",
+  skyAlt: "#E7D5F5",
   cloud: "#FFF9EE",
   sun: "#EEA13A",
-  teal: "#2A6B6B",
-  tealDeep: "#16494B",
-  tealLight: "#8DBDB4",
-  sage: "#A9C29B",
-  moss: "#5F8B66",
+  teal: "#8424BF",
+  tealDeep: "#441060",
+  tealLight: "#C599E9",
+  sage: "#DCB7E7",
+  moss: "#8552AA",
   sand: "#E9D2A9",
   sandDeep: "#C9A67A",
   terracotta: "#D46F4D",
   coral: "#EC9C7E",
   rose: "#EFC2B1",
   paper: "#FFFBF3",
-  ink: "#22363B",
-  grain: "#22363B",
+  ink: "#301343",
+  grain: "#301343",
 };
 export const darkArt: ArtPalette = {
-  sky: "#22343A",
-  skyAlt: "#1D3A3C",
-  cloud: "#3A4F53",
+  sky: "#291734",
+  skyAlt: "#351F48",
+  cloud: "#4E365E",
   sun: "#E2A350",
-  teal: "#3C8381",
-  tealDeep: "#24595A",
-  tealLight: "#6FA9A1",
+  teal: "#9C58C8",
+  tealDeep: "#633082",
+  tealLight: "#C795E6",
   sage: "#7E9C77",
   moss: "#4F7657",
   sand: "#9C8463",

@@ -1,4 +1,5 @@
 import { useEffect, useRef, type CSSProperties } from "react";
+import { browserDragAxis } from "@/lib/pictopia/web-page-drag";
 import { exploreDirection } from "@/lib/pictopia/explore";
 import { withTiming } from "react-native-reanimated";
 import { DOUBLE_TAP_MS, ZOOM_SNAP, clampScale, clampTo, focalOffset, panLimit, toggleZoomAt } from "@/lib/pictopia/zoom-math";
@@ -126,11 +127,12 @@ export function ExploreGesture({
         const dx = e.clientX - p.x,
           dy = e.clientY - p.y;
         if (!p.horizontal) {
-          if (Math.abs(dy) > 12) {
+          const axis = browserDragAxis(dx, dy);
+          if (axis === "vertical") {
             pointer.current = null;
             return;
           }
-          if (Math.abs(dx) <= 12) return;
+          if (!axis) return;
           if (!enabled) {
             pointer.current = null;
             return;

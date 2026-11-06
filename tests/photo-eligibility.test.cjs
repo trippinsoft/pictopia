@@ -18,7 +18,7 @@ test("all photo adventure kinds filter before curation; Screenshot Sweep retains
   for (const kind of ["year", "month", "capsule", "day", "detour", "random", "corners"]) {
     const result = curate({ kind, source: kind === "day" ? "day:10-30" : `${kind}:2019`, pool }, ctx);
     assert.ok(result, kind);
-    assert.ok(result.ids.length >= 10, kind);
+    assert.ok(result.ids.length >= 3, kind);
     assert.ok(result.ids.every(id => id.startsWith("photo")), kind);
     assert.equal(curate({ kind, source: `${kind}:2019`, pool: pool.filter(m => m.screenshot) }, ctx), undefined, kind);
   }

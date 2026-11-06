@@ -1,88 +1,182 @@
-import Purchases, { CustomerInfo, PurchasesPackage } from "react-native-purchases";
 import { Platform } from "react-native";
+import {
+  initConnection,
+  fetchProducts,
+  requestPurchase,
+  finishTransaction,
+  getActiveSubscriptions,
+  getAvailablePurchases,
+  restorePurchases,
+  purchaseUpdatedListener,
+  purchaseErrorListener,
+  isUserCancelledError,
+  type Purchase,
+  type ProductSubscription,
+} from "expo-iap";
 import { PurchaseService } from "./purchases.types";
-import { Entitlement, Offer } from "@/lib/pictopia/types";
-const key =
-  Platform.OS === "ios"
-    ? process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY
-    : process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY;
-let packages: PurchasesPackage[] = [];
-let configured = false;
-function entitlement(info: CustomerInfo): Entitlement {
-  const e = info.entitlements.active.pro;
-  return {
-    active: !!e,
-    expires: e?.expirationDate ? new Date(e.expirationDate).getTime() : null,
-    verifiedAt: Date.now(),
-    managementURL: info.managementURL,
-  };
+import type { Entitlement, Offer } from "@/lib/pictopia/types";
+import {
+  PRO_PRODUCT_IDS,
+  entitlementFrom,
+  managementURL,
+  offerKind,
+} from "@/lib/pictopia/store-entitlement";
+
+// Apple StoreKit 2 and Google Play Billing directly, with no server and no account. The stores
+// only report active, unrefunded subscriptions, so each refresh is the entitlement check.
+const os = Platform.OS === "ios" ? "ios" : "android";
+const PACKAGE = "com.trippinsoft.pictopia";
+let connection: Promise<boolean> | null = null;
+let products: ProductSubscription[] = [];
+const waiting = new Map<string, { resolve(): void; reject(e: Error): void }>();
+
+function connect() {
+  connection ??= initConnection().catch((e: unknown) => {
+    connection = null;
+    throw e;
+  });
+  return connection;
 }
-function check() {
-  if (!configured)
-    throw Error(
-      "Store purchases are not configured yet. RevenueCat public keys and store products are required.",
-    );
+const owned = (p: Purchase) => PRO_PRODUCT_IDS.includes(p.productId);
+
+/** Finish (and on Android, acknowledge within Google's three days) every completed purchase.
+ * Pending purchases grant nothing until the store reports them purchased. */
+async function settle(purchase: Purchase) {
+  if (!owned(purchase) || purchase.purchaseState !== "purchased") return;
+  try {
+    await finishTransaction({ purchase, isConsumable: false });
+  } catch {
+    /* Already finished: StoreKit and Play redeliver finished purchases harmlessly. */
+  }
 }
+
+async function check(): Promise<Entitlement> {
+  await connect();
+  const subscriptions = await getActiveSubscriptions(PRO_PRODUCT_IDS);
+  const current = subscriptions.find((s) => s.isActive && PRO_PRODUCT_IDS.includes(s.productId));
+  return entitlementFrom(
+    subscriptions,
+    os,
+    Date.now(),
+    managementURL(os, PACKAGE, current?.productId),
+  );
+}
+
 export const purchaseService: PurchaseService = {
   async init(listener) {
-    if (!key) return () => {};
-    Purchases.configure({ apiKey: key });
-    configured = true;
-    const callback = (info: CustomerInfo) => listener(entitlement(info));
-    Purchases.addCustomerInfoUpdateListener(callback);
+    const updated = purchaseUpdatedListener((purchase) => {
+      if (!owned(purchase)) return;
+      const pending = waiting.get(purchase.productId);
+      if (purchase.purchaseState === "pending") {
+        waiting.delete(purchase.productId);
+        pending?.reject(
+          Error(
+            "Your purchase is waiting for approval. Pro unlocks as soon as the store confirms it.",
+          ),
+        );
+        return;
+      }
+      void settle(purchase)
+        .then(check)
+        .then((e) => {
+          listener(e);
+          waiting.delete(purchase.productId);
+          pending?.resolve();
+        })
+        .catch(() => pending?.resolve());
+    });
+    const failed = purchaseErrorListener((error) => {
+      const id = error.productId ?? [...waiting.keys()][0];
+      const pending = id ? waiting.get(id) : undefined;
+      if (!id || !pending) return;
+      waiting.delete(id);
+      pending.reject(
+        Error(
+          isUserCancelledError(error)
+            ? "Purchase cancelled. You have not been charged."
+            : "The store couldn’t complete this purchase. Please try again.",
+        ),
+      );
+    });
     try {
-      callback(await Purchases.getCustomerInfo());
+      await connect();
+      for (const purchase of await getAvailablePurchases()) await settle(purchase);
+      listener(await check());
     } catch {
-      /* Retain only the previously verified, unexpired local entitlement. */
+      /* Offline or store unavailable: the cached, unexpired entitlement stays in effect. */
     }
-    return () => Purchases.removeCustomerInfoUpdateListener(callback);
+    return () => {
+      updated.remove();
+      failed.remove();
+    };
   },
   async offers() {
-    check();
-    const offering = (await Purchases.getOfferings()).current;
-    packages = offering?.availablePackages ?? [];
-    return packages.flatMap((p) => {
-      const kind =
-        p.packageType === "MONTHLY"
-          ? "monthly"
-          : p.packageType === "ANNUAL"
-            ? "annual"
-            : p.packageType === "LIFETIME"
-              ? "lifetime"
-              : null;
+    await connect();
+    const result = await fetchProducts({ skus: PRO_PRODUCT_IDS, type: "subs" });
+    products = (result ?? []).filter(
+      (p): p is ProductSubscription => PRO_PRODUCT_IDS.includes(p.id) && p.type === "subs",
+    );
+    return products.flatMap((p) => {
+      const kind = offerKind(p.id);
       return kind
         ? [
             {
-              id: p.identifier,
+              id: p.id,
               kind,
-              price: p.product.priceString,
-              amount: p.product.price,
-              currency: p.product.currencyCode,
-            } as Offer,
+              price: p.displayPrice,
+              amount: p.price ?? 0,
+              currency: p.currency,
+            } satisfies Offer,
           ]
         : [];
     });
   },
-  async refresh() {
-    check();
-    return entitlement(await Purchases.getCustomerInfo());
-  },
+  refresh: check,
   async purchase(id) {
-    check();
-    const p = packages.find((p) => p.identifier === id);
-    if (!p) throw Error("This store product is unavailable. Refresh the plans and try again.");
+    await connect();
+    if (!PRO_PRODUCT_IDS.includes(id)) throw Error("This plan is unavailable.");
+    const product = products.find((p) => p.id === id);
+    if (!product) throw Error("This plan is unavailable. Refresh the plans and try again.");
+    const done = new Promise<void>((resolve, reject) => waiting.set(id, { resolve, reject }));
     try {
-      return entitlement((await Purchases.purchasePackage(p)).customerInfo);
+      if (os === "ios") await requestPurchase({ request: { apple: { sku: id } }, type: "subs" });
+      else {
+        // Play requires an offer token; with no trials configured this is the base plan's token.
+        const offer =
+          "subscriptionOffers" in product
+            ? product.subscriptionOffers?.find((o) => o.offerTokenAndroid)
+            : undefined;
+        if (!offer?.offerTokenAndroid) {
+          waiting.delete(id);
+          throw Error("This plan isn’t available from Google Play yet.");
+        }
+        await requestPurchase({
+          request: {
+            google: {
+              skus: [id],
+              subscriptionOffers: [{ sku: id, offerToken: offer.offerTokenAndroid }],
+            },
+          },
+          type: "subs",
+        });
+      }
     } catch (e) {
-      const error = e as { userCancelled?: boolean; code?: string };
-      if (error.userCancelled) throw Error("Purchase cancelled. You have not been charged.");
-      if (error.code === "20")
-        throw Error("Purchase is pending store approval. Pro will unlock after approval.");
-      throw Error("The store could not complete this purchase. Please try again.");
+      waiting.delete(id);
+      throw Error(
+        isUserCancelledError(e)
+          ? "Purchase cancelled. You have not been charged."
+          : e instanceof Error && /available/.test(e.message)
+            ? e.message
+            : "The store couldn’t complete this purchase. Please try again.",
+      );
     }
+    await done;
+    return check();
   },
   async restore() {
-    check();
-    return entitlement(await Purchases.restorePurchases());
+    await connect();
+    await restorePurchases();
+    for (const purchase of await getAvailablePurchases()) await settle(purchase);
+    return check();
   },
 };

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { View, StyleProp, ViewStyle, Platform, ActivityIndicator } from "react-native";
 import { Image } from "expo-image";
 import { Media } from "@/lib/pictopia/types";
+import { reviewMedia } from "@/services/review-media";
 import { mediaService } from "@/services/media";
 import { Text, Icon } from "./ui";
 import { VideoPoster } from "./video-poster";
@@ -17,6 +18,7 @@ export function MediaImage({
   fit = "cover",
   showLoading = false,
   onSettled,
+  failureContent,
 }: {
   media?: Media;
   uri?: string;
@@ -25,11 +27,14 @@ export function MediaImage({
   fit?: "cover" | "contain";
   showLoading?: boolean;
   onSettled?: (state: MediaSettled) => void;
+  /** Decorative thumbnails may provide a compact fallback without review error copy. */
+  failureContent?: React.ReactNode;
 }) {
   const { theme } = useTheme();
   // Native photos render straight from the library reference (ph:// on iOS loads iCloud
   // originals too); a looked-up local file is only a fallback. Browser files need a lookup.
   const direct = Platform.OS !== "web" && media?.type === "photo" ? media.uri : undefined;
+  const nativeVideo = Platform.OS !== "web" && media?.type === "video";
   const [source, setSource] = useState<string | undefined>(direct ?? (media ? undefined : uri)),
     [failed, setFailed] = useState(false),
     [loaded, setLoaded] = useState(false);
@@ -55,7 +60,10 @@ export function MediaImage({
     setFailed(false);
     setLoaded(false);
     if (direct) setSource(direct);
-    else if (media) {
+    else if (nativeVideo && media) {
+      setSource(undefined);
+      void reviewMedia.thumbnail(media).then(uri => { if (active) setSource(uri); }).catch(() => { if (active) fail(); });
+    } else if (media) {
       setSource(undefined);
       mediaService
         .resolve(media)
@@ -99,13 +107,13 @@ export function MediaImage({
   return (
     <View pointerEvents="none" style={style} className={className}>
       {failed ? (
-        <View className="flex-1 items-center justify-center bg-secondary p-3">
+        failureContent ?? <View className="flex-1 items-center justify-center bg-secondary p-3">
           <Icon name="CloudOff" className="text-muted-foreground" size={26} />
           <Text className="mt-2 text-caption text-center text-muted-foreground">
-            Can’t show this one right now
+            {media?.type === "video" ? "Video preview unavailable" : "Can’t show this one right now"}
           </Text>
         </View>
-      ) : media?.type === "video" && source ? (
+      ) : media?.type === "video" && !nativeVideo && source ? (
         <VideoPoster uri={source} fit={fit} onReady={() => settle("loaded")} onFailed={fail} />
       ) : (
         <Image

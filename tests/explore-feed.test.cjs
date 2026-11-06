@@ -385,9 +385,9 @@ test("a sideways swipe right after rapid scrolling discards the photo on screen,
 test("a swipe caught a fraction off a page snaps onto that photo; claims never land on completion or mid-discard", async () => {
   const h = harness(4);
   assert.equal(h.controller.claim(2, h.session.ids, true), true);
-  assert.deepEqual(h.scrolls.at(-1), { page: 2, animated: true, id: "photo-2" });
+  assert.deepEqual(h.scrolls.at(-1), { page: 2, animated: false, id: "photo-2" });
   assert.equal(h.controller.claim(2, h.session.ids, true), true);
-  assert.deepEqual(h.scrolls.at(-1), { page: 2, animated: true, id: "photo-2" }, "same page: snap only");
+  assert.deepEqual(h.scrolls.at(-1), { page: 2, animated: false, id: "photo-2" }, "same page: snap only");
   assert.equal(h.controller.claim(4, h.session.ids, false), false, "completion page");
   assert.equal(h.controller.claim(-1, h.session.ids, false), false);
   const animation = defer();
@@ -430,17 +430,17 @@ test("gesture wiring: sideways recognizer is live on every loaded photo, decided
   assert.match(card, /onStart=\{gestureStart\}/);
   assert.match(card, /onCommit=\{gestureCommit\}/);
   // The swipe's photo comes from the live offset, not a momentum flag or the last settle.
-  assert.match(feed, /claim\(id\) && controller\.canDiscard\(id\)/);
+  assert.match(feed, /claim\(id, nativeOffset\) && controller\.canDiscard\(id\)/);
   // A tap is accepted like a swipe: a stale, slightly-off offset after paging is snapped,
   // not a reason to refuse every later tap (the tap-to-undo after scrolling bug).
   assert.match(feed, /TAP_AFTER_DRAG \|\| !claim\(id\)\) return;/);
   assert.doesNotMatch(feed, /aligned && off/);
   assert.match(feed, /Math\.round\(current \/ h\)/);
   assert.doesNotMatch(feed, /!momentum\.current &&/);
-  // Thresholds unchanged: ±12 pt decides the axis, and the scroll waits for that decision.
+  // Thresholds unchanged: ±12 pt decides the axis; native recognizers coexist.
   assert.match(native, /activeOffsetX\(\[-12, 12\]\)/);
   assert.match(native, /failOffsetY\(\[-12, 12\]\)/);
-  assert.match(native, /blocksExternalGesture\(nativeScroll\)/);
+  assert.match(native, /simultaneousWithExternalGesture\(nativeScroll\)/);
 });
 
 test("returning to the same page or a held peek writes nothing", async () => {
@@ -492,6 +492,10 @@ test("a failed save returns to the last saved photo and a failed discard rejects
   h.up();
   await flush();
   await flush();
+  assert.equal(h.shown, "photo-2", "a failed save is retried once before anything moves");
+  assert.equal(h.errors.length, 0);
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await h.idle();
   assert.equal(h.shown, "photo-1", "resynced to the saved photo");
   assert.deepEqual(h.scrolls.at(-1), { page: 1, animated: false, id: "photo-1" });
   assert.equal(h.errors.length, 1);
@@ -612,7 +616,7 @@ test("renderer regression: immutable ID-keyed list cells, fixed page bounds, X-o
   assert.match(feed, /session\.ids\.filter\(/);
   assert.doesNotMatch(feed, /\.splice\(/);
   assert.match(feed, /useLayoutEffect/, "re-anchoring happens before paint");
-  assert.match(native, /blocksExternalGesture\(nativeScroll\)/);
+  assert.match(native, /simultaneousWithExternalGesture\(nativeScroll\)/);
   assert.match(native, /activeOffsetX\(\[-12, 12\]\)/);
   assert.match(native, /failOffsetY\(\[-12, 12\]\)/);
   for (const file of [

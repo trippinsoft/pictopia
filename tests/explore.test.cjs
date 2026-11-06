@@ -240,7 +240,7 @@ test("distance, flicks, diagonal intent, downward and cancelled/short movements"
   assert.match(native, /!success/);
   assert.match(native, /failOffsetY/);
   assert.match(native, /activeOffsetX/);
-  assert.match(native, /blocksExternalGesture/);
+  assert.match(native, /simultaneousWithExternalGesture/);
 });
 
 function storeFor(app, p) {

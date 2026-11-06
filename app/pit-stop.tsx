@@ -63,8 +63,8 @@ function OtherPitStopScreen() {
     </View>
   </SafeAreaView>;
   return <SafeAreaView className="flex-1 bg-background">
-    <ScrollView><View className="mx-auto w-full max-w-md px-6 pb-8">
-      <ScreenHeader title={title} fallback="/pit-stops" />
+    <View className="mx-auto w-full max-w-md px-5"><ScreenHeader title={title} fallback="/pit-stops" /></View>
+    <ScrollView><View className="mx-auto w-full max-w-md px-5 pb-8">
       <View className="mt-5">
         {result ? <Animated.View entering={FadeInDown.duration(260).reduceMotion(ReduceMotion.System)}>
           <View className="mx-auto mb-6 h-44 w-44 overflow-hidden rounded-[32px]"><Illustration name="gameResult" square /></View>

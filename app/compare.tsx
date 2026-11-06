@@ -1,8 +1,9 @@
+import { ScreenHeader } from "@/components/pictopia/navigation-header";
 import React, { useState, useEffect } from "react";
 import { View, FlatList, Pressable } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Text, Icon, Button, Empty } from "@/components/pictopia/ui";
+import { Text, Button, Empty } from "@/components/pictopia/ui";
 import { MediaImage } from "@/components/pictopia/media-image";
 import { usePictopia } from "@/components/pictopia/provider";
 import { storage, repository } from "@/services/repository";
@@ -37,16 +38,7 @@ export default function Compare() {
   return (
     <SafeAreaView className="flex-1 bg-background">
       <View className="mx-auto w-full max-w-4xl flex-1 px-5">
-        <View className="my-5 flex-row items-center gap-3">
-          <Pressable
-            accessibilityLabel="Back"
-            onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/smart"))}
-            className="p-3"
-          >
-            <Icon name="ArrowLeft" className="text-foreground" />
-          </Pressable>
-          <Text className="text-h2 text-foreground">Choose your keepers</Text>
-        </View>
+        <ScreenHeader title="Choose your keepers" fallback="/(tabs)/smart" />
         {!app.pro ? (
           <Empty
             title="Compare with Pictopia Pro"

@@ -9,17 +9,23 @@ import {
 } from "react";
 import { Theme } from "./Theme";
 import lightTheme from "./themes/light";
+import { DEFAULT_PASTEL, withPastel, type PastelId } from "./pastels";
 import { Platform, View } from "react-native";
 import { vars } from "nativewind";
 
 interface ThemeContextValue {
   theme: Theme;
   setTheme: (name: string) => void;
+  /** The chosen Playful Adventure background; applied to the light theme only. */
+  pastel: PastelId;
+  setPastel: (id: PastelId) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue>({
   theme: lightTheme,
   setTheme: () => {},
+  pastel: DEFAULT_PASTEL,
+  setPastel: () => {},
 });
 
 export const ThemeProvider = ({
@@ -38,7 +44,8 @@ export const ThemeProvider = ({
     throw new Error("At least one theme must be provided in the ThemeProvider");
   }
 
-  const [currentTheme, setCurrentTheme] = useState<Theme>(() => {
+  const [pastel, setPastel] = useState<PastelId>(DEFAULT_PASTEL);
+  const [baseTheme, setCurrentTheme] = useState<Theme>(() => {
     const theme = themes.find((theme) => theme.name === initialThemeName);
     if (!theme) {
       // eslint-disable-next-line no-console
@@ -61,12 +68,15 @@ export const ThemeProvider = ({
     [themes],
   );
 
+  const currentTheme = useMemo(() => (scoped ? baseTheme : withPastel(baseTheme, pastel)), [scoped, baseTheme, pastel]);
   const themeContextValue: ThemeContextValue = useMemo(
     () => ({
       theme: currentTheme,
       setTheme,
+      pastel,
+      setPastel,
     }),
-    [currentTheme, setTheme],
+    [currentTheme, setTheme, pastel],
   );
 
   // Flatten to variables that can be referenced in CSS/Tailwind classes

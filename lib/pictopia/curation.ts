@@ -129,8 +129,8 @@ function prepare(candidate: Candidate, ctx: CurationContext) {
   // A browser file's modified time is not a capture time. Equal timestamps must not
   // collapse unrelated selected files into one photograph.
   const groups = ctx.modifiedDates ? all.map((m) => [m]) : bursts(all);
-  const fresh = (m: Media) => !ctx.explored.has(m.id) && !m.decision;
-  const allowed = (m: Media) => ctx.chosen || !ctx.explored.has(m.id);
+  const fresh = (m: Media) => !(m.firstSeenAt || ctx.explored.has(m.id)) && !m.decision;
+  const allowed = (m: Media) => ctx.chosen || !(m.firstSeenAt || ctx.explored.has(m.id));
   const lead = (group: Media[]) => {
     const usable = group.filter(allowed);
     if (!usable.length) return undefined;
@@ -241,7 +241,7 @@ function selectScreenshots(candidate: Candidate, ctx: CurationContext, size: num
   const { groups, fresh } = prepare(candidate, ctx);
   const now = ctx.now ?? Date.now();
   const allowed = (m: Media) =>
-    m.screenshot && !favorite(m) && (ctx.chosen || !ctx.explored.has(m.id));
+    m.screenshot && !favorite(m) && (ctx.chosen || !(m.firstSeenAt || ctx.explored.has(m.id)));
   // A run of screenshots (scrolling captures) keeps up to two, so both can be judged.
   const runs = groups.map((g) => g.filter(allowed).slice(0, 2)).filter((g) => g.length);
   const shots = runs.flat();
@@ -369,15 +369,16 @@ function spreadRuns(runs: Media[][]) {
   return out;
 }
 
+/** Permanent adventure names (see lib/pictopia/catalog.ts). Never rotated or invented. */
 const TITLES: Record<AdventureKind, string[]> = {
-  detour: ["The Unexpected Detour", "A Twist in Time", "The Scenic Route"],
-  random: ["The Unexpected Detour"],
-  capsule: ["A Little Time Capsule", "One Month, Sealed", "Pages From One Month"],
-  corners: ["The Hidden Corners", "The Quiet Shelves", "Off the Beaten Path"],
-  day: ["On This Day", "Same Day, Other Years"],
-  screenshots: ["Screenshot Sweep", "The Screenshot Drawer"],
-  year: ["A Year in Passing", "Rewind a Year"],
-  month: ["One Month Back"],
+  detour: ["Surprise Me"],
+  random: ["Surprise Me"],
+  capsule: ["Time Capsule"],
+  corners: ["Hidden Corners"],
+  day: ["On This Day"],
+  screenshots: ["Screenshot Sweep"],
+  year: ["The Yearbook"],
+  month: ["The Yearbook"],
   pitstop: ["Pit Stop Photos"],
 };
 const CLOSINGS: Record<AdventureKind, string> = {
@@ -406,24 +407,15 @@ function hintFor(kind: AdventureKind, source: string, sel: Selection, ctx: Curat
             : `${plural(n, ctx.modifiedDates ? "photo" : "moment")} from across ${sel.picks[0] ? yearOf(sel.picks[0]) : "your library"}`,
       };
     case "capsule":
-      return { title, detail: `One month from ${f.year}, ${plural(Number(f.days), "day")} of photos` };
     case "month":
-      return {
-        title: `${monthName(source.slice(6))} ${source.slice(6, 10)}`,
-        detail: `${plural(n, "photo")} across ${plural(Number(f.days), "day")}`,
-      };
+      return { title, detail: `${monthName(source.slice(6))} ${source.slice(6, 10)} · ${plural(n, "photo")} across ${plural(Number(f.days), "day")}` };
     case "year":
-      return {
-        title: ctx.chosen ? source.slice(5) : title,
-        detail: ctx.chosen
-          ? `${plural(n, "photo")} across ${plural(Number(f.months), "month")}`
-          : `${plural(Number(f.months), "month")} of ${source.slice(5)}`,
-      };
+      return { title, detail: `${source.slice(5)} · ${plural(n, "photo")} across ${plural(Number(f.months), "month")}` };
     case "day": {
       const today = String(f.today);
       const years = plural(Number(f.years), "year");
       return {
-        title: ctx.chosen ? "On This Day" : title,
+        title,
         detail:
           f.window === 0
             ? `${dayLabel(today)}, across ${years}`
@@ -481,8 +473,8 @@ export function curate(candidate: Candidate, ctx: CurationContext): CuratedAdven
   const picks = sel.picks;
   if (picks.length < minimum) return undefined;
   const pool = eligible(candidate.pool, ctx.exclude);
-  const fresh = picks.filter((m) => !ctx.explored.has(m.id) && !m.decision).length;
-  const poolFresh = pool.filter((m) => !ctx.explored.has(m.id)).length / Math.max(1, pool.length);
+  const fresh = picks.filter((m) => !(m.firstSeenAt || ctx.explored.has(m.id)) && !m.decision).length;
+  const poolFresh = pool.filter((m) => !(m.firstSeenAt || ctx.explored.has(m.id))).length / Math.max(1, pool.length);
   const recentIds = ctx.recentIds ?? new Set<string>();
   const overlap = picks.filter((m) => recentIds.has(m.id)).length;
   const recent = ctx.recentSources ?? [];

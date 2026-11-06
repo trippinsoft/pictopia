@@ -3,10 +3,13 @@ import { requireOptionalNativeModule } from "expo-modules-core";
 import { File } from "expo-file-system";
 import { Linking, Platform } from "react-native";
 import { MediaService } from "./media.types";
+import { CLOUD_ONLY } from "./media-errors";
+import { knownMediaSize } from "@/lib/pictopia/storage-size";
 import { dateKeys } from "@/lib/pictopia/logic";
 import { accessScope, classifyDeletion, deletionErrorKind } from "@/lib/pictopia/deletion";
 import { OsDeletion, Presence } from "@/lib/pictopia/types";
 const nativeMetadata = requireOptionalNativeModule<{
+  localAssetSize?(id: string): Promise<number | null>;
   getMetadata(ids: string[]): Promise<{ id: string; favorite: boolean; screenshot: boolean }[]>;
 }>("PictopiaAnalysis");
 async function currentScope() {
@@ -139,8 +142,22 @@ export const mediaService: MediaService = {
       await new Promise((r) => setTimeout(r, 0));
     }
   },
-  async resolve(m) {
-    const a = await MediaLibrary.getAssetInfoAsync(m.id, { shouldDownloadFromNetwork: false });
+  async size(m) {
+    const known = knownMediaSize(m);
+    if (known !== undefined && Number.isFinite(known) && known > 0) return known;
+    if (nativeMetadata?.localAssetSize) {
+      try {
+        const size = await nativeMetadata.localAssetSize(m.id);
+        return typeof size === "number" && Number.isFinite(size) && size > 0 ? size : undefined;
+      } catch { return undefined; }
+    }
+    // Legacy builds must not export/transcode an AVComposition just to obtain its size.
+    if (m.livePhoto || m.type === "video") return undefined;
+    try { return (await this.resolve(m)).size; } catch { return undefined; }
+  },
+  async resolve(m, options) {
+    const a = await MediaLibrary.getAssetInfoAsync(m.id, { shouldDownloadFromNetwork: !!options?.download });
+    if (!a) throw Error("This media item is unavailable. Check library access.");
     if (
       a.creationTime !== m.created ||
       a.width !== m.width ||
@@ -149,12 +166,13 @@ export const mediaService: MediaService = {
     )
       throw Error("This item changed outside Pictopia. Refresh your library before reviewing it.");
     if (a.isNetworkAsset && !a.localUri)
-      throw Error("This item is in the cloud. Download it in Photos, then try again.");
+      throw Error(CLOUD_ONLY);
     const uri = a.localUri ?? a.uri;
+    if (!uri) throw Error("No playable local media reference is available.");
     let size: number | undefined;
     try {
       const f = new File(uri);
-      if (f.exists) size = f.size;
+      if (!m.livePhoto && f.exists && Number.isFinite(f.size) && f.size > 0) size = f.size;
     } catch {
       /* Some authorized assets have no readable local file size. */
     }

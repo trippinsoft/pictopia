@@ -4,7 +4,7 @@ import { exploreCounts, type ExploreSession } from "./explore";
  * anything up to the explorer's snapshot limit works. */
 export const ADVENTURE_SIZE = 18;
 /** An offer needs enough photos to feel like a trip. Chosen ones can be smaller. */
-export const OFFER_MIN = 10;
+export const OFFER_MIN = 3;
 /** Recently offered or started sources, oldest first, for variety. */
 export const RECENT_LIMIT = 12;
 /** `random` is the original Surprise Me (kept so saved Adventures still read). */
@@ -61,6 +61,9 @@ export interface Adventure {
   openedAt?: number;
   /** Reached the completion page (counted once). */
   finishedAt?: number;
+  /** Saved atomically after checking the session; survives later Undo/review visits. */
+  completionProof?: { version: 1 | 2; at: number; sessionStartedAt: number; endpoint: string; total: number; explored: number };
+  priorCompletionProof?: Adventure["completionProof"];
   /** Picked in Explore rather than offered on Home. */
   chosen?: boolean;
   /** An Adventure Lab experiment. */
@@ -107,6 +110,28 @@ export const monthName = (key: string) => MONTHS[Number(key.slice(5, 7)) - 1] ??
  * deletion is not complete; its photographs can still be restored. */
 export const adventureComplete = (s: ExploreSession | undefined) =>
   !!s && (s.review ? !!s.finished || !s.ids.length : s.activeId === null || !s.ids.length);
+/** Completion evidence is independent of the controller's ending flag. Legacy records
+ * need a nonempty snapshot, saved activity and evidence at its original endpoint. */
+export function completionEvidence(s: ExploreSession | undefined) {
+  if (!s || !Array.isArray(s.ids) || !s.records || !s.ids.length || new Set(s.ids).size !== s.ids.length) return false;
+  const last = s.ids[s.ids.length - 1];
+  const covered = s.ids.every(id => s.records[id]?.encountered || s.records[id]?.unavailable);
+  if (!s.completionVerifiedAt && !covered) return false;
+  return !!(s.review ? s.finished || (s.finished === undefined && s.activeId === null && s.ids.every(id => s.records[id]?.encountered || s.records[id]?.unavailable)) : s.activeId === null) &&
+    s.ids.some(id => s.records[id]?.encountered) &&
+    !!(s.records[last]?.encountered || s.records[last]?.unavailable);
+}
+
+export function completionProof(s: ExploreSession, at: number): NonNullable<Adventure["completionProof"]> {
+  return { version: 2, at, sessionStartedAt: s.startedAt, endpoint: s.ids[s.ids.length - 1], total: s.ids.length, explored: s.ids.filter(id => s.records[id]?.encountered).length };
+}
+export function savedCompletion(meta: Adventure, s: ExploreSession | undefined) {
+  const p = meta.completionProof;
+  return !!p && p.version === 2 && p.at === meta.finishedAt && p.total > 0 &&
+    p.total === meta.count && Number.isInteger(p.explored) && p.explored > 0 && p.explored <= p.total &&
+    !!s && p.sessionStartedAt === s.startedAt && p.total === s.ids.length && p.endpoint === s.ids[s.ids.length - 1];
+}
+
 /** "23 of 100": photos meaningfully seen in this Adventure. */
 export function adventurePlace(s: ExploreSession) {
   return { explored: exploreCounts(s).explored, total: s.ids.length };
@@ -125,4 +150,11 @@ export function adventureProgress(sessions: (ExploreSession | undefined)[]) {
     }
   }
   return { explored: explored.size, setAside: setAside.size, exploredIds: explored };
+}
+
+/** An opened record alone is not meaningful progress or a reason to show Continue. */
+export function meaningfulReview(s: ExploreSession | undefined) {
+  if (!s || s.finished) return false;
+  const viewed = s.ids.filter(id => s.records[id]?.encountered).length;
+  return s.ids.some(id => s.records[id]?.queued) || viewed > 1 || (viewed > 0 && s.activeId !== s.ids[0]);
 }

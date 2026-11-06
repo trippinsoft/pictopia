@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import { MediaImage } from "./media-image";
 import { ZoomPhotoProps } from "./zoom-photo.types";
-export function ZoomPhoto({ media }: ZoomPhotoProps) {
+export function ZoomPhoto({ media, onSettled }: ZoomPhotoProps) {
   const [scale, setScale] = useState(1),
     [position, setPosition] = useState({ x: 0, y: 0 });
   const pointers = useRef(new Map<number, { x: number; y: number }>()),
@@ -66,7 +66,7 @@ export function ZoomPhoto({ media }: ZoomPhotoProps) {
       }}
     >
       <div data-testid="photo-transform" style={transformStyle}>
-        <MediaImage media={media} fit="contain" style={fillStyle} />
+        <MediaImage onSettled={onSettled} media={media} fit="contain" style={fillStyle} />
       </div>
     </div>
   );

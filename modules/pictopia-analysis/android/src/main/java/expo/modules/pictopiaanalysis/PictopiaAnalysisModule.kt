@@ -29,6 +29,9 @@ class PictopiaAnalysisModule : Module() {
     AsyncFunction("reviewFavorite") Coroutine { id: String ->
       withContext(Dispatchers.IO) { PictopiaReview.favorite(appContext.reactContext ?: error("Context unavailable"), id) }
     }
+    AsyncFunction("localAssetSize") Coroutine { id: String ->
+      withContext(Dispatchers.IO) { PictopiaReview.localSize(appContext.reactContext ?: error("Context unavailable"), id) }
+    }
     AsyncFunction("reviewThumbnail") Coroutine { id: String, version: String ->
       withContext(Dispatchers.IO) { PictopiaReview.thumbnail(appContext.reactContext ?: error("Context unavailable"), id, version) }
     }

@@ -18,6 +18,7 @@ public class PictopiaAnalysisModule: Module {
       self.lock.lock(); let request = self.currentRequest; self.lock.unlock()
       if let request = request { PHAssetResourceManager.default().cancelDataRequest(request) }
     }
+    AsyncFunction("localAssetSize") { (id: String, promise: Promise) in self.review.localSize(id, promise: promise) }
     AsyncFunction("reviewFavorite") { (id: String) -> Bool in try PictopiaReview.asset(id).isFavorite }
     AsyncFunction("setReviewFavorite") { (id: String, value: Bool, promise: Promise) in self.review.favorite(id, value: value, promise: promise) }
     AsyncFunction("reviewThumbnail") { (id: String, version: String, promise: Promise) in self.review.thumbnail(id, version: version, promise: promise) }

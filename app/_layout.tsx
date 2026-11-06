@@ -29,6 +29,13 @@ import {
 // Editorial serif for headings; per-weight imports bundle only these two files.
 import { Fraunces_500Medium } from "@expo-google-fonts/fraunces/500Medium";
 import { Fraunces_600SemiBold } from "@expo-google-fonts/fraunces/600SemiBold";
+// Playful Adventure display face; per-weight imports bundle only these files.
+import { Fredoka_500Medium } from "@expo-google-fonts/fredoka/500Medium";
+import { Fredoka_600SemiBold } from "@expo-google-fonts/fredoka/600SemiBold";
+import { Fredoka_700Bold } from "@expo-google-fonts/fredoka/700Bold";
+import { savedPastel } from "@/theming/pastels";
+import { RecapHost } from "@/components/pictopia/recap";
+import { DARK_MODE_ENABLED } from "@/theming/appearance";
 import { PortalHost } from "@rn-primitives/portal";
 import { WebPortalContext } from "@/components/WebPortalContext";
 import * as SplashScreen from "expo-splash-screen";
@@ -41,12 +48,16 @@ export {
 } from "expo-router";
 
 function RootContent() {
-  const { ready, error } = usePictopia();
+  const { ready, error, prefs } = usePictopia();
   const hasMounted = React.useRef(false);
   const hasShownContent = React.useRef(false);
   const [portalContainer, setPortalContainer] = React.useState<View | null>(null);
   const { isDarkColorScheme } = useColorScheme();
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, pastel, setPastel } = useTheme();
+  // Playful Adventure 1.0 is light only. The dark tokens stay, so System/Light/Dark can
+  // return later without rebuilding the design; the saved appearance choice is kept.
+  const dark = DARK_MODE_ENABLED && isDarkColorScheme;
+  const chosenPastel = savedPastel(prefs.theme);
   const [isColorSchemeLoaded, setIsColorSchemeLoaded] = React.useState(false);
 
   const [fontsLoaded, fontError] = useFonts({
@@ -57,13 +68,16 @@ function RootContent() {
     Inter_700Bold,
     Fraunces_500Medium,
     Fraunces_600SemiBold,
+    Fredoka_500Medium,
+    Fredoka_600SemiBold,
+    Fredoka_700Bold,
   });
   const isLoadingFonts = !fontsLoaded && !fontError;
   const appearanceReady =
-    (ready || !!error) && theme.name === (isDarkColorScheme ? "dark" : "light");
+    (ready || !!error) && theme.name === (dark ? "dark" : "light") && (!!error || pastel === chosenPastel);
 
   const navigationTheme: NavigationTheme = React.useMemo(() => {
-    const navigationThemeBase = isDarkColorScheme ? NavigationDarkTheme : NavigationDefaultTheme;
+    const navigationThemeBase = dark ? NavigationDarkTheme : NavigationDefaultTheme;
     const baseColors = navigationThemeBase.colors;
     return {
       ...navigationThemeBase,
@@ -77,16 +91,16 @@ function RootContent() {
         text: theme.colors.foreground ?? baseColors.text,
       },
     };
-  }, [theme, isDarkColorScheme]);
+  }, [theme, dark]);
 
   React.useEffect(() => {
-    if (isDarkColorScheme && theme.name !== "dark") {
-      setTheme("dark");
-    }
-    if (!isDarkColorScheme && theme.name !== "light") {
-      setTheme("light");
-    }
-  }, [isDarkColorScheme, theme.name, setTheme]);
+    if (dark && theme.name !== "dark") setTheme("dark");
+    if (!dark && theme.name !== "light") setTheme("light");
+  }, [dark, theme.name, setTheme]);
+
+  React.useEffect(() => {
+    if (ready && pastel !== chosenPastel) setPastel(chosenPastel);
+  }, [ready, pastel, chosenPastel, setPastel]);
 
   React.useEffect(() => {
     if (Platform.OS !== "web") {
@@ -134,7 +148,7 @@ function RootContent() {
       value={{ container: portalContainer as unknown as HTMLElement | null }}
     >
       <NavigationThemeProvider value={navigationTheme}>
-        <StatusBar style={isDarkColorScheme ? "light" : "dark"} />
+        <StatusBar style={dark ? "light" : "dark"} />
         <Stack
           screenOptions={() => ({
             headerStyle: {
@@ -150,9 +164,14 @@ function RootContent() {
             headerShown: false,
           })}
         >
-          <Stack.Screen name="time-machine" options={{ title: "Time Machine" }} />
+          <Stack.Screen name="settings" options={{ title: "Settings", presentation: "modal" }} />
+          <Stack.Screen name="time-machine" options={{ title: "The Yearbook" }} />
           <Stack.Screen name="pit-stops" options={{ title: "Pit Stops" }} />
           <Stack.Screen name="pit-stop" options={{ title: "Pit Stop" }} />
+          {/* Review layers: iOS swipe-to-dismiss would fight vertical scrolling; ✕ and Android Back close them. */}
+          <Stack.Screen name="vertical-explore" options={{ title: "Adventure", gestureEnabled: false, fullScreenGestureEnabled: false }} />
+          <Stack.Screen name="collection-review" options={{ title: "Photo review", gestureEnabled: false, fullScreenGestureEnabled: false }} />
+          <Stack.Screen name="queue" options={{ title: "Ready to delete" }} />
           <Stack.Screen
             name="index"
             options={{
@@ -161,6 +180,7 @@ function RootContent() {
             }}
           />
         </Stack>
+        <RecapHost />
         {
           // View used as a portal container on web
           <View
@@ -186,11 +206,9 @@ function RootContent() {
 }
 
 export default function RootLayout() {
-  const { isDarkColorScheme } = useColorScheme();
-
   return (
     <ThemeProvider
-      initialThemeName={isDarkColorScheme ? "dark" : "light"}
+      initialThemeName="light"
       themes={[lightTheme, darkTheme]}
     >
       <GestureHandlerRootView style={fillStyle}>

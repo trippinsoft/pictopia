@@ -1,3 +1,4 @@
+import { adventureName } from "@/lib/pictopia/catalog";
 import { eligiblePhotographs, photographQuery } from "@/lib/pictopia/photo-eligibility";
 import { Platform } from "react-native";
 import { storage, serialize } from "./repository";
@@ -8,6 +9,9 @@ import {
   OFFER_MIN,
   RECENT_LIMIT,
   adventureComplete,
+  completionEvidence,
+  completionProof,
+  savedCompletion,
   adventureProgress,
   emptyIndex,
   type Adventure,
@@ -64,9 +68,15 @@ export type ExploreChoice =
   | { kind: "month"; month: string }
   | { kind: "day" }
   | { kind: "detour" }
+  | { kind: "capsule" }
   | { kind: "screenshots" };
 
-const loadMeta = (id: string) => storage.getValue<Adventure>(metaKey(id));
+// Presentation-only normalization preserves legacy IDs, frozen photos and all review records.
+const loadMeta = async (id: string) => {
+  const adventure = await storage.getValue<Adventure>(metaKey(id));
+  return adventure && (adventure.kind === "year" || adventure.kind === "month")
+    ? { ...adventure, hint: { ...adventure.hint, title: adventureName(adventure.kind) } } : adventure;
+};
 const loadSession = (id: string) => exploreStoreFor(adventureSessionKey(id)).load();
 const loadFeedback = async () => (await storage.getValue<AdventureFeedback[]>(FEEDBACK_KEY)) ?? [];
 const remember = (index: AdventureIndex, source: string) => {
@@ -353,39 +363,51 @@ async function homeSlots(seed: number, refresh: boolean) {
       ...avoidSources,
     ]);
     const varied = all.filter((m) => !avoid.has(m.curated.source));
-    const made = refresh || varied.length >= (other ? 1 : 2) ? varied : all;
-    const pair = choosePair(
-      made.map((m) => m.curated),
-      other && { kind: other.adventure.kind, source: other.adventure.source, ids: other.session.ids },
-    );
-    const fill: (AdventureSlot | undefined)[] = [];
-    const taken = new Set<string>(other?.session.ids ?? []);
-    for (const curated of pair) {
-      const found = made.find((m) => m.curated.source === curated.source)!;
-      // The second of a fresh pair never repeats a photo from the first.
-      const overlap = curated.ids.some((id) => taken.has(id));
-      const withoutTaken = overlap
-        ? curate(found.candidate, { ...ctx, exclude: new Set([...(ctx.exclude ?? []), ...taken]) })
-        : curated;
-      const final = withoutTaken ?? (browserShortPair ? curated : undefined);
-      if (!final) continue;
-      const stored = await persist(
-        { ...final, diagnostics: { ...final.diagnostics, pairing: curated.diagnostics.pairing } },
-        found.candidate,
-        { ...ctx, exclude: new Set([...(ctx.exclude ?? []), ...(withoutTaken ? taken : [])]) },
-        {},
-        !refresh,
+    // "Shuffle" relaxes step by step rather than doing nothing: first avoid recent pairs, then
+    // only the pair on screen (its photos are always excluded), then anything with new photos.
+    const attempts = refresh
+      ? [varied, all.filter((m) => !avoidSources.has(m.curated.source)), all]
+      : [varied.length >= (other ? 1 : 2) ? varied : all];
+    const recentBefore = [...index.recent];
+    let fill: (AdventureSlot | undefined)[] = [];
+    let made = attempts[0];
+    for (const attempt of attempts) {
+      made = attempt;
+      index.recent = [...recentBefore];
+      fill = [];
+      const pair = choosePair(
+        made.map((m) => m.curated),
+        other && { kind: other.adventure.kind, source: other.adventure.source, ids: other.session.ids },
       );
-      if (!stored) continue;
-      stored.adventure.diagnostics!.alternatives = made
-        .filter((m) => m.curated.source !== curated.source)
-        .sort((a, b) => b.curated.diagnostics.total - a.curated.diagnostics.total)
-        .slice(0, 5)
-        .map((m) => ({ title: m.curated.hint.title, detail: m.curated.hint.detail, total: m.curated.diagnostics.total }));
-      if (!refresh) await storage.setValue(metaKey(stored.adventure.id), stored.adventure);
-      stored.session.ids.forEach((id) => taken.add(id));
-      remember(index, stored.adventure.source);
-      fill.push(stored);
+      const taken = new Set<string>(other?.session.ids ?? []);
+      for (const curated of pair) {
+        const found = made.find((m) => m.curated.source === curated.source)!;
+        // The second of a fresh pair never repeats a photo from the first.
+        const overlap = curated.ids.some((id) => taken.has(id));
+        const withoutTaken = overlap
+          ? curate(found.candidate, { ...ctx, exclude: new Set([...(ctx.exclude ?? []), ...taken]) })
+          : curated;
+        const final = withoutTaken ?? (browserShortPair ? curated : undefined);
+        if (!final) continue;
+        const stored = await persist(
+          { ...final, diagnostics: { ...final.diagnostics, pairing: curated.diagnostics.pairing } },
+          found.candidate,
+          { ...ctx, exclude: new Set([...(ctx.exclude ?? []), ...(withoutTaken ? taken : [])]) },
+          {},
+          !refresh,
+        );
+        if (!stored) continue;
+        stored.adventure.diagnostics!.alternatives = made
+          .filter((m) => m.curated.source !== curated.source)
+          .sort((a, b) => b.curated.diagnostics.total - a.curated.diagnostics.total)
+          .slice(0, 5)
+          .map((m) => ({ title: m.curated.hint.title, detail: m.curated.hint.detail, total: m.curated.diagnostics.total }));
+        if (!refresh) await storage.setValue(metaKey(stored.adventure.id), stored.adventure);
+        stored.session.ids.forEach((id) => taken.add(id));
+        remember(index, stored.adventure.source);
+        fill.push(stored);
+      }
+      if (!refresh || fill.length >= 2) break;
     }
     // Prepare and validate both before publishing either. Exhaustion must not replace a
     // pair with one card, repeat its source, or leave half-created offers in storage.
@@ -447,6 +469,7 @@ export const adventureStore = {
    * waits in Explore's "Continue". */
   async choose(choice: ExploreChoice, seed = Date.now()) {
     return serialize(async () => {
+      if (choice.kind === "year" && !/^\d{4}$/.test(choice.year)) return undefined;
       const index = await loadIndex();
       const ctx: CurationContext = { ...(await curationContext(index, seed)), chosen: true };
       const now = ctx.now!;
@@ -455,7 +478,7 @@ export const adventureStore = {
           ? {
               kind: "year",
               source: `year:${choice.year}`,
-              months: (await storage.months(true)).map((m) => m.key).filter((k) => k.startsWith(choice.year)),
+              months: (await storage.months(true)).map((m) => m.key).filter((k) => k.startsWith(`${choice.year}-`)),
               reason: `You chose ${choice.year}.`,
             }
           : choice.kind === "month"
@@ -474,7 +497,7 @@ export const adventureStore = {
                     seed,
                     screenshots: false,
                     recentSources: index.recent,
-                  }).find((p) => p.kind === "detour");
+                  }).find((p) => p.kind === (choice.kind === "capsule" ? "capsule" : "detour"));
       if (!plan) return undefined;
       const candidate = await loadCandidate(plan, ctx);
       const curated = curate(candidate, ctx);
@@ -489,7 +512,7 @@ export const adventureStore = {
   /** What Explore can offer. Videos aren't: the explorer shows still photos only. */
   async choices(now = Date.now()) {
     // Still photos only: videos aren't explored.
-    const months = (await storage.months(true)).filter((m) => (m.photos ?? m.count) > 0);
+    const months = (await storage.months(true)).filter((m) => (m.photos ?? m.count) > 0 && /^\d{4}-(0[1-9]|1[0-2])$/.test(m.key));
     const years = [...new Set(months.map((m) => m.key.slice(0, 4)))].sort().reverse();
     const photos = Object.fromEntries(months.map((m) => [m.key, m.photos ?? m.count]));
     const yearPhotos = Object.fromEntries(
@@ -511,6 +534,8 @@ export const adventureStore = {
       yearPhotos,
       day: pastYears > 0,
       detour: years.length >= 2,
+      // Time Capsule: Pictopia picks a month with at least 20 photos.
+      capsule: months.some((m) => (m.photos ?? m.count) >= 20),
       screenshots: await hasScreenshots(),
     };
   },
@@ -548,6 +573,20 @@ export const adventureStore = {
     });
   },
   /** Unfinished Adventures that aren't on Home, most recent first. Finished ones drop out. */
+  /** All saved Yearbooks, including legacy Home sessions, without generating new offers. */
+  async yearbooks(): Promise<AdventureSlot[]> {
+    return serialize(async () => {
+      const index = await loadIndex();
+      const out: AdventureSlot[] = [];
+      for (const id of new Set([...index.started, ...index.parked, ...index.slots])) {
+        const adventure = await loadMeta(id);
+        if (!adventure || !["year", "month"].includes(adventure.kind) || (!adventure.startedAt && !adventure.chosen)) continue;
+        const session = await loadSession(id);
+        if (session && !adventureComplete(session) && await validPhotoOffer(adventure, session)) out.push({ adventure, session });
+      }
+      return out.sort((a, b) => (b.adventure.openedAt ?? b.adventure.createdAt) - (a.adventure.openedAt ?? a.adventure.createdAt));
+    });
+  },
   async unfinished() {
     return serialize(async () => {
       const index = await loadIndex();
@@ -571,16 +610,18 @@ export const adventureStore = {
   async finish(id: string) {
     return serialize(async () => {
       const adventure = await loadMeta(id);
-      if (!adventure) return { ask: false };
+      const session = await loadSession(id);
+      if (!adventure || !session || !completionEvidence(session)) return { ask: false };
       const index = await loadIndex();
       const feedback = await loadFeedback();
       const answered = feedback.some((f) => f.id === id);
-      if (!adventure.finishedAt) {
-        await storage.setValue(metaKey(id), { ...adventure, finishedAt: Date.now() });
-        index.finished = (index.finished ?? 0) + 1;
-        const due = !adventure.lab && index.finished >= 2 && index.finished - (index.askedAt ?? 0) >= 3;
+      if (!adventure.finishedAt || (!savedCompletion(adventure, session) && !!session.completionVerifiedAt)) {
+        if (!adventure.finishedAt) index.finished = (index.finished ?? 0) + 1;
+        const completed = index.finished ?? 0;
+        const due = !adventure.lab && completed >= 2 && completed - (index.askedAt ?? 0) >= 3;
         if (due) index.askedAt = index.finished;
-        await storage.setValue(ADVENTURES_KEY, index);
+        const at = adventure.finishedAt ?? Date.now();
+        await storage.put([], { [metaKey(id)]: { ...adventure, priorCompletionProof: adventure.completionProof, finishedAt: at, completionProof: completionProof(session, at) }, [ADVENTURES_KEY]: index });
         return { ask: due && !answered };
       }
       return { ask: false };
