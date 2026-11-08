@@ -4,7 +4,7 @@ import { Platform } from "react-native";
 import { storage } from "./repository";
 import { deletionBlocked, visibleIds } from "./explore";
 import { shuffle } from "@/lib/pictopia/logic";
-import { MEMORY_PAIRS, PIT_STOP_ROUNDS, playable, type PitStop } from "@/lib/pictopia/pitstops";
+import { MEMORY_PAIRS, playable, type PitStop } from "@/lib/pictopia/pitstops";
 import type { Media } from "@/lib/pictopia/types";
 
 /** Games never change a photo, decision or deletion queue; only the pair preference is saved. */
@@ -14,15 +14,17 @@ export const pitStopStore = {
   /** What the library can support. Browser files only have modified dates, so date games
    * are offered only with real capture dates (the native app). */
   async library() {
-    const months = (await storage.months(true)).filter((m) => (m.photos ?? m.count) > 0);
-    return {
-      photos: months.reduce((sum, m) => sum + (m.photos ?? m.count), 0),
-      years: new Set(months.map((m) => m.key.slice(0, 4))).size,
-      captureDates: Platform.OS !== "web",
-    };
+    const blocked = await deletionBlocked();
+    let photos = 0; const years = new Set<string>();
+    for (let offset = 0; ; offset += 200) {
+      const page = await storage.query({ ...photographQuery, offset, limit: 200 });
+      for (const item of playable(page, blocked)) { photos++; years.add(item.month.slice(0, 4)); }
+      if (page.length < 200) break;
+    }
+    return { photos, years: years.size, captureDates: Platform.OS !== "web" };
   },
   /** A varied sample of visible still photos: a few from many months across every year. */
-  async sample(game: PitStop, seed: number, pairs: MemoryPairs = MEMORY_PAIRS): Promise<Media[]> {
+  async sample(game: PitStop, seed: number, _pairs: MemoryPairs = MEMORY_PAIRS): Promise<Media[]> {
     const months = (await storage.months(true)).filter((m) => (m.photos ?? m.count) > 0);
     const byYear = new Map<string, string[]>();
     for (const m of shuffle(months, seed))
@@ -33,11 +35,12 @@ export const pitStopStore = {
       for (const list of byYear.values()) if (list[i] && keys.length < 24) keys.push(list[i]);
       if (keys.length === before) break;
     }
-    const needed = game === "memoryMatch" ? pairs : PIT_STOP_ROUNDS * 2;
-    const per = Math.max(game === "memoryMatch" ? 3 : 6, Math.ceil(needed / Math.max(1, keys.length)));
-    const rows = await Promise.all(keys.map((month) => storage.query({ ...photographQuery, month, limit: 40 })));
+    const rows = await Promise.all(keys.flatMap(month => [
+      storage.query({ ...photographQuery, month, order: "oldest", limit: 20 }),
+      storage.query({ ...photographQuery, month, order: "newest", limit: 20 }),
+    ]));
     const blocked = await deletionBlocked();
-    const pool = rows.flatMap((list) => shuffle(playable(list, blocked), seed).slice(0, per));
+    const pool = shuffle([...new Map(rows.flatMap(list => playable(list, blocked)).map(m => [m.id, m])).values()], seed);
     const visible = new Set(await visibleIds(pool.map((m) => m.id)));
     return pool.filter((m) => visible.has(m.id));
   },

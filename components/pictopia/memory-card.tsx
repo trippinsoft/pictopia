@@ -6,8 +6,8 @@ import { MediaImage, type MediaSettled } from "./media-image";
 import type { Media } from "@/lib/pictopia/types";
 import { MEMORY_FLIP_MS } from "@/lib/pictopia/memory-match";
 
-export function MemoryCard({ index, photoNumber, photo, open, matched, celebrating, disabled, reduced, active, width, height, onPress, onSettled }: {
-  index: number; photoNumber: number; photo?: Media; open: boolean; matched: boolean; celebrating: boolean;
+export function MemoryCard({ index, photoNumber, photo, uri, open, matched, celebrating, disabled, reduced, active, width, height, onPress, onSettled }: {
+  index: number; photoNumber: number; photo?: Media; uri?: string; open: boolean; matched: boolean; celebrating: boolean;
   disabled: boolean; reduced: boolean; active: boolean; width: number; height: number;
   onPress(): void; onSettled(state: MediaSettled): void;
 }) {
@@ -36,7 +36,7 @@ export function MemoryCard({ index, photoNumber, photo, open, matched, celebrati
         <View className="opacity-60"><Icon name="Aperture" size={25} strokeWidth={1.25} className="text-primary" /></View>
       </View></Animated.View>
       <Animated.View style={[styles.face, front]}><View className="flex-1 overflow-hidden rounded-2xl bg-secondary">
-        <MediaImage media={photo} className="h-full w-full" fit="contain" onSettled={onSettled} />
+        <MediaImage media={uri ? undefined : photo} uri={uri} className="h-full w-full" fit="contain" onSettled={onSettled} />
         <Animated.View style={[styles.fill, glow]}><View className="flex-1 rounded-2xl border-2 border-primary" /></Animated.View>
       </View></Animated.View>
     </Animated.View>

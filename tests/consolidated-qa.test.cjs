@@ -54,9 +54,9 @@ test('149 to 150, seven-photo interruption, restart, new local day and Pro keep 
 
 test('scope labels distinguish open-ended session activity, bounded scope percent and adventure position', () => {
   const r = makeLoader()('lib/pictopia/review-flow.ts');
-  for(const scope of ['recent','videos','videos-large']) assert.equal(r.reviewProgressLabel(scope,24,3,120,3),'24 reviewed this session');
-  assert.equal(r.reviewProgressLabel('album:a',4,3,120,20),'20% of this album explored');
-  assert.equal(r.reviewProgressLabel(undefined,2,4,18),'5 of 18');
+  assert.equal(r.reviewProgressLabel(4,18),'5 of 18');
+  assert.equal(r.reviewProgressLabel(-1,18),'1 of 18');
+  assert.equal(r.reviewProgressLabel(30,18),'18 of 18');
   assert.match(r.moreCollectionLabel('album:a'),/this album/);
   assert.match(r.limitCopy(150).title,/150 photos and videos/);
 });
@@ -67,10 +67,11 @@ function video(resolve) {
     play(){this.playCalls++}, pause(){this.pauseCalls++}, replaceAsync:async uri=>{sources.push(uri)}, addListener:(name,fn)=>{events[name]=fn; return{remove(){}}} };
   const props = { media:media('v',{type:'video',duration:12}),active:true,playing:false,onPlayingChange:value=>{props.playing=value},onReady:()=>{props.ready=true} };
   const h = hooks('components/pictopia/video-page.tsx','VideoPage',{
-    'react-native':{ActivityIndicator:'Spinner',View:'View',StyleSheet:{absoluteFill:{}},AppState:{addEventListener:(name,fn)=>{appEvents[name]=fn;return{remove(){}}}}},
+    'react-native':{ActivityIndicator:'Spinner',View:'View',StyleSheet:{absoluteFill:{}},AppState:{currentState:'active',addEventListener:(name,fn)=>{appEvents[name]=fn;return{remove(){}}}}},
     expo:{useEvent:(_,event)=>event==='statusChange'?{status:player.status}:{currentTime:0}},
+    './use-review-video':{useReviewVideo:()=>({player,status:player.status,currentTime:0,owner:{current:{pause:()=>player.pause(),play:()=>player.play(),replace:uri=>player.replaceAsync(uri)}}})},
     'expo-video':{useVideoPlayer:source=>{assert.equal(source,null,'player identity must stay stable during async source replacement');return player},VideoView:'VideoView'},
-    './ui':{Icon:'Icon',Text:'Text'}, '@/services/media':{mediaService:{resolve}},
+    './ui':{Icon:'Icon',Text:'Text'}, '@/services/video-source':{videoSource:(m,network)=>resolve(m,{download:network})}, '@/services/media':{mediaService:{resolve}},
   },props);
   return {h,props,player,sources,events,appEvents};
 }
@@ -124,19 +125,19 @@ test('20,000-photo SQLite aggregate stays unique, separates video and survives r
 
 test('missing and invalid sizes never fabricate savings, including Live Photo still-only metadata',()=>{
   const {storageEstimate}=makeLoader()('lib/pictopia/storage-size.ts');
-  assert.deepEqual(storageEstimate([{size:7000000},{},{size:0},{size:NaN},{size:-1},{size:42,livePhoto:true},{scan:{size:3000000}}]),{bytes:10000000,known:2,unknown:5});
+  assert.deepEqual(storageEstimate([{size:7000000},{},{size:0},{size:NaN},{size:-1},{size:42,livePhoto:true},{scan:{size:3000000}}]),{bytes:10000042,known:3,unknown:4});
 });
 
 test('the actual allowance hook charges historical encounters on a new day, then allows revisits and Pro',async()=>{
   const session={ids:['a','b'],activeId:'a',records:{a:{encountered:true}}};let counted=Array.from({length:149},(_,i)=>String(i)),calls=0;const events={};
   const h=hooks('components/pictopia/use-allowance.ts','useAllowance',{
-    'react-native':{AppState:{addEventListener:(name,fn)=>{events[name]=fn;return{remove(){}}}}},
+    'react-native':{AppState:{currentState:'active',addEventListener:(name,fn)=>{events[name]=fn;return{remove(){}}}}},
     '@/services/daily':{allowanceStore:{state:async()=>({counted}),limit:async()=>150,present:async id=>{calls++;counted=[...counted,id];return{counted,left:150-counted.length,limit:150}}}},
-  },[session,session.ids,'a',false]);
+  },[session,session.ids,'a',false,true]);
   assert.equal(h.render().ready,false);await tick();h.render();await tick();
   assert.equal(h.render().stopBefore,'b');assert.equal(calls,1,'old encounters do not grant lifetime free access');
   h.render();await tick();assert.equal(calls,1,'today’s repeated display is free');
-  assert.equal(h.render([session,session.ids,'a',true]).stopBefore,undefined);
+  assert.equal(h.render([session,session.ids,'a',true,true]).stopBefore,undefined);
   h.unmount();
 });
 

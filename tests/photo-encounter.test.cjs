@@ -23,43 +23,36 @@ function clock() {
   };
 }
 
-test('only a continuously visible, loaded foreground photo qualifies; preloads and rapid passes do not', async () => {
+test('loaded foreground photos count immediately, including rapid passes; preloads never count', async () => {
   const time = clock(), saves = [], errors = [];
   const observer = observePhotoEncounter({ ...time, save: async at => saves.push(at), onError: () => errors.push(true) });
   await time.advance(1000);
-  assert.equal(saves.length, 0, 'preload without visibility never counts');
+  assert.deepEqual(saves, [], 'preload without visibility never counts');
   observer.setVisible(true);
-  await time.advance(399);
+  assert.deepEqual(saves, [2000], 'no timer, minimum duration or extra event loop is required');
   observer.setVisible(false);
+  await flush();
+  observer.setVisible(true); observer.setVisible(true);
   await time.advance(1000);
-  assert.equal(saves.length, 0, 'backgrounding or scrolling away before dwell cancels credit');
-  observer.setVisible(true);
-  await time.advance(200);
-  observer.setVisible(true);
-  await time.advance(200);
-  assert.deepEqual(saves, [3799], 'duplicate lifecycle events do not restart dwell');
-  observer.setVisible(false); observer.setVisible(true);
-  await time.advance(1000);
-  assert.equal(saves.length, 1, 'one observer writes once even after foregrounding');
-  assert.deepEqual(errors, []);
-  observer.dispose();
+  assert.equal(saves.length, 1, 'revisiting does not count twice');
+  assert.deepEqual(errors, []); observer.dispose();
 });
 
-test('switching photo or leaving the screen cancels unearned dwell', async () => {
+test('rapid photo switching and exit preserve each loaded encounter without timers', async () => {
   const time = clock(), saves = [];
-  const a = observePhotoEncounter({ ...time, save: async () => saves.push('a'), onError: () => assert.fail('unexpected failure') });
-  a.setVisible(true); await time.advance(399); a.dispose();
-  const b = observePhotoEncounter({ ...time, save: async () => saves.push('b'), onError: () => assert.fail('unexpected failure') });
-  b.setVisible(true); await time.advance(400);
-  assert.deepEqual(saves, ['b']);
-  b.dispose();
+  for (const id of ['a', 'b', 'c']) {
+    const observer = observePhotoEncounter({ ...time, save: async () => saves.push(id), onError: () => assert.fail('unexpected failure') });
+    observer.setVisible(true); observer.dispose();
+  }
+  await flush();
+  assert.deepEqual(saves, ['a', 'b', 'c']); assert.equal(time.pending, 0);
 });
 
 test('transient storage failures retry a bounded number of times with the original encounter timestamp', async () => {
   const time = clock(), attempts = [], errors = [];
   const observer = observePhotoEncounter({ ...time, save: async at => { attempts.push(at); if (attempts.length < 3) throw Error('busy'); }, onError: () => errors.push(true) });
-  observer.setVisible(true); await time.advance(2400);
-  assert.deepEqual(attempts, [1400, 1400, 1400]);
+  observer.setVisible(true); await flush(); await time.advance(2400);
+  assert.deepEqual(attempts, [1000, 1000, 1000]);
   assert.equal(time.pending, 0);
   assert.deepEqual(errors, []);
   observer.dispose();
@@ -68,7 +61,7 @@ test('transient storage failures retry a bounded number of times with the origin
 test('persistent write failure is surfaced once and does not loop indefinitely', async () => {
   const time = clock(), errors = []; let attempts = 0;
   const observer = observePhotoEncounter({ ...time, save: async () => { attempts++; throw Error('disk failure'); }, onError: () => errors.push(true) });
-  observer.setVisible(true); await time.advance(10000);
+  observer.setVisible(true); await flush(); await time.advance(10000);
   assert.equal(attempts, 3); assert.deepEqual(errors, [true]); assert.equal(time.pending, 0);
   observer.dispose(); assert.deepEqual(errors, [true]);
 });
@@ -117,27 +110,27 @@ test('the actual hook excludes unloaded cards, background time and blurred scree
   const time = clock(), h = hookHarness(time);
   h.hook('a', false, 'session'); await time.advance(1000);
   assert.deepEqual(h.writes, []);
-  h.hook('a', true, 'session'); await time.advance(399);
-  h.app('background'); await time.advance(1000);
-  assert.deepEqual(h.writes, []);
-  h.app('active'); await time.advance(399); h.focus(false); await time.advance(1000);
-  assert.deepEqual(h.writes, []);
-  h.focus(true); await time.advance(400);
-  assert.equal(h.writes.length, 1); assert.deepEqual(h.writes[0].slice(0, 2), ['a', 'session']);
+  h.app('background'); h.hook('a', true, 'session');
+  await time.advance(1000); assert.deepEqual(h.writes, []);
+  h.app('active'); assert.equal(h.writes.length, 1, 'counts immediately when loaded and foregrounded');
+  h.focus(false); h.hook('b', true, 'session');
+  await time.advance(1000); assert.equal(h.writes.length, 1, 'blurred cards never count');
+  h.focus(true); assert.equal(h.writes.length, 2);
+  assert.deepEqual(h.writes.map(write => write.slice(0, 2)), [['a', 'session'], ['b', 'session']]);
   h.dispose(); assert.equal(h.listeners, 0); assert.equal(time.pending, 0);
 });
 
-test('session rerenders do not restart the actual hook dwell timer; retries use the current callback', async () => {
+test('session rerenders cannot duplicate an immediate encounter; retries use the current callback', async () => {
   const time = clock(), h = hookHarness(time), writes = [];
-  h.hook('final', true, undefined, async at => writes.push(['before', at]));
-  await time.advance(200);
+  h.hook('final', true, undefined, async at => { writes.push(['before', at]); throw Error('busy'); });
+  await flush();
   h.hook('final', true, undefined, async at => writes.push(['after', at]));
-  await time.advance(200);
-  assert.deepEqual(writes, [['after', 1400]]);
+  await time.advance(600);
+  assert.deepEqual(writes, [['before', 1000], ['after', 1000]]);
   h.dispose();
 });
 
-test('the actual web hook excludes hidden browser tabs and restarts dwell when visible', async t => {
+test('the actual web hook excludes hidden browser tabs and counts immediately when visible', async t => {
   const time = clock(), h = hookHarness(time, 'web'), listeners = new Set();
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'document');
   const doc = { visibilityState: 'hidden', addEventListener: (event, listener) => listeners.add(listener), removeEventListener: (event, listener) => listeners.delete(listener) };
@@ -145,7 +138,6 @@ test('the actual web hook excludes hidden browser tabs and restarts dwell when v
   t.after(() => { h.dispose(); if (previous) Object.defineProperty(globalThis, 'document', previous); else delete globalThis.document; });
   h.hook('a', true); await time.advance(1000); assert.deepEqual(h.writes, []);
   doc.visibilityState = 'visible'; for (const listener of listeners) listener();
-  await time.advance(399); assert.deepEqual(h.writes, []);
-  await time.advance(1); assert.equal(h.writes.length, 1);
+  assert.equal(h.writes.length, 1, 'visible loaded photo counts without waiting');
   h.dispose(); assert.equal(listeners.size, 0);
 });

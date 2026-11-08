@@ -69,7 +69,7 @@ export default function DuplicateHunt() {
           <Text accessibilityRole="header" className="text-headline text-foreground">Duplicate Hunt</Text>
           {!!pages?.length && <Text className="text-caption text-muted-foreground">{`Group ${Math.min(index + 1, pages.length)} of ${pages.length}`}</Text>}
         </View>
-        <Pressable accessibilityRole="button" accessibilityLabel={`Ready to delete, ${plural(app.stats.pending, "item")} marked`} onPress={() => router.push("/queue")} className="h-12 w-12 items-center justify-center rounded-full bg-card/90 active:opacity-70">
+        <Pressable accessibilityRole="button" accessibilityLabel={`Discarded, ${plural(app.stats.pending, "item")} waiting to delete`} onPress={() => router.push("/queue")} className="h-12 w-12 items-center justify-center rounded-full bg-card/90 active:opacity-70">
           <Icon name="Trash2" size={22} className="text-foreground" />
           {app.stats.pending > 0 && <View className="absolute -right-1 -top-1 h-5 min-w-5 items-center justify-center rounded-full bg-sun px-1"><Text className="text-[12px] font-bold text-primary-foreground">{app.stats.pending}</Text></View>}
         </Pressable>
@@ -115,7 +115,7 @@ export default function DuplicateHunt() {
       <AdventureTheme enabled><View className="flex-1 items-center justify-center bg-black/70 px-6">
         <View className="w-full max-w-sm rounded-[24px] bg-card p-6">
           <Text className="text-display text-foreground">{`Mark all ${confirm?.page.items.length ?? ""}?`}</Text>
-          <Text className="my-3 text-body leading-6 text-muted-foreground">None of these would be left once you delete. They stay in your library until you confirm in Ready to delete.</Text>
+          <Text className="my-3 text-body leading-6 text-muted-foreground">None of these would be left once you delete. They stay in your library until you delete them from Discarded.</Text>
           <Button danger onPress={() => { if (confirm) void setMark(confirm.id, true); setConfirm(undefined); }}>Mark all</Button>
           <Pressable accessibilityRole="button" onPress={() => setConfirm(undefined)} className="mt-1 min-h-12 items-center justify-center"><Text className="text-button text-foreground">Keep one</Text></Pressable>
         </View>

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, AppState, StyleSheet, View } from "react-native";
 import { useFocusEffect } from "expo-router";
-import { useEvent } from "expo";
-import { useVideoPlayer, VideoView } from "expo-video";
+import { VideoView } from "expo-video";
+import { useReviewVideo } from "./use-review-video";
 import { Icon, Text } from "./ui";
-import { mediaService } from "@/services/media";
+import { videoSource } from "@/services/video-source";
 import { CLOUD_ONLY } from "@/services/media-errors";
 import type { Media } from "@/lib/pictopia/types";
 
@@ -18,65 +18,65 @@ export function VideoPage({ media, active, playing, onPlayingChange, onReady }: 
   onPlayingChange(playing: boolean): void; onReady?(): void;
 }) {
   const [phase, setPhase] = useState<Phase>("idle"), [uri, setUri] = useState<string | null>(null);
-  const generation = useRef(0), requested = useRef(false), foreground = useRef(true);
+  const retrieval = useRef<AbortController | undefined>(undefined);
+  const generation = useRef(0), requested = useRef(false), foreground = useRef(AppState.currentState === "active"), focused = useRef(false);
   const ready = useRef(onReady); ready.current = onReady;
-  const player = useVideoPlayer(null, p => { p.loop = false; p.timeUpdateEventInterval = 0.5; });
-  const { status } = useEvent(player, "statusChange", { status: player.status });
-  const { currentTime } = useEvent(player, "timeUpdate", { currentTime: 0, currentLiveTimestamp: null, currentOffsetFromLive: null, bufferedPosition: 0 });
+  const shownSource = useRef(uri); shownSource.current = uri;
+  const { player, status, currentTime, owner, ended, retry } = useReviewVideo();
   useEffect(() => {
+    retrieval.current?.abort();
     generation.current++; requested.current = false; setUri(null); setPhase("idle");
-    return () => { generation.current++; };
+    return () => { retrieval.current?.abort(); generation.current++; };
   }, [media.id]);
   useEffect(() => {
-    if (!active) { generation.current++; requested.current = false; player.pause(); onPlayingChange(false); }
+    if (!active) { setPhase(value => value === "downloading" || value === "resolving" ? "idle" : value); retrieval.current?.abort(); generation.current++; requested.current = false; owner.current?.pause(); onPlayingChange(false); }
   }, [active, player, onPlayingChange]);
   useFocusEffect(useCallback(() => {
-    foreground.current = true;
-    return () => { foreground.current = false; generation.current++; requested.current = false; player.pause(); onPlayingChange(false); };
+    focused.current = true;
+    return () => { focused.current = false; setPhase(value => value === "downloading" || value === "resolving" ? "idle" : value); retrieval.current?.abort(); generation.current++; requested.current = false; owner.current?.pause(); onPlayingChange(false); };
   }, [player, onPlayingChange]));
   useEffect(() => {
-    if (!playing || !active || !foreground.current || uri || requested.current) return;
+    if (!playing || !active || !foreground.current || !focused.current || uri || requested.current) return;
     requested.current = true;
+    if (phase === "failed" && status === "error") retry?.();
     const token = generation.current, download = phase === "cloud";
     setPhase(download ? "downloading" : "resolving");
-    void mediaService.resolve(media, { download }).then(result => {
-      if (token !== generation.current || !foreground.current) return;
+    const controller = new AbortController(); retrieval.current?.abort(); retrieval.current = controller;
+    const timeout = setTimeout(() => { controller.abort(); if (token === generation.current) { generation.current++; requested.current = false; setPhase("failed"); onPlayingChange(false); } }, 90000);
+    void videoSource(media, download, controller.signal).then(result => {
+      if (token !== generation.current || !foreground.current || !focused.current || !active) return;
       setUri(result.uri); // readyToPlay, not URI resolution, proves playback initialized.
     }).catch((error: unknown) => {
       if (token !== generation.current) return;
       requested.current = false; onPlayingChange(false);
       const message = error instanceof Error ? error.message : "";
       setPhase(!download && message === CLOUD_ONLY ? "cloud" : /unavailable|access|changed outside/i.test(message) ? "inaccessible" : "failed");
-    });
+    }).finally(() => clearTimeout(timeout));
   }, [playing, active, uri, phase, media, onPlayingChange]);
   useEffect(() => {
-    let alive = true;
-    player.pause();
-    void player.replaceAsync(active ? uri : null).catch(() => {
-      if (alive && active && uri) { requested.current = false; setUri(null); setPhase("failed"); onPlayingChange(false); }
-    });
-    return () => { alive = false; player.pause(); };
-  }, [player, active, uri, onPlayingChange]);
+    owner.current?.pause();
+    void owner.current?.replace(active ? uri : null);
+  }, [player, active, uri, owner]);
+  useEffect(() => { if (ended) onPlayingChange(false); }, [ended, onPlayingChange]);
   useEffect(() => {
     if (!uri) return;
     if (status === "readyToPlay") { setPhase("ready"); }
-    if (status === "error") { player.pause(); requested.current = false; setUri(null); setPhase("failed"); onPlayingChange(false); }
+    if (status === "error") { owner.current?.pause(); requested.current = false; setUri(null); setPhase("failed"); onPlayingChange(false); }
   }, [uri, status, player, onPlayingChange]);
   useEffect(() => {
-    if (playing && active && foreground.current && status === "readyToPlay" && uri) player.play();
-    else player.pause();
+    if (playing && active && foreground.current && focused.current && status === "readyToPlay" && uri) owner.current?.play();
+    else owner.current?.pause();
   }, [player, uri, playing, active, status]);
   useEffect(() => {
-    const ended = player.addListener("playToEnd", () => { player.currentTime = 0; onPlayingChange(false); });
     const app = AppState.addEventListener("change", state => {
       foreground.current = state === "active";
-      if (!foreground.current) { generation.current++; requested.current = false; player.pause(); onPlayingChange(false); }
+      if (!foreground.current) { setPhase(value => value === "downloading" || value === "resolving" ? "idle" : value); retrieval.current?.abort(); generation.current++; requested.current = false; owner.current?.pause(); onPlayingChange(false); }
     });
-    return () => { ended.remove(); app.remove(); };
+    return () => { app.remove(); };
   }, [player, onPlayingChange]);
   const busy = phase === "resolving" || phase === "downloading";
   return <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-    {!!uri && active && <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="contain" nativeControls={false} onFirstFrameRender={() => { if (active && foreground.current) ready.current?.(); }} />}
+    {!!player && !!uri && active && <VideoView key={uri} player={player} style={StyleSheet.absoluteFill} contentFit="contain" nativeControls={false} onFirstFrameRender={() => { if (active && foreground.current && focused.current && uri === shownSource.current && uri && status === "readyToPlay") ready.current?.(); }} />}
     <View style={StyleSheet.absoluteFill} className="items-center justify-center">
       {busy ? <View className="items-center rounded-3xl bg-black/60 px-5 py-4"><ActivityIndicator color="#fff" /><Text className="mt-2 text-caption text-white">{phase === "downloading" ? "Downloading from iCloud…" : "Opening video…"}</Text></View>
         : phase === "cloud" ? <View className="items-center rounded-3xl bg-black/60 px-5 py-4"><Icon name="CloudDownload" size={30} color="#fff" /><Text className="mt-2 text-caption text-white">In iCloud · tap to download and play</Text></View>

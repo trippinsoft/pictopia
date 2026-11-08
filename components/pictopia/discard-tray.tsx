@@ -81,7 +81,7 @@ export function DiscardTray({
             <View className="flex-row items-center gap-3">
               <View className="flex-1">
                 <Text accessibilityRole="header" className="text-h3 text-foreground">
-                  {ids.length ? `Marked for deletion (${ids.length})` : "Trash"}
+                  {ids.length ? `Discarded (${ids.length})` : "Discarded"}
                 </Text>
                 <Text className="mt-1 text-caption text-muted-foreground">
                   Nothing is deleted until you confirm.
@@ -113,7 +113,7 @@ export function DiscardTray({
                     data={ids}
                     keyExtractor={(id) => id}
                     extraData={`${index}:${ids.length}`}
-                    accessibilityLabel="Photographs marked for deletion. Swipe sideways to review them."
+                    accessibilityLabel="Discarded photographs. Swipe sideways to review them."
                     showsHorizontalScrollIndicator={false}
                     snapToInterval={interval}
                     snapToAlignment="start"
@@ -154,7 +154,7 @@ export function DiscardTray({
                       <Pressable
                         accessibilityRole="button"
                         accessibilityState={{ selected: id === selected }}
-                        accessibilityLabel={`Photograph ${position + 1} of ${ids.length}, marked for deletion. Tap to see it larger.`}
+                        accessibilityLabel={`Discarded photograph ${position + 1} of ${ids.length}. Tap to see it larger.`}
                         onPress={() => setInspecting(id)}
                         style={{ width: item, height: frame, marginHorizontal: GAP / 2 }}
                         className="overflow-hidden rounded-2xl bg-secondary"

@@ -424,7 +424,7 @@ test("gesture wiring: sideways recognizer is live on every loaded photo, decided
   const native = fs.readFileSync("components/pictopia/explore-gesture.native.tsx", "utf8");
   // Not gated on the trailing `active` prop, or the first swipe after scrolling is lost to
   // the scroll view (which only waits for an enabled recognizer).
-  assert.match(card, /enabled=\{phase === "loaded"\}/);
+  assert.match(card, /enabled=\{phase === "loaded" && !marked\}/);
   assert.doesNotMatch(card, /started\.current = [^;]*\bactive\b/);
   // Handlers are stable, so the recognizer isn't reconfigured as the shown photo changes.
   assert.match(card, /onStart=\{gestureStart\}/);

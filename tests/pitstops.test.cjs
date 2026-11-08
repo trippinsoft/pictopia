@@ -25,7 +25,7 @@ test("date games reject invalid, deleted, queued, and unavailable photos", () =>
   assert.equal(games.orderRounds(rows, 9).length, 1);
 });
 
-test("ordering works within a year and never claims an ordering for near-simultaneous photos", () => {
+test("ordering uses capture timestamps within a year and supports shorter reliable gaps", () => {
   assert.equal(games.unavailable("whichFirst", { photos: 20, years: 1, captureDates: true }), undefined);
   const rows = Array.from({ length: 24 }, (_, i) => photo(String(i), 2020, i % 12 + 1, i < 12 ? 3 : 20));
   const rounds = games.orderRounds(rows, 1);
@@ -33,10 +33,10 @@ test("ordering works within a year and never claims an ordering for near-simulta
   assert.equal(new Set(rounds.flatMap(r => r.ids)).size, 20);
   for (const r of rounds) {
     const [a, b] = r.ids.map(id => rows.find(m => m.id === id));
-    assert.ok(Math.abs(a.created - b.created) >= games.WHICH_FIRST_MIN_GAP);
+    assert.notEqual(a.created, b.created);
     assert.equal(r.answer, a.created < b.created ? a.id : b.id);
   }
-  assert.equal(games.orderRounds([photo("near1", 2020), photo("near2", 2020, 1, 11)], 1).length, 0);
+  assert.equal(games.orderRounds([photo("near1", 2020), photo("near2", 2020, 1, 11)], 1).length, 1);
 });
 
 test("missing locations and browser modified dates are never presented as reliable answers", () => {

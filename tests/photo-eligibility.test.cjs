@@ -16,11 +16,11 @@ const pool = [...Array.from({length:90}, (_, i) => photo(`shot${i}`, i, true)), 
 test("all photo adventure kinds filter before curation; Screenshot Sweep retains screenshots", () => {
   const ctx = { seed: 9, now, explored: new Set() };
   for (const kind of ["year", "month", "capsule", "day", "detour", "random", "corners"]) {
-    const result = curate({ kind, source: kind === "day" ? "day:10-30" : `${kind}:2019`, pool }, ctx);
+    const result = curate({ kind, source: kind === "day" ? "day:10-01" : `${kind}:2019`, pool }, ctx);
     assert.ok(result, kind);
-    assert.ok(result.ids.length >= 3, kind);
+    assert.ok(result.ids.length >= (kind === "day" ? 1 : 3), kind);
     assert.ok(result.ids.every(id => id.startsWith("photo")), kind);
-    assert.equal(curate({ kind, source: `${kind}:2019`, pool: pool.filter(m => m.screenshot) }, ctx), undefined, kind);
+    assert.equal(curate({ kind, source: kind === "day" ? `day:${pool.find(m => !m.screenshot).day}` : `${kind}:2019`, pool: pool.filter(m => m.screenshot) }, ctx), undefined, kind);
   }
   const sweep = curate({ kind: "screenshots", source: "screenshots", pool }, ctx);
   assert.ok(sweep.ids.length >= 10);

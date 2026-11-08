@@ -5,6 +5,7 @@ import { shuffle } from "./logic";
 /** Pit Stops: short games played with the user's own photos. Every answer comes from metadata
  * Pictopia really has (capture dates); nothing is guessed or invented. */
 export type PitStop = "guessYear" | "whereWasThis" | "whichFirst" | "memoryMatch";
+export const ACTIVE_PIT_STOPS = ["memoryMatch", "whichFirst"] as const;
 export const PIT_STOP_ROUNDS = 10;
 export const MEMORY_PAIRS = 4;
 /** Two photos this close together are too hard (and too arbitrary) to order. */
@@ -30,7 +31,7 @@ export interface OrderRound {
 
 const year = (m: Media) => new Date(m.created).getFullYear();
 const dated = (photos: Media[], now = Date.now()) => playable(photos).filter(m =>
-  Number.isFinite(m.created) && m.created > 0 && m.created <= now && Number.isFinite(year(m)),
+  Number.isFinite(m.created) && m.created !== 0 && m.created <= now && Number.isFinite(year(m)),
 );
 /** Still photos that can be shown. */
 export const playable = eligiblePhotographs;
@@ -46,6 +47,7 @@ export function unavailable(
     return "Needs capture dates from the iOS or Android photo library.";
   if (game === "memoryMatch") return photos < MEMORY_PAIRS ? `Needs at least ${MEMORY_PAIRS} photos.` : undefined;
   if (game === "guessYear" && years < 2) return "Needs photos from at least two different years.";
+  if (game === "whichFirst") return photos < 2 ? "Needs photos taken on different dates." : undefined;
   if (photos < PIT_STOP_ROUNDS) return `Needs at least ${PIT_STOP_ROUNDS} photos.`;
   return undefined;
 }
@@ -77,22 +79,20 @@ export function guessRounds(photos: Media[], seed: number, now = Date.now()): Gu
   });
 }
 
-/** Pairs at least two weeks apart, with a mix of close and distant gaps. */
+/** Pair the widest available capture-time gaps, without repeating a photograph. Shorter
+ * differences remain valid when dates are reliable; equal timestamps never form a round. */
 export function orderRounds(photos: Media[], seed: number): OrderRound[] {
-  const pool = shuffle(dated(photos), seed);
-  const used = new Set<string>();
+  const pool = [...new Map(dated(photos).map(m => [m.id, m])).values()].sort((a, b) => a.created - b.created || a.id.localeCompare(b.id));
   const rounds: OrderRound[] = [];
-  for (const a of pool) {
-    if (rounds.length >= PIT_STOP_ROUNDS) break;
-    if (used.has(a.id)) continue;
-    const b = pool.find((o) => !used.has(o.id) && o.id !== a.id && Math.abs(o.created - a.created) >= WHICH_FIRST_MIN_GAP);
-    if (!b) continue;
-    used.add(a.id);
-    used.add(b.id);
-    const [first, second] = rounds.length % 2 ? [b, a] : [a, b];
-    rounds.push({ ids: [first.id, second.id], answer: first.created <= second.created ? first.id : second.id });
+  let left = 0, right = pool.length - 1;
+  while (left < right && rounds.length < PIT_STOP_ROUNDS) {
+    const earlier = pool[left], later = pool[right];
+    if (earlier.created === later.created) break;
+    const pair = shuffle([earlier, later], seed ^ Math.imul(rounds.length + 1, 0x9e3779b1));
+    rounds.push({ ids: [pair[0].id, pair[1].id], answer: earlier.id });
+    left++; right--;
   }
-  return rounds;
+  return shuffle(rounds, seed + 71);
 }
 
 /** Four or six photographs, each appearing exactly twice. */

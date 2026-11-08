@@ -35,9 +35,9 @@ export default function Statistics() {
     <Page title="Cleanup history" subtitle="Honest numbers. A lighter library." fallback="/(tabs)/progress">
       {!app.pro ? (
         <Empty
-          title="Deeper insights with Pro"
-          description="Your library progress remains available in the Progress tab. Cleanup history is retained even without Pro."
-          action={<Button onPress={() => router.push("/paywall")}>View Pro plans</Button>}
+          title="Deeper insights with Pictopia+"
+          description="Your library progress remains available in the Progress tab. Cleanup history is retained even without Pictopia+."
+          action={<Button onPress={() => router.push("/paywall")}>View Pictopia+ plans</Button>}
         />
       ) : (
         <>

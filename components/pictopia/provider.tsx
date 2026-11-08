@@ -220,7 +220,7 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
       (c === "large" || c === "blurry" || c.startsWith("group:")) &&
       !entitlementActive(entitlement)
     )
-      throw Error("This collection is part of Pictopia Pro.");
+      throw Error("This collection is part of Pictopia+.");
     setSession(await repository.start(c, prefs, entitlementActive(entitlement), minutes));
     await refresh();
   }
@@ -239,7 +239,7 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
     Appearance.setColorScheme(nativeScheme(next.appearance));
   }
   async function scanLibrary() {
-    if (!entitlementActive(entitlement)) throw Error("Smart analysis is part of Pictopia Pro.");
+    if (!entitlementActive(entitlement)) throw Error("Smart analysis is part of Pictopia+.");
     if (!analyzer.available) throw Error("Smart analysis requires a native build.");
     if (deletingRef.current)
       throw Error("Wait for the current deletion to finish before scanning.");
@@ -264,7 +264,7 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
         for (const m of page) {
           if (controller.signal.aborted) break;
           if (!entitlementActive((await storage.getValue<Entitlement>("entitlement")) ?? null))
-            throw Error("Your Pro access has expired. Your scan results are kept.");
+            throw Error("Your Pictopia+ access has expired. Your scan results are kept.");
           try {
             const result = await analyzer.analyze(m);
             await repository.update(m.id, (latest) =>
@@ -378,7 +378,7 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
     restorePurchases: async () => {
       const e = await purchaseService.restore();
       await saveEnt(e);
-      if (!e.active) throw Error("No active Pro purchase was found for this store account.");
+      if (!e.active) throw Error("No active Pictopia+ purchase was found for this store account.");
     },
     setEntitlement: saveEnt,
     deleteQueue,

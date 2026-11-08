@@ -18,6 +18,7 @@ import { usePictopia } from "@/components/pictopia/provider";
 import { useSessionTally } from "@/components/pictopia/use-session-tally";
 import { useSwipeDeck } from "@/components/pictopia/use-swipe-deck";
 import { usePhotoEncounter } from "@/components/pictopia/use-photo-encounter";
+import { useAllowance } from "@/components/pictopia/use-allowance";
 import { useReviewClock } from "@/components/pictopia/use-review-clock";
 import { storage, repository } from "@/services/repository";
 import { Media, Collection, Decision } from "@/lib/pictopia/types";
@@ -65,18 +66,20 @@ export default function Swipe() {
     onError,
     onCommitted: haptic,
   });
+  const item = deck.topRecord;
+  const allowance = useAllowance(undefined, item ? [item.id] : [], item?.id, app.pro, !!item && loaded[item.id] === true && deck.reviewing);
+  const reviewAllowed = !!item && allowance.ready && !allowance.error && allowance.canReview(item.id);
   const timed = !!session && (!!session.minutes || session.collection === "quick");
   const elapsedMs = useReviewClock({
     sessionId: session?.id,
     enabled: timed && !session?.complete && !!session && remainingSeconds(session) > 0,
-    ready: deck.reviewing,
+    ready: deck.reviewing && reviewAllowed,
     persistedMs: session?.elapsedMs ?? 0,
     save: app.addSessionTime,
     onError,
   });
   const seconds = session ? remainingSeconds({ ...session, elapsedMs }) : 0;
-  const item = deck.topRecord;
-  usePhotoEncounter(item?.id, !!item && loaded[item.id] === true && deck.reviewing && !deck.state.committing, session?.id, undefined, app.setError);
+  usePhotoEncounter(item?.id, !!item && loaded[item.id] === true && reviewAllowed && deck.reviewing && !deck.state.committing, session?.id, undefined, app.setError);
   const group = app.pro ? session?.groups?.find((g) => g.ids.includes(deck.top ?? "")) : undefined;
   const validGroup =
     group &&
@@ -161,16 +164,16 @@ export default function Swipe() {
     });
   }
   function press(decision: Decision) {
-    if (acting) return;
+    if (acting || !reviewAllowed) return;
     if (deck.commit(decision)) card.current?.fling(decisionDirection(decision, reversed));
   }
   const onCommit = useCallback(
-    (decision: Decision) => !actionLock.current && deck.commit(decision),
-    [deck.commit],
+    (decision: Decision) => reviewAllowed && !actionLock.current && deck.commit(decision),
+    [deck.commit, reviewAllowed],
   );
   const openSessionPhotos = (show: Decision) =>
     router.push({ pathname: "/session-review", params: { show } });
-  const canDecide = deck.canDecide && !acting;
+  const canDecide = deck.canDecide && !acting && reviewAllowed;
   const unavailable = !!deck.top && item === null;
   if (!app.ready)
     return (
@@ -198,6 +201,17 @@ export default function Swipe() {
         />
       </Page>
     );
+  if (!session.complete && item && (!allowance.ready || allowance.error || !allowance.canReview(item.id))) return (
+    <Page showQueue fallback="/settings" compactHeader title="Daily reviews">
+      {!allowance.ready ? <Loading /> : <View className="gap-4 px-5 py-8">
+        <Text className="text-h2 text-foreground">{allowance.error ? "Couldn’t check daily reviews" : "You’ve explored 150 items today"}</Text>
+        <Text className="text-body text-muted-foreground">{allowance.error ? "Your saved review is safe. Please try again." : "Come back tomorrow or keep exploring with Pictopia+. Your marks are saved."}</Text>
+        <Button onPress={() => allowance.error ? void allowance.reload() : router.push("/paywall")}>{allowance.error ? "Try again" : "Explore with Pictopia+"}</Button>
+        <Button secondary onPress={undo}>Undo last decision</Button>
+        <Button secondary onPress={() => router.push("/queue")}>Review marked items</Button>
+      </View>}
+    </Page>
+  );
   if (session.complete) {
     // The headline reflects that the user reviewed; the numbers reflect current decisions, so a
     // restored photo drops out of the counts without implying the batch was empty.
@@ -229,7 +243,7 @@ export default function Swipe() {
                 : session.collection === "best"
                   ? app.pro && app.scan.status === "complete"
                     ? "No unreviewed matching shots in your current scan. Try Quick Wins for a different kind of reset."
-                    : "This session uses duplicate and similar-photo groups from Smart Clean. Run a Pro scan to find your matches, or try a free Quick Wins session."
+                    : "This session uses duplicate and similar-photo groups from Smart Clean. Run a Pictopia+ scan to find your matches, or try a free Quick Wins session."
                   : "No unreviewed items in this collection. Try another session or add more photos."}
             </Text>
             {didReview && (
@@ -340,7 +354,7 @@ export default function Swipe() {
           </Pressable>
         )}
         <View style={styles.deck} onLayout={(e) => setDeckWidth(e.nativeEvent.layout.width)}>
-          {deck.below && (
+          {deck.below && allowance.canReview(deck.below) && (
             <SwipeCard
               key={deck.below}
               media={deck.belowRecord}

@@ -77,7 +77,7 @@ export default function Smart() {
       <View className="mb-7 rounded-3xl bg-accent p-7">
         <View className="mb-4 flex-row items-center gap-2">
           <Icon name="Sparkles" size={23} className="text-primary" />
-          <Text className="text-h5 text-primary">Pictopia Pro</Text>
+          <Text className="text-h5 text-primary">Pictopia+</Text>
         </View>
         <Text className="text-h2 text-foreground">Your memories deserve{"\n"}a second look.</Text>
         <Text className="mb-6 mt-4 max-w-lg text-body leading-6 text-muted-foreground">
@@ -94,7 +94,7 @@ export default function Smart() {
               ? app.scan.status === "paused"
                 ? "Resume local scan"
                 : "Scan my library"
-              : "Explore Pictopia Pro"}
+              : "Explore Pictopia+"}
           </Button>
         </View>
         <View className="mt-5 flex-row items-center gap-2">

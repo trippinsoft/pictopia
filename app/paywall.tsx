@@ -44,7 +44,7 @@ export default function Paywall() {
       if (e.active) leave();
       else
         setError(
-          "The store has not confirmed active Pro access yet. Try Restore Purchases after approval.",
+          "The store has not confirmed active Pictopia+ access yet. Try Restore Purchases after approval.",
         );
     } catch (e) {
       setError((e as Error).message);
@@ -63,7 +63,7 @@ export default function Paywall() {
             Less searching.{"\n"}More space.
           </Text>
           <Text className="mt-4 text-body text-center leading-6 text-muted-foreground">
-            Pictopia Pro finds the clutter, so you can focus on the keepers.
+            Pictopia+ finds the clutter, so you can focus on the keepers.
           </Text>
         </View>
         <View className="my-7 gap-4">
@@ -99,12 +99,12 @@ export default function Paywall() {
                   <View className="w-full gap-1">
                     <View className="flex-row items-start justify-between gap-3">
                       <Text className="min-w-0 flex-1 text-h5 text-foreground">
-                        {kind === "monthly" ? "Monthly Pro" : kind === "annual" ? "Annual Pro" : "Lifetime Pro"}
+                        {kind === "monthly" ? "Pictopia+ Monthly" : kind === "annual" ? "Pictopia+ Yearly" : "Pictopia+ Lifetime"}
                       </Text>
                       <Text className="max-w-[50%] text-right text-h5 text-primary">{o?.price ?? "Unavailable"}</Text>
                     </View>
                     <Text className="text-caption text-muted-foreground">
-                      {kind === "lifetime" ? "One payment. Ongoing Pro access." : kind === "annual" && savings > 0 ? `Save ${savings}% compared with monthly` : "Renews automatically. Cancel anytime."}
+                      {kind === "lifetime" ? "One payment. Ongoing Pictopia+ access." : kind === "annual" && savings > 0 ? `Save ${savings}% compared with monthly` : "Renews automatically. Cancel anytime."}
                     </Text>
                   </View>
                 </Pressable>
@@ -126,7 +126,7 @@ export default function Paywall() {
         <View className="mt-6">
           <Button disabled={working || !selected || app.pro} onPress={() => void buy()}>
             {app.pro
-              ? "Pro is already unlocked"
+              ? "Pictopia+ is already unlocked"
               : working
                 ? "Waiting for the store…"
                 : "Continue with selected plan"}

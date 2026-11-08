@@ -61,7 +61,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     name: "Duplicate Hunt",
     blurb: "Look-alikes, side by side",
     details:
-      "Identical copies, and similar shots taken within two minutes of each other. Pictopia suggests a keeper; you decide what to mark. Part of Pictopia Pro.",
+      "Identical copies, and similar shots taken within two minutes of each other. Pictopia suggests a keeper; you decide what to mark. Part of Pictopia+.",
     art: "duplicates",
     pro: true,
   },

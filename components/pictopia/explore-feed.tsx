@@ -40,6 +40,8 @@ export interface ExploreFeedHandle {
   discard(direction: DiscardDirection): void;
   undo(): Promise<boolean>;
   action(action: ExploreAction): void;
+  flush(): void;
+  isAtEnd(): boolean;
 }
 interface Props {
   session: ExploreSession;
@@ -56,15 +58,18 @@ interface Props {
   onBrowse?(): void;
   /** Original-order position interpolated between the two visible photographs. */
   onScrollPosition?(position: number): void;
-  onScrollActive?(id: string): void;
+  onScrollActive?(id: string, available: boolean): void;
   onDiscard?(): void;
   onAvailability(available: boolean): void;
   onError(message: string): void;
+  /** Restore a discarded photograph from its faded slot. */
+  onRestore?(id: string): void;
   /** A discard undone while the feed wasn't shown; it slides in once the feed mounts. */
   initialEntrance?: ExploreDiscard;
   /** Free daily allowance: the feed ends before this photo with `limitPage` instead of the
    * completion page. Photos before it (already counted or revisits) stay fully usable. */
   stopBefore?: string;
+  canReview?(id: string): boolean;
   limitPage?: ReactNode;
   /** The card after the last photograph (a review's Finish card). */
   endPage?: ReactNode;
@@ -80,8 +85,8 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
   const { session, media } = props;
   const [height, setHeight] = useState(0),
     [discarding, setDiscarding] = useState(false),
-    [feed, setFeed] = useState<{ departing: ReadonlySet<string>; hidden: ReadonlySet<string> }>(
-      () => ({ departing: new Set(), hidden: new Set() }),
+    [feed, setFeed] = useState<{ departing: ReadonlySet<string>; hidden: ReadonlySet<string>; parked: ReadonlySet<string> }>(
+      () => ({ departing: new Set(), hidden: new Set(), parked: new Set() }),
     ),
     [entering, setEntering] = useState<FeedEntrance | undefined>(
       props.initialEntrance && {
@@ -89,14 +94,17 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
         from: props.initialEntrance.direction,
       },
     );
-  // The feed is the original order minus what is set aside: in a review, exactly what is
-  // marked for deletion. A discarded photo stays rendered while it flies to the trash, and
-  // leaves as soon as it has, even if its save is still queued.
+  // A review keeps every slot: a discarded photograph flies to the trash, the next one
+  // slides into its place exactly as before, and once the feed is at rest the discarded one
+  // returns, faded, to its original slot above. Re-anchoring keeps the shown photo still.
+  // The isolated prototype removes its discards.
   const ids = session.ids.filter(
     (id) =>
       feed.departing.has(id) ||
-      (!(session.review ? session.records[id]?.queued : session.records[id]?.discarded) &&
-        !feed.hidden.has(id)),
+      (!feed.hidden.has(id) &&
+        (session.review
+          ? !(feed.parked.has(id) && session.records[id]?.queued)
+          : !session.records[id]?.discarded)),
   );
   const idsKey = ids.join("\n");
   const cut = props.stopBefore ? ids.indexOf(props.stopBefore) : -1;
@@ -126,6 +134,8 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
     momentum = useRef(false),
     lastDrag = useRef(0);
   const prepared = useRef<(() => void)[]>([]);
+  const lastHidden = useRef<ReadonlySet<string>>(new Set());
+  const returnTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // A programmatic page move in flight. Settling elsewhere mid-animation is ignored.
   const seeking = useRef<{ target: number; until: number } | undefined>(undefined);
   const nativeOffset = useSharedValue(0);
@@ -140,6 +150,21 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
   const latest = useRef({ props, reducedMotion });
   latest.current = { props, reducedMotion };
 
+  /** Discarded slots return to the feed only while nothing moves, so re-anchoring the shown
+   * photograph happens before paint and is never seen. */
+  const returnParked = useCallback(() => {
+    clearTimeout(returnTimer.current);
+    if (!alive.current) return;
+    if (dragging.current || momentum.current || seeking.current || controller.busy) {
+      returnTimer.current = setTimeout(returnParked, 200);
+      return;
+    }
+    setFeed((previous) => (previous.parked.size ? { ...previous, parked: new Set() } : previous));
+  }, []);
+  const scheduleReturn = useCallback(() => {
+    clearTimeout(returnTimer.current);
+    returnTimer.current = setTimeout(returnParked, RESET_DELAY);
+  }, [returnParked]);
   const resetDeparted = useCallback(() => {
     clearTimeout(resetTimer.current);
     resetTimer.current = setTimeout(() => {
@@ -197,7 +222,18 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
             if (alive.current) latest.current.props.onError(message);
           },
           onFeed: (departing, hidden) => {
-            if (alive.current) setFeed({ departing, hidden });
+            if (!alive.current) return;
+            // A review's discarded slot waits out of the feed until it is at rest.
+            const released = latest.current.props.session.review
+              ? [...lastHidden.current].filter((id) => !hidden.has(id))
+              : [];
+            lastHidden.current = new Set(hidden);
+            setFeed((previous) => ({
+              departing,
+              hidden,
+              parked: released.length ? new Set([...previous.parked, ...released]) : previous.parked,
+            }));
+            if (released.length) scheduleReturn();
           },
           prepare: (entry) =>
             new Promise<void>((resolve) => {
@@ -234,8 +270,9 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
     const node: unknown = Platform.OS === "web" ? list.current?.getScrollableNode() : undefined;
     if (node && typeof (node as { scrollTop?: unknown }).scrollTop === "number")
       offset.current = (node as { scrollTop: number }).scrollTop;
+    if (Platform.OS !== "web") offset.current = nativeOffset.value;
     return offset.current;
-  }, []);
+  }, [nativeOffset]);
   // The arriving card positioned itself off-screen in its own layout effect (children run
   // first). Two frames later that is on screen, on the UI thread too.
   useLayoutEffect(() => {
@@ -350,7 +387,7 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
         const visibleId = pages.current[Math.round(page)];
         if (visibleId && visibleId !== scrollActive.current) {
           scrollActive.current = visibleId;
-          latest.current.props.onScrollActive?.(visibleId);
+          latest.current.props.onScrollActive?.(visibleId, available.current.get(visibleId) === true);
         }
       }
       // Settle once scrolling goes quiet. Browsers have no momentum lifecycle, and this
@@ -370,14 +407,20 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
   useEffect(() => {
     alive.current = true;
     reviewTrace("feed.mount", { marker: REVIEW_TRACE_MARKER, active: tracePhoto(controller.activeId), appState: AppState.currentState });
-    const appState = AppState.addEventListener("change", state => reviewTrace("app.state", { state }));
+    const flush = () => {
+      if (pageHeight.current && latest.current.props.session.review)
+        controller.flushPosition(Math.round(readOffset() / pageHeight.current), availableIds());
+    };
+    const appState = AppState.addEventListener("change", state => { reviewTrace("app.state", { state }); if (state !== "active") flush(); });
     report(controller.page);
     return () => {
       reviewTrace("feed.unmount", { active: tracePhoto(controller.activeId), horizontal: horizontal.value });
+      flush();
       appState.remove();
       alive.current = false;
       clearTimeout(quietTimer.current);
       clearTimeout(resetTimer.current);
+      clearTimeout(returnTimer.current);
       for (const done of prepared.current) done();
       latest.current.props.onBusy(false);
     };
@@ -385,6 +428,8 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
   useImperativeHandle(
     ref,
     () => ({
+      isAtEnd: () => controller.activeId === null,
+      flush: () => { if (pageHeight.current) controller.flushPosition(Math.round(readOffset() / pageHeight.current), availableIds()); },
       next: () => controller.next(availableIds()),
       jump: (id) => { cards.current.get(id)?.reset(); setZoomedId(undefined); controller.jump(id, availableIds()); },
       discard: (direction) =>
@@ -488,7 +533,7 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
           }}
           renderItem={({ item: id }) => (
             <View style={[styles.page, { height }]}>
-              {id === endId && limited ? (
+              {id !== endId && props.canReview && !props.canReview(id) ? props.limitPage : id === endId && limited ? (
                 props.limitPage
               ) : id === endId && props.endPage ? (
                 props.endPage
@@ -502,6 +547,8 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
                   id={id}
                   ref={refFor(id)}
                   media={media[id]}
+                  marked={!!session.review && !!session.records[id]?.queued && !feed.departing.has(id)}
+                  onRestore={props.onRestore}
                   active={id === activeId}
                   entrance={entering?.id === id ? entering.from : undefined}
                   pageHeight={height}
@@ -515,6 +562,7 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
                   onAccessiblePrevious={() => { const previous = pages.current[controller.page - 1]; if (previous) controller.jump(previous, availableIds()); }}
                   onAccessibleUndo={() => { void controller.undo().then(restored => { if (restored) latest.current.props.flight?.cancel(restored); }); }}
                   onEntered={entered}
+                  onUnavailable={() => { void latest.current.props.change({ type: "unavailable", id }).catch(() => {}); }}
                   onAvailability={ready}
                   onZoom={zoomChange}
                   flight={props.flight}

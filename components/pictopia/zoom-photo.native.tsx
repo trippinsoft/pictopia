@@ -48,7 +48,7 @@ export function ZoomPhoto({ media, onSettled }: ZoomPhotoProps) {
   return (
     <GestureDetector gesture={Gesture.Simultaneous(pinch, pan, tap)}>
       <Animated.View collapsable={false} style={[fill, style]}>
-        <MediaImage onSettled={onSettled} media={media} fit="contain" style={fill} />
+        <MediaImage allowRetry onSettled={onSettled} media={media} fit="contain" style={fill} />
       </Animated.View>
     </GestureDetector>
   );

@@ -158,17 +158,17 @@ export const mediaService: MediaService = {
   async resolve(m, options) {
     const a = await MediaLibrary.getAssetInfoAsync(m.id, { shouldDownloadFromNetwork: !!options?.download });
     if (!a) throw Error("This media item is unavailable. Check library access.");
-    if (
-      a.creationTime !== m.created ||
-      a.width !== m.width ||
-      a.height !== m.height ||
-      a.mediaType !== m.type
-    )
-      throw Error("This item changed outside Pictopia. Refresh your library before reviewing it.");
+    // Rendering is a read of the current asset by its full stable ID. Edits/date
+    // corrections must not reject a still-accessible photo; deletion independently
+    // rechecks the immutable facts before requesting any OS operation.
+    if (a.mediaType !== m.type) throw Error("This media type changed. Refresh your library.");
     if (a.isNetworkAsset && !a.localUri)
       throw Error(CLOUD_ONLY);
     const uri = a.localUri ?? a.uri;
-    if (!uri) throw Error("No playable local media reference is available.");
+    if (!uri) throw Error("No local media reference is available.");
+    // expo-image's PhotoKit URI parser uses only the host and drops /L0/... suffixes.
+    // Resolve full IDs through MediaLibrary and require its actual local file on iOS.
+    if (Platform.OS === "ios" && uri.startsWith("ph://")) throw Error(CLOUD_ONLY);
     let size: number | undefined;
     try {
       const f = new File(uri);

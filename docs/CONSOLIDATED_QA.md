@@ -39,7 +39,7 @@ No library records, pending-deletion records, saved adventures, subscriptions or
 
 ### Review state and endings
 
-Older controllers could persist “past the end” (`activeId: null`) after marking the final photo. A legacy read then interpreted that null as completion even when no reliable Finish flag existed. The shared controller already retries position saves, keeps stable photo IDs and refuses rejected discards; this pass added a captured revision to explicit Finish, so navigation/Undo saved afterward invalidates a stale completion request. The UI requires the actual end or empty marked feed before Finish.
+Older controllers could persist “past the end” (`activeId: null`) after marking the final photo. A legacy read then interpreted that null as completion even when no reliable Finish flag existed. The shared controller already retries position saves, keeps stable photo IDs and refuses rejected discards; this pass added a captured revision to explicit Finish, so navigation/Undo saved afterward invalidates a stale completion request. The UI requires the actual end or empty marked feed before Finish. End-card actions read the current rendered state rather than a cached pager-cell closure. When the last surviving photo has a saved meaningful encounter but the native position save lags, explicit Finish identifies that endpoint while still requiring the captured session revision. Rejected completion writes show an actionable error instead of silently doing nothing. Finish never creates encounter or deletion records.
 
 Ambiguous legacy null positions now resume on a real surviving photo. A legacy completion is retained only with matching completion metadata and complete snapshot encounter/unavailability evidence. Explicit modern finishes write durable session evidence; version-2 completion proofs or conservative full-coverage historical backfills support badge credit. Old partial endings and version-1 proofs cannot verify themselves. Original older proofs are retained when upgraded.
 
@@ -70,7 +70,7 @@ Confirmed-deletion streak activity used to save after the atomic deletion transa
 | Measurement | Rule |
 | --- | --- |
 | Daily free reviews | First display of an ID each local day, photo or video, including the first item. 150 maximum for free users. Same-day revisit/mark/Undo adds no independent charge. Pro is unlimited. Clock rollback never resets the day. |
-| Meaningful review | A loaded foreground photo/poster/frame qualified by the existing 400 ms visibility rule, or an explicit valid mark. Preload, paging and Finish alone do not create exploration. |
+| Meaningful review | A loaded foreground photo/poster/frame counts immediately, however briefly visible, or through an explicit valid mark. Preload, failed loading and Finish alone do not count. |
 | Lifetime photos | One first-seen media record per stable photo ID, including saved inactive/deleted history; repeated sessions/adventures do not add another unique photo. |
 | Videos | Their own stable IDs and first-seen history; excluded from photo progress and Explorer/Declutterer/calendar photo families. Video review waits for real poster/frame evidence. |
 | Library percentage | Accessible explored photos / accessible photos. Empty access has no percentage; lifetime explored remains separate. |

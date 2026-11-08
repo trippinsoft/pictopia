@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { AccessibilityInfo, Pressable, View } from "react-native";
-import { router } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Animated, { FadeInDown, FadeOutDown, ReduceMotion } from "react-native-reanimated";
-import { Icon, Text } from "./ui";
+import { router, useFocusEffect } from "expo-router";
+import Animated, { FadeInDown, ReduceMotion } from "react-native-reanimated";
+import { Text } from "@/components/ui/text";
+import Icon from "@/lib/icons/LucideIcon";
 import { BadgeArt } from "./badge-art";
-import { useLift } from "./playful";
+import { useTheme } from "@/theming/ThemeProvider";
 import { BADGES, ROMAN, type BadgeFamily } from "@/lib/pictopia/badges";
 import { plural } from "@/lib/pictopia/text";
 
@@ -18,39 +18,42 @@ export interface Recap {
 }
 let pending: Recap | undefined;
 const listeners = new Set<(recap: Recap) => void>();
-/** Shown on whichever screen the review returns to, once that screen is visible. */
+/** Delivered once to the next focused screen header, in normal scrollable page flow. */
 export function showRecap(recap: Recap) {
   pending = recap;
   for (const listener of listeners) listener(recap);
 }
 
 const SHOWN_FOR = 6000;
-/** The recap card after a meaningful visit: it slides up for 6 s, then fades. Tap ✕ or
- * swipe it away sooner; "Review N" opens Ready to delete. */
+/** The recap after a meaningful visit reserves its own space below the tab header.
+ * It stays for 6 s (until dismissed with a screen reader); Review opens the queue. */
 export function RecapHost() {
   const [recap, setRecap] = useState<Recap>();
-  const insets = useSafeAreaInsets();
-  const lift = useLift(4);
+  const { theme } = useTheme();
+  const lift = { boxShadow: `0px 4px 0px ${theme.colors.tint ?? theme.colors.border}` };
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
+    let alive = true, revision = 0;
     const show = (value: Recap) => {
       pending = undefined;
+      const ticket = ++revision;
       setRecap(value);
       clearTimeout(timer.current);
       // Screen-reader users get longer: the card is announced and stays until dismissed.
       void AccessibilityInfo.isScreenReaderEnabled().then(reader => {
-        if (!reader) timer.current = setTimeout(() => setRecap(undefined), SHOWN_FOR);
-      }).catch(() => { timer.current = setTimeout(() => setRecap(undefined), SHOWN_FOR); });
+        if (alive && ticket === revision && !reader) timer.current = setTimeout(() => setRecap(undefined), SHOWN_FOR);
+      }).catch(() => { if (alive && ticket === revision) timer.current = setTimeout(() => setRecap(undefined), SHOWN_FOR); });
       AccessibilityInfo.announceForAccessibility(recapLine(value));
     };
     listeners.add(show);
     if (pending) show(pending);
-    return () => { listeners.delete(show); clearTimeout(timer.current); };
-  }, []);
+    return () => { alive = false; revision++; listeners.delete(show); clearTimeout(timer.current); setRecap(undefined); };
+  }, []));
   if (!recap) return null;
   const badge = recap.badge && BADGES.find(b => b.family === recap.badge?.family);
-  return <View pointerEvents="box-none" style={{ bottom: insets.bottom + 62 }} className="absolute inset-x-0 z-50 items-center px-4">
-    <Animated.View entering={FadeInDown.duration(280).reduceMotion(ReduceMotion.System)} exiting={FadeOutDown.duration(220).reduceMotion(ReduceMotion.System)} style={lift} className="w-full max-w-md rounded-[22px] bg-card p-4">
+  return <View className="mt-6 w-full max-w-md self-center">
+    <Animated.View entering={FadeInDown.duration(280).reduceMotion(ReduceMotion.System)} style={fullWidth}>
+      <View style={lift} className="w-full rounded-[22px] bg-card p-4">
       <View className="flex-row items-start gap-3">
         <View className="h-11 w-11 items-center justify-center rounded-full bg-sun">
           <Icon name="Compass" size={22} className="text-foreground" />
@@ -71,6 +74,7 @@ export function RecapHost() {
         <Icon name="Trash2" size={18} className="text-primary-foreground" />
         <Text className="text-button text-primary-foreground">{`Review ${recap.marked} marked`}</Text>
       </Pressable>}
+      </View>
     </Animated.View>
   </View>;
 }
@@ -81,3 +85,5 @@ export function recapLine(r: Recap) {
     ...(r.streakDay ? [`Day ${r.streakDay}`] : []),
   ].join(" · ");
 }
+
+const fullWidth = { width: "100%" as const };

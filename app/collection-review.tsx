@@ -51,31 +51,38 @@ export default function CollectionRoute() {
     finishContent={actions => <CollectionFinish {...actions} scope={scope} name={name} busy={busy} error={error} onNext={more ? () => void next() : undefined} onAll={() => void next(true)} />} />;
 }
 
-function CollectionFinish({ scope, name, busy, error, onNext, onAll, ...actions }: Parameters<NonNullable<Parameters<typeof AdventureReview>[0]["finishContent"]>>[0] & { scope: PhotoCollection; name: string; busy: boolean; error?: string; onNext?: () => void; onAll(): void }) {
+function CollectionFinish({ scope, name, busy, error, onNext, onAll: _onAll, ...actions }: Parameters<NonNullable<Parameters<typeof AdventureReview>[0]["finishContent"]>>[0] & { scope: PhotoCollection; name: string; busy: boolean; error?: string; onNext?: () => void; onAll(): void }) {
   const [summary, setSummary] = useState<Summary>();
+  const [failed, setFailed] = useState(false), [retry, setRetry] = useState(0);
   useEffect(() => {
     let alive = true;
-    void collectionStore.summary(scope).then(value => { if (alive) setSummary(value); }).catch(() => {});
+    void collectionStore.summary(scope).then(value => { if (alive) setSummary(value); }).catch(() => { if (alive) setFailed(true); });
     return () => { alive = false; };
-  }, [scope]);
+  }, [scope, retry]);
+  if (!summary) return <Page title={name} fallback="/(tabs)/explore">{failed ? <><Text className="text-body text-foreground">Couldn’t load your progress.</Text><Button onPress={() => { setFailed(false); setRetry(n => n + 1); }}>Try again</Button></> : <Loading />}</Page>;
   const complete = !!summary?.total && summary.remaining === 0;
   const headline = complete ? `${name}, fully explored` : "This batch is reviewed";
   return <>
     <AdventureFinish
       title={name}
+      scope={{ complete, explored: summary.explored, total: summary.total }}
       headlineOverride={headline}
       art={<View className="h-48 w-full items-center justify-center bg-card">
         <View className={`h-24 w-24 items-center justify-center rounded-full ${complete ? "bg-grass" : "bg-sun"}`}>
           <Icon name={complete ? "Check" : "Images"} size={44} className={complete ? "text-white" : "text-foreground"} />
         </View>
       </View>}
+      photoIds={actions.photoIds}
+      discarded={actions.discarded}
+      onBackToPhotos={actions.onBackToPhotos}
+      onDeleteNow={actions.onDeleteNow}
       explored={actions.explored}
       marked={actions.marked}
       unavailable={actions.unavailable}
       libraryBefore={actions.libraryBefore}
       canUndo={actions.canUndo}
       pending={actions.pending || busy}
-      more={onNext ? { label: moreCollectionLabel(scope), busy, onPress: onNext } : complete ? { label: "Browse them all again", busy, onPress: onAll } : undefined}
+      more={!complete && onNext ? { label: moreCollectionLabel(scope), busy, onPress: onNext } : undefined}
       onReview={actions.onReview}
       onDone={actions.onDone}
       onUndo={actions.onUndo}

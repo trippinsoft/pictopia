@@ -1,5 +1,8 @@
+import { useState } from "react";
+import { homeSpacing } from "@/lib/pictopia/home-spacing";
 import { Platform, Pressable, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { HomeTip } from "./home-tip";
 import { AdventureCover } from "./adventure-art";
 import { Button, Icon, Loading, Text } from "./ui";
 import { OrBadge, Postcard, Sticker, TabHeader, Ticket, WaitingPill, useLift } from "./playful";
@@ -46,8 +49,6 @@ export interface HomeContentProps {
   onPending(): void;
   onRetry(): void;
 }
-// Home section rhythm, matching the shared 4 pt spacing scale.
-const HOME_SPACING = { section: 24, adventure: 32, sectionMax: 48, pendingMax: 40 };
 const DAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
 
 function StreakSticker({ streak, onPress }: { streak?: StreakState; onPress(): void }) {
@@ -106,17 +107,20 @@ function RestoreCard({ streak, onPress }: { streak: StreakState; onPress(): void
   );
 }
 
-/** Takes a `weight` share of leftover screen height, between `min` and `max`. */
-function Spacer({ min, max, weight = 1 }: { min: number; max?: number; weight?: number }) {
-  return <View style={{ minHeight: min, maxHeight: max, flexGrow: weight }} />;
-}
-
 /** Presentation only. Existing stores and review routes own every action. */
 export function HomeContent(props: HomeContentProps) {
   const { ready, hasPhotos, busy, connecting, resume, features, error, adventureError, streak } = props;
+  const [viewport, setViewport] = useState(0), [intrinsic, setIntrinsic] = useState(0);
+  const spacing = homeSpacing(Math.max(0, viewport - 8), intrinsic, !!resume, props.pending > 0);
   return (
     <SafeAreaView className="flex-1 bg-background" edges={["top", "left", "right"]}>
-      <ScrollView contentContainerClassName="mx-auto w-full max-w-lg grow px-[18px] pb-8 pt-2">
+      <ScrollView onLayout={event => setViewport(event.nativeEvent.layout.height)} contentContainerClassName="mx-auto w-full max-w-lg grow px-[18px] pt-2">
+        <View style={{ paddingBottom: spacing.bottom }} onLayout={event => {
+          if (ready && hasPhotos) {
+            const measured = Math.max(0, event.nativeEvent.layout.height - spacing.total);
+            setIntrinsic(previous => Math.abs(previous - measured) > 1 ? measured : previous);
+          }
+        }}>
         <TabHeader />
         {!ready ? (
           <View className="py-12"><Loading /></View>
@@ -134,19 +138,19 @@ export function HomeContent(props: HomeContentProps) {
           </View>
         ) : (
           <>
-            <View className="mt-6 flex-row items-stretch gap-2.5">
+            <View style={{ marginTop: spacing.stats }} className="flex-row items-stretch gap-2.5">
               <StreakSticker streak={streak} onPress={props.onStreak} />
               <ProgressSticker percent={props.percent} onPress={props.onProgress} />
             </View>
             {streak?.restore && <RestoreCard streak={streak} onPress={props.onStreak} />}
             {resume && (
-              <View className="mt-6">
+              <View style={{ marginTop: spacing.resume }}>
                 <Ticket kind={resume.kind} media={resume.media} eyebrow={busy ? "Opening…" : resume.detail} title={resume.title} onPress={props.onResume} />
               </View>
             )}
-            {/* Spare height on tall screens is shared between sections instead of pooling at the bottom. */}
-            <Spacer min={HOME_SPACING.adventure} max={HOME_SPACING.sectionMax} />
-            <View className="mb-8 flex-row items-center justify-between">
+            {/* Measured gaps tighten only when the full page would otherwise overflow. */}
+            <View style={{ height: spacing.adventure }} />
+            <View style={{ marginBottom: spacing.postcards }} className="flex-row items-center justify-between">
               <Text accessibilityRole="header" className="text-display text-foreground">Where to today?</Text>
               <Pressable accessibilityRole="button" accessibilityLabel="Shuffle two more adventures" accessibilityState={{ busy: props.shuffling }} disabled={props.shuffling} onPress={props.onShuffle} className={`h-11 w-11 items-center justify-center rounded-full bg-card active:opacity-70 ${props.shuffling ? "opacity-50" : ""}`}>
                 <Icon name="Shuffle" size={18} className="text-foreground" />
@@ -174,10 +178,11 @@ export function HomeContent(props: HomeContentProps) {
             )}
             {!!props.notice && <Text accessibilityLiveRegion="polite" className="mt-3 text-center text-body text-muted-foreground">{props.notice}</Text>}
             {!!error && <Text accessibilityRole="alert" className="mt-3 text-body text-destructive">{error}</Text>}
-            {props.pending > 0 && <><Spacer min={HOME_SPACING.adventure} max={HOME_SPACING.pendingMax} /><WaitingPill count={props.pending} onPress={props.onPending} /></>}
-            <Spacer min={HOME_SPACING.section} weight={0.5} />
+            <View style={{ paddingTop: spacing.note }}><HomeTip spacing={0} /></View>
+            {props.pending > 0 && <><View style={{ height: spacing.pending }} /><WaitingPill count={props.pending} onPress={props.onPending} /></>}
           </>
         )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );

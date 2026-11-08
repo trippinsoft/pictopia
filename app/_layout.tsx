@@ -34,7 +34,6 @@ import { Fredoka_500Medium } from "@expo-google-fonts/fredoka/500Medium";
 import { Fredoka_600SemiBold } from "@expo-google-fonts/fredoka/600SemiBold";
 import { Fredoka_700Bold } from "@expo-google-fonts/fredoka/700Bold";
 import { savedPastel } from "@/theming/pastels";
-import { RecapHost } from "@/components/pictopia/recap";
 import { DARK_MODE_ENABLED } from "@/theming/appearance";
 import { PortalHost } from "@rn-primitives/portal";
 import { WebPortalContext } from "@/components/WebPortalContext";
@@ -165,13 +164,14 @@ function RootContent() {
           })}
         >
           <Stack.Screen name="settings" options={{ title: "Settings", presentation: "modal" }} />
+          <Stack.Screen name="on-this-day" options={{ title: "On This Day" }} />
           <Stack.Screen name="time-machine" options={{ title: "The Yearbook" }} />
           <Stack.Screen name="pit-stops" options={{ title: "Pit Stops" }} />
           <Stack.Screen name="pit-stop" options={{ title: "Pit Stop" }} />
           {/* Review layers: iOS swipe-to-dismiss would fight vertical scrolling; ✕ and Android Back close them. */}
           <Stack.Screen name="vertical-explore" options={{ title: "Adventure", gestureEnabled: false, fullScreenGestureEnabled: false }} />
           <Stack.Screen name="collection-review" options={{ title: "Photo review", gestureEnabled: false, fullScreenGestureEnabled: false }} />
-          <Stack.Screen name="queue" options={{ title: "Ready to delete" }} />
+          <Stack.Screen name="queue" options={{ title: "Discarded" }} />
           <Stack.Screen
             name="index"
             options={{
@@ -180,7 +180,6 @@ function RootContent() {
             }}
           />
         </Stack>
-        <RecapHost />
         {
           // View used as a portal container on web
           <View

@@ -94,6 +94,11 @@ export class ExploreFeedController {
     } else if (snap) this.deps.scrollTo(page, false);
     return true;
   }
+  flushPosition(page: number, availableIds: string[]) {
+    if (this.busy || page < 0 || page >= this.deps.pages().length - 1) return;
+    this.show(page, false);
+    void this.persist(availableIds);
+  }
   /** A sideways gesture may start only on the photo that is shown. */
   canDiscard(id: string) {
     return !this.busy && this.activeId === id && (!this.deps.read().review || !this.deps.read().records[id]?.queued);
@@ -330,7 +335,7 @@ export class ExploreFeedController {
     this.resync(!saved);
   }
   private resync(failed = true) {
-    if (failed) this.deps.onError("Couldn’t save your place. You’re back on your last saved photo.");
+    if (failed) this.deps.onError("Couldn’t save that action. Please try again.");
     this.focus(this.deps.read().activeId);
   }
   private show(page: number, animated: boolean) {

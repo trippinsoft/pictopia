@@ -1,5 +1,3 @@
-/** A loaded foreground photo must stay visible this long before it earns an encounter. */
-export const ENCOUNTER_DWELL_MS = 400;
 const MAX_ATTEMPTS = 3;
 
 /** Only a timestamp produced during this session can credit a departed photo. */
@@ -59,7 +57,8 @@ export function observePhotoEncounter({ save, onError, now = Date.now, schedule 
       }
       if (!saved && !saving) {
         attempts = 0;
-        timer = schedule(() => { void persist(); }, ENCOUNTER_DWELL_MS);
+        // Start in this turn: even an immediate scroll/blur must retain a loaded display.
+        void persist();
       }
     },
     dispose() {

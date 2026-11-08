@@ -10,7 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { StyleSheet, View, useWindowDimensions } from "react-native";
+import { Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 import type { NativeGesture } from "react-native-gesture-handler";
 import Animated, {
   Easing,
@@ -37,6 +37,9 @@ export interface ExploreCardHandle {
 interface Props {
   id: string;
   media?: Media;
+  /** Discarded and waiting in the trash: shown faded in its own slot, ready to restore. */
+  marked?: boolean;
+  onRestore?(id: string): void;
   active: boolean;
   /** Arriving in the shown slot: from the side it was discarded to (undo), or sliding up/down
    * into the slot a discarded photo just left. Positioned at once, animated once active. */
@@ -55,6 +58,7 @@ interface Props {
   onAccessibleUndo?(): void;
   onEntered(id: string): void;
   onAvailability(id: string, available: boolean): void;
+  onUnavailable?(): void;
   /** The photo is zoomed in (the feed pauses paging) or back at its original size. */
   onZoom(id: string, zoomed: boolean): void;
   /** Present in a review: the committed photograph is handed to a flight that carries it to
@@ -67,6 +71,8 @@ export const ExploreCard = memo(
     {
       id,
       media,
+      marked = false,
+      onRestore,
       active,
       entrance,
       pageHeight,
@@ -81,6 +87,7 @@ export const ExploreCard = memo(
       onAccessibleUndo,
       onEntered,
       onAvailability,
+      onUnavailable,
       onZoom,
       flight,
     },
@@ -169,11 +176,8 @@ export const ExploreCard = memo(
     useEffect(() => {
       onAvailability(id, phase === "loaded");
     }, [id, phase, onAvailability]);
-    useEffect(() => {
-      if (phase !== "loading") return;
-      const timer = setTimeout(() => setPhase("failed"), 8000);
-      return () => clearTimeout(timer);
-    }, [phase]);
+    const unavailableCallback = useRef(onUnavailable); unavailableCallback.current = onUnavailable;
+    useEffect(() => { if (active && phase === "failed") unavailableCallback.current?.(); }, [active, phase, id]);
     const cancel = useCallback(() => {
       reviewTrace("card.cancel", { photo: tracePhoto(id), inFlight: inFlight.current, started: started.current, locked: locked.value, x: x.value, y: y.value });
       if (inFlight.current) return;
@@ -371,7 +375,7 @@ export const ExploreCard = memo(
       // Active accessibility must not flatten/unflatten this ancestor during a live pan.
       // Keep its native parent stable while the touched photograph is claimed.
       <View style={styles.fill} collapsable={false} accessible={active} accessibilityRole="image" accessibilityLabel="Photograph"
-        accessibilityActions={[{ name: "increment", label: "Next photograph" }, { name: "decrement", label: "Previous photograph" }, { name: "mark", label: flight ? "Mark for deletion" : "Set aside photograph" }, { name: "undo", label: "Undo last discard" }]}
+        accessibilityActions={[{ name: "increment", label: "Next photograph" }, { name: "decrement", label: "Previous photograph" }, { name: "mark", label: "Discard photograph" }, { name: "undo", label: "Undo last discard" }]}
         onAccessibilityAction={event => {
           switch (event.nativeEvent.actionName) {
             case "increment": onAccessibleNext?.(); break;
@@ -386,7 +390,7 @@ export const ExploreCard = memo(
         locked={locked}
         // Live on every loaded photo, including one the pager has only just reached, so the
         // first sideways swipe after scrolling can claim the live native position.
-        enabled={phase === "loaded"}
+        enabled={phase === "loaded" && !marked}
         tapEnabled
         zoom={zoom}
         zoomed={zoomed}
@@ -402,15 +406,17 @@ export const ExploreCard = memo(
       >
         <Animated.View style={[styles.fill, style]}>
           {media && (
-            <Animated.View style={[styles.fill, zoomStyle]}>
+            <Animated.View style={[styles.fill, zoomStyle, marked ? styles.marked : undefined]}>
               <MediaImage
                 key={id}
                 media={media}
                 fit="contain"
                 style={styles.fill}
                 showLoading
+                active={active}
+                allowRetry
                 failureContent={isVideo ? <View className="flex-1 bg-background" /> : undefined}
-                onSettled={setPhase}
+                onSettled={state => { if (!isVideo) setPhase(state); }}
               />
             </Animated.View>
           )}
@@ -437,6 +443,26 @@ export const ExploreCard = memo(
           )}
         </Animated.View>
       </ExploreGesture>
+        {/* Drawn with the page itself, so it is already there as the photo scrolls into view. */}
+        {marked && (
+          <View pointerEvents="box-none" style={StyleSheet.absoluteFill} className="items-center justify-center">
+            <View className="items-center gap-3 rounded-3xl bg-background/90 px-6 py-5">
+              <View className="flex-row items-center gap-2">
+                <Icon name="Trash2" size={20} className="text-destructive" />
+                <Text className="text-h4 text-foreground">Discarded</Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Restore this photo"
+                onPress={() => onRestore?.(id)}
+                className="min-h-12 flex-row items-center gap-2 rounded-full bg-sun px-5 active:opacity-80"
+              >
+                <Icon name="Undo2" size={18} className="text-primary-foreground" />
+                <Text className="text-button text-primary-foreground">Restore</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
         {active && zoomed && (
           <View
             pointerEvents="none"
@@ -488,6 +514,7 @@ function DiscardLabel({ style }: { style: ComponentProps<typeof Animated.View>["
 }
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  marked: { opacity: 0.35 },
   label: { position: "absolute", top: "40%" },
   left: { left: 16 },
   right: { right: 16 },

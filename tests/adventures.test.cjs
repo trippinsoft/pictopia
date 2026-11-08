@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const { makeLoader } = require("./loader.cjs");
 const { DatabaseSync, media, platform, boot } = require("./native-harness.cjs");
 const load = makeLoader();
-const { adventureProgress, adventureComplete, ADVENTURE_SIZE } = load("lib/pictopia/adventures.ts");
+const { adventureProgress, adventureComplete, ADVENTURE_SIZE, adventureSize } = load("lib/pictopia/adventures.ts");
 const { curate, choosePair, planCandidates, bursts, similarity } = load("lib/pictopia/curation.ts");
 const { createExplore, reduceExplore } = load("lib/pictopia/explore.ts");
 
@@ -96,18 +96,12 @@ test("hidden corners keep quick series together and leave favorites out of clean
   assert.match(a.hint.detail, /taken seconds apart/);
 });
 
-test("On This Day widens its window only when needed, and says so", () => {
-  const near = [];
-  for (const y of [2015, 2017, 2019, 2021, 2023]) for (let i = 0; i < 3; i++) near.push(photo(`n${y}-${i}`, y, 10, { created: at(y, 10, 30, i * 20) }));
-  near.push(photo("this-year", 2026, 10, { created: at(2026, 10, 30) }));
-  const exact = curate({ kind: "day", source: "day:10-30", pool: near }, ctx());
-  assert.ok(!exact.ids.includes("this-year"), "earlier years only");
-  assert.match(exact.hint.detail, /across 5 years/);
-  assert.doesNotMatch(exact.hint.detail, /Within/);
-  const wide = [];
-  for (const y of [2015, 2017, 2019, 2021]) for (let d = 26; d <= 28; d++) wide.push(photo(`w${y}-${d}`, y, 10, { created: at(y, 10, d) }));
-  const widened = curate({ kind: "day", source: "day:10-30", pool: wide }, ctx());
-  assert.match(widened.hint.detail, /Within 3 days of/);
+test("On This Day uses exact calendar dates and permits one photo without adjacent padding", () => {
+  const exactPhoto = photo("exact", 2023, 10, { created: at(2023,10,30) });
+  const adjacent = photo("adjacent", 2021, 10, { created: at(2021,10,29) });
+  const exact = curate({ kind:"day", source:"day:10-30", pool:[exactPhoto,adjacent] }, ctx());
+  assert.deepEqual(exact.ids,["exact"]);
+  assert.equal(curate({ kind:"day", source:"day:10-30", pool:[adjacent] }, ctx()),undefined);
 });
 
 test("pairs are optimized together: near-twins lose to a different kind", () => {
@@ -193,7 +187,7 @@ test("native SQLite: two distinct, stable adventures; resume across relaunch; co
   assert.notEqual(A.adventure.source, B.adventure.source);
   assert.ok(A.session.ids.every((id) => !B.session.ids.includes(id)), "no shared photos");
   for (const slot of first.slots) {
-    assert.ok(slot.session.ids.length >= 10 && slot.session.ids.length <= ADVENTURE_SIZE);
+    assert.ok(slot.session.ids.length >= 10 && slot.session.ids.length <= adventureSize(slot.adventure.kind));
     assert.ok(slot.adventure.diagnostics.why.length, "explains itself");
     assert.equal(slot.session.instructionsDismissed, true, "no instruction screen");
     assert.ok(!slot.session.ids.includes("queued") && !slot.session.ids.includes("pending"));
@@ -243,8 +237,8 @@ test("native SQLite: two distinct, stable adventures; resume across relaunch; co
   assert.equal(refilled.slots.length, 2);
   assert.equal(refilled.slots[1].adventure.id, B.adventure.id, "B is untouched");
   const C = refilled.slots[0].adventure;
-  assert.ok(![A.adventure.source, B.adventure.source].includes(C.source), "not offered again");
-  assert.ok(refilled.slots[0].session.ids.every((id) => !saved.ids.slice(0, 6).includes(id)), "explored photos aren't reoffered");
+  assert.equal(C.id, A.adventure.id, "a finished segment retains its larger Adventure context");
+  assert.equal(refilled.slots[0].session.finished, true);
   // A's set-aside photo is still reviewable and restorable after A left Home.
   await s.adventureStore.restore(setAside[0]);
   assert.equal((await s.adventureStore.progress()).setAside, 0);
@@ -280,12 +274,12 @@ test("Explore: a chosen Adventure doesn't take a Home slot; it waits in Continue
   await store.change({ type: "page", id: endpoint.activeId, revision: endpoint.revision, toId: endpoint.ids.at(-1), availableIds: endpoint.ids });
   await store.change({ type: "seen", id: endpoint.ids.at(-1) });
   await store.change({ type: "finish" });
-  assert.deepEqual((await s.adventureStore.unfinished()).map((x) => x.adventure.id), [shots.id]);
+  assert.deepEqual((await s.adventureStore.unfinished()).map((x) => x.adventure.id), [year.id, shots.id], "a larger journey remains resumable after a segment");
   const choices = await s.adventureStore.choices(at(2026, 10, 30));
   assert.deepEqual(choices.years, ["2023", "2019", "2017"]);
   assert.equal(choices.screenshots, true);
   assert.equal(choices.detour, true);
-  assert.equal(choices.day, true, "October photos exist in earlier years");
+  assert.equal(choices.day, false, "no exact October 30 photos; the month alone is insufficient");
   assert.equal(await s.adventureStore.choose({ kind: "year", year: "1999" }, 7), undefined);
   // Lab experiments are frozen until regenerated; ratings personalize later curation.
   const lab = await s.adventureStore.generateLab("detour", 5);
@@ -358,7 +352,7 @@ test("browser Home offers a short review and can revisit explored photos without
   const next = (await s.adventureStore.home(2)).slots;
   assert.equal(next.length, 2);
   assert.equal(next[1].adventure.id, first[1].adventure.id);
-  assert.notEqual(next[0].adventure.id, first[0].adventure.id);
+  assert.equal(next[0].adventure.id, first[0].adventure.id, "segment completion alone does not replace a larger journey");
   assert.deepEqual(p.requests, [], "creating reviews never requests deletion");
   db.close();
 });
@@ -539,4 +533,67 @@ test("Yearbook names keep stable catalog IDs and Time Capsule's automatic month 
   assert.equal(c.adventureName("capsule"),"Time Capsule");
   const plans=planCandidates([{key:"2017-04",count:30,quiet:1}],{seed:4,now:at(2026,10,30),screenshots:false,recentSources:[]});
   assert.ok(plans.some(p=>p.kind==="capsule"&&p.source==="month:2017-04"));
+});
+
+test("Yearbook end-page Finish with five pending discards saves completion once despite a lagging position",async()=>{
+  const db=new DatabaseSync(':memory:'),rows=library(),p=platform({library:rows.map(m=>m.id)});
+  const fault={};let app=await boot(db,p,fault);await app.storage.put(rows);
+  let s=services(app,p);const a=await s.adventureStore.choose({kind:'year',year:'2017'},42);
+  await s.adventureStore.open(a.id);
+  const key=s.adventureSessionKey(a.id),store=s.explore.exploreStoreFor(key);
+  let session=await store.load();assert.equal(session.ids.length,18);
+  for(const id of session.ids) await store.change({type:'seen',id,displayedAt:Date.now()});
+  for(const id of session.ids.slice(0,5)) {
+    session=await store.load();await store.change({type:'discard',id,revision:session.revision,direction:'left'});
+  }
+  session=await store.load();const last=session.ids.at(-1);
+  assert.notEqual(session.activeId,last);
+  fault.key=key;
+  await assert.rejects(store.change({type:'finish',expectedRevision:session.revision,endId:last}));
+  delete fault.key;
+  assert.deepEqual(await store.load(),session,'failed persistence preserves the unfinished position and all queue records');
+  const done=await store.change({type:'finish',expectedRevision:session.revision,endId:last});
+  assert.equal(done.finished,true);assert.deepEqual(done.records,session.records);
+  await s.adventureStore.finish(a.id);await s.adventureStore.finish(a.id);
+  assert.equal((await app.storage.getValue('adventures:v1')).finished ?? 0,0, 'a segment is not a whole Yearbook completion');
+  app=await boot(db,p);s=services(app,p);
+  const reopened=await s.explore.exploreStoreFor(key).load();assert.equal(reopened.finished,true);
+  for(const id of session.ids.slice(0,5)) assert.equal((await app.storage.get(id)).decision,'delete');
+  assert.equal((await s.adventureStore.yearbooks()).some(slot=>slot.adventure.id===a.id),true);
+  assert.deepEqual(p.requests,[],'Finish never invokes deletion');db.close();
+});
+
+test('one active Yearbook per year is enforced atomically across repeated and concurrent selections',async()=>{
+  const db=new DatabaseSync(':memory:'),rows=library(),p=platform({library:rows.map(m=>m.id)});
+  let app=await boot(db,p);await app.storage.put(rows);let s=services(app,p);
+  const [a,b]=await Promise.all([s.adventureStore.choose({kind:'year',year:'2017'},11),s.adventureStore.choose({kind:'year',year:'2017'},99)]);
+  assert.equal(a.id,b.id);await s.adventureStore.open(a.id);
+  let store=s.explore.exploreStoreFor(s.adventureSessionKey(a.id)),session=await store.load();
+  await store.change({type:'page',id:session.activeId,revision:session.revision,toId:session.ids[5],availableIds:session.ids});
+  const saved=await store.load();
+  const other=await s.adventureStore.choose({kind:'year',year:'2019'},21);assert.notEqual(other.id,a.id);
+  app=await boot(db,p);s=services(app,p);
+  assert.equal((await s.adventureStore.choose({kind:'year',year:'2017'},888)).id,a.id);
+  store=s.explore.exploreStoreFor(s.adventureSessionKey(a.id));assert.deepEqual(await store.load(),saved);
+  assert.equal((await s.adventureStore.yearbooks()).filter(slot=>slot.adventure.source==='year:2017').length,1);
+  for(const id of saved.ids)await store.change({type:'seen',id,displayedAt:Date.now()});
+  session=await store.load();await store.change({type:'finish',expectedRevision:session.revision,endId:session.ids.at(-1)});
+  await s.adventureStore.finish(a.id);
+  const next=await s.adventureStore.choose({kind:'year',year:'2017'},13);assert.equal(next.id,a.id, 'the next segment continues the same year journey');
+  const fresh=await s.explore.exploreStoreFor(s.adventureSessionKey(next.id)).load();
+  assert.equal(fresh.ids.length,18);assert.ok(fresh.ids.every(id=>!saved.ids.includes(id)),'subsequent adventures prefer unseen photos');
+  assert.equal((await s.adventureStore.yearbooks()).filter(slot=>slot.adventure.source==='year:2017').length,1);
+  assert.deepEqual(p.requests,[]);db.close();
+});
+
+test('a failed canonical Yearbook creation rolls back its snapshot and index instead of leaving orphan sessions',async()=>{
+  const db=new DatabaseSync(':memory:'),rows=library(),p=platform({library:rows.map(m=>m.id)}),fault={};
+  const app=await boot(db,p,fault);await app.storage.put(rows);const s=services(app,p);
+  fault.key='yearbookActive:v1';await assert.rejects(s.adventureStore.choose({kind:'year',year:'2017'},4));
+  delete fault.key;assert.equal(await app.storage.getValue('yearbookActive:v1'),undefined);
+  assert.deepEqual(await s.adventureStore.yearbooks(),[]);
+  assert.deepEqual(await s.adventureStore.unfinished(),[]);
+  const a=await s.adventureStore.choose({kind:'year',year:'2017'},5);
+  assert.equal((await s.adventureStore.choose({kind:'year',year:'2017'},6)).id,a.id);
+  assert.deepEqual(p.requests,[]);db.close();
 });

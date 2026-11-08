@@ -39,8 +39,8 @@ test("deletion results never claim more than the OS confirmed", () => {
   assert.deepEqual(cancelled, { screen: "stay", notice: "Nothing was deleted. Your photos are still marked." });
   assert.equal(f.deletionOutcome({ ...base, status: "failed" }, "ios", 0).screen, "stay");
   const all = f.deletionOutcome({ ...base, status: "confirmed", confirmed: ["a", "b"] }, "ios", 42_000_000);
-  assert.equal(all.headline, "2 photos deleted");
-  assert.match(all.details[0], /^About 42 MB moved to Recently Deleted/);
+  assert.equal(all.headline, "42 MB cleared");
+  assert.equal(all.details[0], "2 photos moved to Recently Deleted. Empty it in Photos to free the space now.");
   assert.doesNotMatch(all.details.join(" "), /freed|recovered|saved/i, "space is never claimed as freed");
   const partial = f.deletionOutcome({ ...base, status: "partial", confirmed: ["a"], remaining: ["b"] }, "android", 0, { photos: 1, videos: 0 });
   assert.equal(partial.headline, "1 photo deleted");
@@ -94,9 +94,9 @@ test("the allowance persists across sessions and restarts, counts each asset onc
 
 test("review exits, endings and the paywall keep their contracts", () => {
   const review = read("components/pictopia/adventure-review.tsx");
-  assert.doesNotMatch(review, /onEnd=\{finish\}/, "reaching the end never finishes on its own");
-  assert.match(review, /endPage=\{endPage\}/, "the end card offers Finish");
-  assert.match(review, /addListener\("beforeRemove"/, "✕ and Android Back both produce the recap");
+  assert.match(review, /onEnd=\{finish\}/, "crossing the final boundary goes directly to completion");
+  assert.match(review, /endPage=\{endPage\}/, "the boundary holds a stable saving/retry state");
+  assert.match(review, /addListener\("beforeRemove"/, "Back flushes the current position");
   assert.match(review, /limitPage=\{limitPage\}/);
   assert.doesNotMatch(review.slice(review.indexOf("const limitPage"), review.indexOf("const finish")), /finish\(/, "the daily limit is never a finish");
   const paywall = read("app/paywall.tsx");
@@ -160,4 +160,24 @@ test("resume and the daily limit: a review keeps its place across restarts and i
   await store.change(c => ({ type: "page", id: c.activeId, revision: c.revision, toId: "d", availableIds: ids }));
   s = await store.change({ type: "finish" });
   assert.equal(s.finished, true, "explicit Finish at the real endpoint completes");
+});
+
+test("explicit Finish from the end page handles a lagging saved position without counting new views", () => {
+  let s={...x.createExplore(Array.from({length:18},(_,i)=>`p${i}`)),review:true};
+  for(const id of s.ids) s=x.reduceExplore(s,{type:'seen',id,displayedAt:Date.now()});
+  for(const id of s.ids.slice(0,5)) s=x.reduceExplore(s,{type:'discard',id,revision:s.revision,direction:'left'});
+  assert.notEqual(s.activeId,'p17','the pager may have reached its end before the saved position');
+  const action={type:'finish',expectedRevision:s.revision,endId:'p17'};
+  const done=x.reduceExplore(s,action);
+  assert.equal(done.finished,true);assert.ok(done.completionVerifiedAt);
+  assert.deepEqual(done.records,s.records,'Finish neither explores nor changes the trash');
+  assert.deepEqual(done.history,s.history);
+  assert.equal(Object.values(done.records).filter(r=>r.queued).length,5);
+  const backed=x.reduceExplore(s,{type:'page',id:s.activeId,revision:s.revision,toId:'p8',availableIds:s.ids});
+  assert.equal(x.reduceExplore(backed,action),backed,'backward navigation invalidates an older end-page action');
+  const undone=x.reduceExplore(s,{type:'undo'});
+  assert.equal(x.reduceExplore(undone,action),undone,'Undo invalidates the old endpoint action');
+  assert.equal(x.reduceExplore(s,{...action,endId:'p10'}),s,'an arbitrary earlier photo is not an endpoint');
+  const unseen={...s,records:{...s.records,p17:undefined}};
+  assert.equal(x.reduceExplore(unseen,action),unseen,'unseen endpoints cannot be asserted');
 });

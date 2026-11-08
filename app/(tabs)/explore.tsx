@@ -1,3 +1,4 @@
+import { PitStopMenu } from "@/components/pictopia/pit-stop-menu";
 import { useCallback, useState } from "react";
 import { Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -108,17 +109,18 @@ export default function Explore() {
     // Closed until scanning and keeper suggestions are verified on devices.
     if (id === "duplicate-hunt") return huntOpen ? router.push(app.pro ? "/duplicate-hunt" : "/paywall") : setInfo(catalogEntry("duplicate-hunt"));
     if (id === "time-machine") return router.push("/time-machine");
+    if (id === "on-this-day") return router.push("/on-this-day");
     const slot = unfinished(id);
     setBusy(id); setMessage(undefined);
     try {
       let adventureId = slot?.adventure.id;
       if (!adventureId) {
-        const choice: ExploreChoice = id === "on-this-day" ? { kind: "day" } : id === "time-capsule" ? { kind: "capsule" } : id === "surprise-me" ? { kind: "detour" } : { kind: "screenshots" };
+        const choice: ExploreChoice = id === "time-capsule" ? { kind: "capsule" } : id === "surprise-me" ? { kind: "detour" } : { kind: "screenshots" };
         const made = await adventureStore.choose(choice);
         if (!made) { setMessage("No eligible photos for that one right now. Try another adventure."); return; }
         adventureId = made.id;
       }
-      await adventureStore.open(adventureId);
+      await adventureStore.open(adventureId, app.pro);
       router.push({ pathname: "/vertical-explore", params: { adventure: adventureId } });
     } catch {
       setMessage("That adventure couldn’t be opened. Please try again.");
@@ -221,6 +223,9 @@ export default function Explore() {
             </>}
           </>
         )}
+        <SectionTitle>Pit Stops</SectionTitle>
+        <Text className="mb-3 text-body text-muted-foreground">Take a playful break from photo cleanup.</Text>
+        <PitStopMenu compact />
       </ScrollView>
       <InfoSheet entry={info} note={info && catalogFor("day") === info && otd ? `Today’s trip: ${otd.adventure.hint.detail}.` : info?.id === "duplicate-hunt" && !huntOpen ? "Coming soon. We’re testing it on real iPhones and Android phones first, so its suggestions are ones you can trust." : undefined} onClose={() => setInfo(undefined)} />
     </SafeAreaView>

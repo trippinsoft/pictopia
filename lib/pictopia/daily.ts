@@ -22,7 +22,7 @@ export function addDays(date: string, n: number) {
 
 // ── Activity ────────────────────────────────────────────────────────────────────────────────
 export interface DayRecord {
-  /** Distinct photos meaningfully viewed (400 ms on screen, or marked). */
+  /** Distinct photos displayed in the foreground, however briefly, or explicitly marked. */
   photos: number;
   /** Distinct videos meaningfully viewed. Count toward streaks, never toward photo badges. */
   videos: number;

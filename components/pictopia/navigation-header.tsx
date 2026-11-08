@@ -24,5 +24,6 @@ export function ScreenHeader({ title, subtitle, fallback = "/(tabs)/home", onBac
       {!!action && <View className="min-h-12 shrink-0 items-center justify-center">{action}</View>}
     </View>
     {!!subtitle && <Text className="mt-2 text-body leading-6 text-muted-foreground">{subtitle}</Text>}
+
   </View>;
 }

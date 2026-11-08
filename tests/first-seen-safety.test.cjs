@@ -28,16 +28,16 @@ test('displaying the final photo records it without leaving it, finishing, or ma
   db.close();
 });
 
-test('qualified encounters survive delayed storage without moving a newer adventure position', async () => {
+test('scrolling past a photo reviews it; late or unqualified callbacks never count another photo', async () => {
   const db = new DatabaseSync(':memory:'), app = await boot(db, platform());
   const key = 'adventure:delayed:explore';
   await app.storage.put([media('a'), media('b'), media('offscreen')], { [key]: review(['a', 'b']) });
   const s = store(app, key);
   await s.change(current => ({ type: 'page', id: 'a', toId: 'b', revision: current.revision, availableIds: [] }));
-  await s.change({ type: 'seen', id: 'a' });
-  assert.equal((await app.storage.get('a')).firstSeenAt, undefined, 'an unqualified late load callback cannot count an old page');
+  const first = (await app.storage.get('a')).firstSeenAt;
+  assert.ok(first > 0, 'scrolled past, so reviewed');
   const session = await s.change({ type: 'seen', id: 'a', displayedAt: 500 });
-  assert.equal(session.activeId, 'b'); assert.equal((await app.storage.get('a')).firstSeenAt, 500);
+  assert.equal(session.activeId, 'b', 'a late callback never moves the newer place');
   for (const displayedAt of [0, 50, NaN, Date.now() + 10000]) await s.change({ type: 'seen', id: 'b', displayedAt });
   await s.change({ type: 'seen', id: 'offscreen', displayedAt: 500 });
   assert.equal((await app.storage.get('b')).firstSeenAt, undefined);
@@ -46,17 +46,18 @@ test('qualified encounters survive delayed storage without moving a newer advent
   db.close();
 });
 
-test('paging past loaded photos does not count preloads or rapidly skipped photos', async () => {
+test('scrolling past photos counts each once; the photo on screen counts when shown', async () => {
   const db = new DatabaseSync(':memory:'), app = await boot(db, platform());
   const key = 'adventure:preload:explore';
   await app.storage.put([media('a'), media('b'), media('c')], { [key]: review(['a', 'b', 'c']) });
   const s = store(app, key);
-  await s.change(current => ({ type: 'page', id: current.activeId, toId: 'c', revision: current.revision, availableIds: ['a', 'b', 'c'] }));
-  assert.equal((await app.storage.progress()).explored, 0, 'loaded image cache is not visibility evidence');
+  await s.change(current => ({ type: 'page', id: current.activeId, toId: 'c', revision: current.revision, availableIds: [] }));
+  assert.equal((await app.storage.progress()).explored, 2, 'a and b were scrolled past');
+  await s.change(current => ({ type: 'page', id: current.activeId, toId: 'a', revision: current.revision, availableIds: [] }));
+  await s.change(current => ({ type: 'page', id: current.activeId, toId: 'c', revision: current.revision, availableIds: [] }));
+  assert.equal((await app.storage.progress()).explored, 2, 'scrolling back and forth never counts twice');
   await s.change({ type: 'seen', id: 'c', displayedAt: 500 });
-  assert.equal((await app.storage.progress()).explored, 1);
-  assert.equal((await app.storage.get('a')).firstSeenAt, undefined);
-  assert.equal((await app.storage.get('b')).firstSeenAt, undefined);
+  assert.equal((await app.storage.progress()).explored, 3);
   db.close();
 });
 

@@ -41,9 +41,9 @@ export default function Compare() {
         <ScreenHeader title="Choose your keepers" fallback="/(tabs)/smart" />
         {!app.pro ? (
           <Empty
-            title="Compare with Pictopia Pro"
-            description="Your review history is retained when Pro expires."
-            action={<Button onPress={() => router.replace("/paywall")}>View Pro plans</Button>}
+            title="Compare with Pictopia+"
+            description="Your review history is retained when Pictopia+ expires."
+            action={<Button onPress={() => router.replace("/paywall")}>View Pictopia+ plans</Button>}
           />
         ) : (
           <>

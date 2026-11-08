@@ -50,9 +50,9 @@ export default function DeviceChecks() {
     }
     try {
       const e = await purchaseService.refresh();
-      add("Pro from store", e.active ? `active until ${e.expires ? new Date(e.expires).toLocaleString() : "?"}` : "not subscribed", true);
+      add("Pictopia+ from store", e.active ? `active until ${e.expires ? new Date(e.expires).toLocaleString() : "?"}` : "not subscribed", true);
     } catch (e) {
-      add("Pro from store", errorText(e), false);
+      add("Pictopia+ from store", errorText(e), false);
     }
     if (!albumService.supported) add("Albums", "not available on this platform");
     else

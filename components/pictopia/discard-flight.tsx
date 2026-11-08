@@ -15,11 +15,13 @@ import {
   flightPath,
   type FlightPath,
 } from "@/lib/pictopia/flight-math";
+import { rememberedDisplay } from "@/lib/pictopia/display-cache";
 import type { Media } from "@/lib/pictopia/types";
 
 export interface FlightRequest {
   id: string;
   media: Media;
+  displayUri?: string;
   /** How far the finger had moved the photograph when the discard was committed. */
   offset: { x: number; y: number };
   direction: "left" | "right";
@@ -43,6 +45,7 @@ interface Flight {
   key: string;
   id: string;
   media: Media;
+  displayUri?: string;
   frame: Rect;
   path: FlightPath;
   reduced: boolean;
@@ -104,7 +107,7 @@ export function useDiscardFlights({
         const arrival = new Promise<void>((resolve) => { landed = resolve; });
         setFlights((entries) => [
           ...entries,
-          { key, id: request.id, media: request.media, frame, path, reduced: low, ready, landed },
+          { key, id: request.id, media: request.media, displayUri: rememberedDisplay(request.media), frame, path, reduced: low, ready, landed },
         ]);
         // The handoff never blocks the next swipe, however the image behaves.
         setTimeout(ready, 80);
@@ -191,7 +194,7 @@ function FlyingPhoto({ flight, onArrive }: { flight: Flight; onArrive(): void })
         style,
       ]}
     >
-      <MediaImage media={flight.media} fit="contain" style={styles.fill} onSettled={begin} />
+      <MediaImage media={flight.displayUri ? undefined : flight.media} uri={flight.displayUri} fit="contain" style={styles.fill} onSettled={begin} />
     </Animated.View>
   );
 }

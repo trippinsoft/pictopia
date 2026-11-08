@@ -13,14 +13,14 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
 function services(app, p) { return makeLoader({ ...p.mocks, './repository': app, './media': { mediaService: app.mediaService } })('services/explore.ts'); }
 function review(ids = ['a','b','c']) { return { ...createExplore(ids, 1), review: true }; }
 function page(s, id, availableIds = s.ids) { return reduceExplore(s, { type: 'page', id: s.activeId, revision: s.revision, toId: id, availableIds }); }
-/** Mirrors AdventureReview: the sequence is the snapshot minus what is in the trash, and the
- * pager re-anchors on the shown photograph whenever that sequence changes. */
+/** Mirrors AdventureReview: every slot stays; a discarded photograph leaves only while it flies
+ * and returns, faded, once saved. The pager re-anchors on the shown photograph. */
 function reviewHarness(ids = ['a','b','c','d'], completionPage = false) {
   let s = review(ids), tail = Promise.resolve(), hold = null, rendered;
   const scrolls = [], shown = [], errors = [], arrivals = [], ended = [];
   let controller;
   const build = () => {
-    const live = s.ids.filter(id => controller.departing.has(id) || (!s.records[id]?.queued && !controller.hidden.has(id)));
+    const live = s.ids.filter(id => controller.departing.has(id) || !controller.hidden.has(id));
     return completionPage ? [...live, 'explore-completion'] : live;
   };
   rendered = completionPage ? [...exploreFeed(s), 'explore-completion'] : exploreFeed(s);
@@ -60,14 +60,15 @@ function reviewHarness(ids = ['a','b','c','d'], completionPage = false) {
     settle: () => tail,
   };
 }
-test('free browsing and revisiting distinguish viewed, untouched, and queued photos', () => {
+test('scrolling past photographs reviews them; one that failed to load stays unreviewed', () => {
   let s = review(['a','b','c','d']);
-  s = reduceExplore(s, { type: 'seen', id: 'a' });
-  s = page(s, 'd', ['a']);
-  assert.deepEqual(Object.keys(s.records), ['a'], 'skipping past photographs does not count them');
+  s = reduceExplore(s, { type: 'unavailable', id: 'b' });
+  s = page(s, 'd', []);
+  assert.deepEqual(['a','b','c','d'].filter(id => s.records[id]?.encountered), ['a','c'], 'scrolled past, so reviewed');
+  assert.equal(s.records.b.unavailable, true);
   s = reduceExplore(s, { type: 'seen', id: 'd' });
   s = page(s, 'a'); s = page(s, 'd');
-  assert.equal(exploreCounts(s).explored, 2);
+  assert.equal(exploreCounts(s).explored, 3);
   assert.equal(exploreCounts(s).discarded, 0);
   assert.equal(s.activeId, 'd');
   assert.equal(page(s, null), s, 'scrolling beyond the final photograph never finishes');
@@ -124,23 +125,22 @@ test('rail keeps original positions, including discards, in 20, 100 and 200 phot
     assert.equal(reviewRailLines(ids, queued, middle + 0.5).find(line => line.index === middle).offset, -8.5);
   }
 });
-test('a discarded photograph leaves the sequence, and the trash gives it back where it was', () => {
+test('a discarded photograph keeps its slot, faded, and Restore un-fades it in place', () => {
   let s = review();
   const discard = () => s = reduceExplore(s, { type: 'discard', id: s.activeId, revision: s.revision, direction: 'left' });
   discard();
   assert.equal(s.activeId, 'b', 'the next photograph takes over');
-  assert.deepEqual(exploreFeed(s), ['b','c'], 'and the marked one is out of the scrolling sequence');
+  assert.deepEqual(exploreFeed(s), ['a','b','c'], 'the marked one keeps its slot, so places never shift');
   assert.equal(s.records.a.queued, true);
   s = page(s, 'c'); discard();
-  assert.equal(s.activeId, 'b', 'the saved place stays on a real photograph: the nearest earlier one (the end card is never a saved place)');
-  assert.deepEqual(exploreFeed(s), ['b'], 'earlier photographs remain available and unmarked');
+  assert.equal(s.activeId, 'c', 'the last slot stays the saved place (the end card is never a saved place)');
   assert.notEqual(s.finished, true, 'marking the final photograph never finishes');
   assert.notEqual(reconcileReview(s, []).finished, true);
   assert.equal(adventureComplete(s), false);
   s = reduceExplore(s, { type: 'restore', id: 'c' });
-  assert.deepEqual(exploreFeed(s), ['b','c']);
-  assert.equal(s.activeId, 'b', 'restoring never moves the user');
+  assert.equal(s.activeId, 'c', 'restoring never moves the user');
   assert.equal(s.records.c.queued, false);
+  s = page(s, 'b');
   s = reduceExplore(s, { type: 'restore', id: 'a' });
   assert.deepEqual(exploreFeed(s), ['a','b','c'], 'in its original place');
   assert.equal(s.activeId, 'b', 'without moving the user');
@@ -156,8 +156,8 @@ test('a discarded photograph leaves the sequence, and the trash gives it back wh
   assert.equal(s.finished, false); assert.equal(s.activeId, 'c', 'and a review can be reopened from its closing screen');
   let only = review(['a']);
   only = reduceExplore(only, { type: 'discard', id: 'a', revision: 0, direction: 'right' });
-  assert.equal(only.activeId, null); assert.equal(only.records.a.queued, true);
-  assert.equal(only.finished, false);
+  assert.equal(only.activeId, 'a'); assert.equal(only.records.a.queued, true);
+  assert.notEqual(only.finished, true);
 });
 test('reviews saved before the trash existed keep their finished state', () => {
   const legacy = review();
@@ -234,7 +234,7 @@ test('legacy marks are preserved without silently adding deletion requests', asy
 test('queue updates from another review are authoritative across overlapping sessions', () => {
   const s = reconcileReview(review(), [media('a',{decision:'delete'}),media('b'),media('c')]);
   assert.equal(s.records.a.queued, true);
-  assert.deepEqual(exploreFeed(s), ['b','c'], 'a photograph queued elsewhere is already in the trash');
+  assert.deepEqual(exploreFeed(s), ['a','b','c'], 'a photograph queued elsewhere shows faded in its slot');
   const restored = reconcileReview(s, [media('a',{decision:'keep'})]);
   assert.equal(restored.records.a.queued, false);
 });
@@ -259,7 +259,8 @@ test('the next photograph is swipeable before a discard is saved, and rapid disc
   await h.settle();
   const s = h.session();
   assert.deepEqual(['a','b','c'].map(id => s.records[id].queued), [true,true,true], 'every swipe was saved exactly once');
-  assert.deepEqual(exploreFeed(s), ['d']);
+  assert.deepEqual(exploreFeed(s), ['a','b','c','d'], 'saved marks return to their slots, faded');
+  assert.deepEqual(h.pages(), ['a','b','c','d']);
   assert.equal(s.activeId, 'd');
   assert.equal(c.activeId, 'd');
   assert.deepEqual(h.errors, []);
@@ -291,15 +292,14 @@ test('discarding the final review photo finishes after its flight, even with ear
   await flush(); await flush();
   assert.equal(h.controller.activeId, null, 'the last photo must not fall back to c');
   assert.equal(h.controller.busy, true, 'the final transition remains held until landing');
-  assert.equal(h.shown.at(-1), 3, 'the completion page replaces the final photo');
+  assert.equal(h.shown.at(-1), h.pages().length - 1, 'the completion page replaces the final photo');
   assert.equal(h.ended.length, 0, 'completion waits for the photograph to reach the trash');
-  assert.deepEqual(exploreFeed(h.session()), ['a','b','c']);
   land(); await discard;
   assert.equal(h.controller.busy, false);
   assert.equal(h.ended.length, 1);
   assert.deepEqual(h.ended[0].queued, ['d']);
   assert.notEqual(h.session().finished, true, 'only an explicit Finish completes');
-  assert.equal(h.session().activeId, 'c', 'the saved place stays on the last photograph still in the sequence');
+  assert.equal(h.session().activeId, 'd', 'the saved place stays on the last slot');
 });
 test('jumping to the final photo and discarding it never navigates backward', async () => {
   const h = reviewHarness(['a','b','c'], true);
@@ -307,7 +307,7 @@ test('jumping to the final photo and discarding it never navigates backward', as
   await h.settle();
   await h.controller.discard('c', 'right', Promise.resolve(), Promise.resolve());
   assert.equal(h.controller.activeId, null);
-  assert.deepEqual(exploreFeed(h.session()), ['a','b']);
+  assert.equal(h.session().records.c.queued, true);
   assert.equal(h.ended.length, 1);
   assert.ok(!h.scrolls.includes(1), 'the feed never scrolls to an earlier photograph');
 });
@@ -323,19 +323,19 @@ test('consecutive discards finish once when the final remaining photo lands', as
   assert.equal(h.ended.length, 1);
   assert.deepEqual(h.ended[0].queued, ['a','b','c']);
 });
-test('discarding the last photograph leaves an empty sequence that restoring reopens', async () => {
+test('discarding every photograph keeps every slot, and Restore un-fades one in place', async () => {
   const h = reviewHarness(['a','b']);
   const c = h.controller;
   await c.discard('a', 'left', Promise.resolve());
   await c.discard('b', 'right', Promise.resolve());
   await h.settle();
-  assert.equal(c.activeId, null, 'nothing is left to show');
-  assert.deepEqual(h.pages(), []);
-  assert.equal(h.session().finished, false, 'and the review has not ended itself');
+  assert.deepEqual(h.pages(), ['a','b'], 'both slots remain, faded');
+  assert.deepEqual(['a','b'].map(id => h.session().records[id].queued), [true, true]);
+  assert.notEqual(h.session().finished, true, 'and the review has not ended itself');
   await c.action({ type: 'restore', id: 'b' });
   await h.settle();
-  assert.deepEqual(h.pages(), ['b']);
-  assert.equal(c.activeId, 'b');
+  assert.deepEqual(h.pages(), ['a','b']);
+  assert.equal(h.session().records.b.queued, false);
   assert.deepEqual(h.errors, []);
 });
 test('a failed discard returns the photograph to its place and releases rapid-input locks', async () => {
@@ -345,7 +345,7 @@ test('a failed discard returns the photograph to its place and releases rapid-in
   assert.equal(c.activeId,'a'); assert.equal(c.busy,false); assert.equal(c.canDiscard('a'),true);
   assert.equal(c.hidden.has('a'), false, 'the photograph is back in the sequence');
   assert.equal(arrivals.at(-1).from,'left'); assert.equal(positions.at(-1),0);
-  assert.match(errors.at(-1), /last saved photo/);
+  assert.match(errors.at(-1), /Please try again/);
 });
 test('the flight carries the photograph from the finger to the trash, shrinking all the way', () => {
   const frame = { width: 390, height: 600 };
@@ -427,8 +427,9 @@ test('reopening a review whose active photo was queued elsewhere shows a swipeab
   await app.storage.put([media('a', { decision: 'delete' }), media('b'), media('c')], { [key]: review() });
   const store = services(app, p).exploreStoreFor(key);
   const loaded = await store.load();
-  assert.equal(loaded.activeId, 'b', 'active ID must identify the actual first visible photograph');
-  assert.deepEqual(exploreFeed(loaded), ['b', 'c']);
+  assert.equal(loaded.activeId, 'a', 'the saved place stays put; the photo queued elsewhere shows faded there');
+  assert.deepEqual(exploreFeed(loaded), ['a', 'b', 'c']);
+  await store.change(s => ({ type: 'page', id: s.activeId, revision: s.revision, toId: 'b', availableIds: ['b'] }));
   const saved = await store.change(s => ({ type: 'discard', id: 'b', revision: s.revision, direction: 'left' }));
   assert.equal(saved.records.b.queued, true, 'the first visible photo accepts a discard');
   assert.equal((await app.storage.get('b')).decision, 'delete');
@@ -467,14 +468,17 @@ test('browser nine-photo review resumes past queued photos, discards the first v
   });
   const store = load('services/explore.ts').exploreStoreFor(key);
   let s = await store.load();
-  assert.equal(s.activeId, 'b');
-  assert.equal(s.ids.indexOf(s.activeId) + 1, 2, 'the count is the original snapshot position');
+  assert.equal(s.activeId, 'a', 'resumes on its saved slot, shown faded');
+  assert.equal(s.ids.indexOf(s.activeId) + 1, 1, 'the count is the original snapshot position');
   const controller = new ExploreFeedController({
     read: () => s, pages: () => [...exploreFeed(s), 'explore-completion'], completionPage: true,
     save: async action => { s = await store.change(action); return s; },
     scrollTo: () => {}, onPage: () => {}, onBusy: () => {}, onError: () => {},
     onFeed: () => {}, prepare: async () => {},
   }, s.activeId);
+  assert.equal(controller.canDiscard('a'), false, 'a faded photo is restored, never discarded again');
+  controller.settle(1, ['b']);
+  await new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(controller.canDiscard('b'), true);
   await controller.discard('b', 'left', Promise.resolve(), Promise.resolve());
   assert.equal((await storage.get('b')).decision, 'delete');
@@ -486,15 +490,15 @@ test('browser nine-photo review resumes past queued photos, discards the first v
   assert.equal(await (await storage.getValue('file:b')).text(), 'original selected photograph');
 });
 
-test('a mounted feed can claim its first visible page after its old active photo is queued elsewhere', () => {
+test('a mounted feed can claim the next page after its old active photo is queued elsewhere', () => {
   const s = reconcileReview(review(), [media('a', { decision: 'delete' }), media('b'), media('c')]);
   const controller = new ExploreFeedController({
     read: () => s, pages: () => [...exploreFeed(s), 'explore-completion'], completionPage: true,
     save: async () => s, scrollTo: () => {}, onPage: () => {}, onBusy: () => {}, onError: () => {},
     onFeed: () => {}, prepare: async () => {},
   }, 'a');
-  assert.equal(controller.canDiscard('b'), false);
-  assert.equal(controller.claim(0, ['b'], false), true);
+  assert.equal(controller.canDiscard('a'), false, 'the faded photo is not discardable');
+  assert.equal(controller.claim(1, ['b'], false), true);
   assert.equal(controller.activeId, 'b');
   assert.equal(controller.canDiscard('b'), true);
 });

@@ -3,6 +3,11 @@ import { exploreCounts, type ExploreSession } from "./explore";
 /** Target photos per Adventure: short enough to finish in a few minutes. Configurable;
  * anything up to the explorer's snapshot limit works. */
 export const ADVENTURE_SIZE = 18;
+/** How many photos an adventure holds. Natural sets run whole (every photo from that date);
+ * Surprise Me is a 20-photo mix; big piles come in bite-sized sweeps. Older kinds keep 18. */
+export function adventureSize(kind: AdventureKind) {
+  return kind === "day" ? 500 : kind === "detour" || kind === "random" ? 20 : kind === "screenshots" ? 50 : ADVENTURE_SIZE;
+}
 /** An offer needs enough photos to feel like a trip. Chosen ones can be smaller. */
 export const OFFER_MIN = 3;
 /** Recently offered or started sources, oldest first, for variety. */
@@ -69,6 +74,15 @@ export interface Adventure {
   /** An Adventure Lab experiment. */
   lab?: LabExperiment;
   diagnostics?: AdventureDiagnostics;
+  /** Current bounded segment; previous snapshots remain available for evidence/Undo. */
+  segment?: number;
+  segmentKeys?: string[];
+  /** One-time milestone recognition, monotonic even if accessible totals change. */
+  milestones?: number[];
+  dayDate?: string;
+  /** Historical-date selection requires Pro; a paused Free journey can still resume tomorrow. */
+  historyPro?: boolean;
+
 }
 export interface AdventureIndex {
   version: 1;

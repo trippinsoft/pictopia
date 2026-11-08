@@ -4,7 +4,7 @@ import { router, useFocusEffect } from "expo-router";
 import { RowGroup } from "./art-list";
 import { Icon, Text } from "./ui";
 import { usePictopia } from "./provider";
-import { PIT_STOPS, unavailable, type PitStop } from "@/lib/pictopia/pitstops";
+import { ACTIVE_PIT_STOPS, PIT_STOPS, unavailable } from "@/lib/pictopia/pitstops";
 import { pitStopStore } from "@/services/pitstops";
 
 import { Illustration } from "./illustration";
@@ -22,7 +22,7 @@ export function PitStopMenu({ compact = false }: { compact?: boolean }) {
     return () => { alive = false; };
   }, [app.stats.photos, retry]));
   if (error) return <Pressable accessibilityRole="button" onPress={() => setRetry(n => n + 1)} className="py-4"><Text className="text-body text-muted-foreground">Couldn’t read your photos. Tap to try again.</Text></Pressable>;
-  const rows = (Object.keys(PIT_STOPS) as PitStop[]).map((game, i) => {
+  const rows = ACTIVE_PIT_STOPS.map((game, i) => {
     const info = PIT_STOPS[game];
     const reason = library ? unavailable(game, library) : "Checking your library…";
     const open = () => router.push({ pathname: "/pit-stop", params: { game } });
@@ -34,7 +34,7 @@ export function PitStopMenu({ compact = false }: { compact?: boolean }) {
           <Illustration name={game} square />
         </View>
         <Text className="text-h6 text-foreground">{info.title}</Text>
-        <Text className="mt-1 text-caption leading-[17px] text-muted-foreground">{reason ?? info.subtitle}</Text>
+        <Text className="mt-1 min-h-9 text-caption leading-[17px] text-muted-foreground">{reason ?? info.subtitle}</Text>
       </Pressable>
     ) : (
       <Pressable key={game} accessibilityRole="button" accessibilityLabel={`${info.title}. ${reason ?? info.subtitle}`}

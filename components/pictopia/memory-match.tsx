@@ -1,4 +1,4 @@
-import { NavigationBack, ScreenHeader } from "./navigation-header";
+import { NavigationBack } from "./navigation-header";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { AccessibilityInfo, AppState, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -11,11 +11,11 @@ import { cardPhoto, memoryDeck } from "@/lib/pictopia/pitstops";
 import { initialMemoryState, memoryController, memoryGrid, type MemoryPairs } from "@/lib/pictopia/memory-match";
 import type { Media } from "@/lib/pictopia/types";
 import { pitStopStore } from "@/services/pitstops";
-import { adventureStore } from "@/services/adventures";
+import { preparePitStop } from "@/services/pit-stop-photos";
 import { memoryMatchHaptic } from "@/services/memory-haptics";
 
 const exit = () => router.canGoBack() ? router.back() : router.replace("/pit-stops");
-type Run = { photos: Media[]; deck: string[]; pairs: MemoryPairs };
+type Run = { photos: Media[]; deck: string[]; pairs: MemoryPairs; uris?: Record<string, string>; dispose?(): void };
 
 export function MemoryMatchScreen() {
   const [pairs, setPairs] = useState<MemoryPairs>(4);
@@ -24,6 +24,8 @@ export function MemoryMatchScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
   const [retry, setRetry] = useState(0);
+  const preparation = useRef<AbortController | undefined>(undefined);
+  useEffect(() => () => run?.dispose?.(), [run]);
   const request = useRef(0), busy = useRef(false);
   const preferenceWrite = useRef(Promise.resolve());
   useEffect(() => {
@@ -34,7 +36,7 @@ export function MemoryMatchScreen() {
     }).catch(() => { if (alive) setError("Your photos couldn’t be read. Please try again."); });
     return () => { alive = false; };
   }, [retry]);
-  useFocusEffect(useCallback(() => () => { request.current++; busy.current = false; setLoading(false); }, []));
+  useFocusEffect(useCallback(() => () => { request.current++; preparation.current?.abort(); busy.current = false; setLoading(false); }, []));
   function choosePairs(value: MemoryPairs) {
     setPairs(value);
     preferenceWrite.current = preferenceWrite.current.catch(() => {}).then(() => pitStopStore.saveMemoryPairs(value));
@@ -48,36 +50,45 @@ export function MemoryMatchScreen() {
     setLoading(true); setError(undefined);
     try {
       const seed = Date.now();
-      const photos = await pitStopStore.sample("memoryMatch", seed, pairs);
+      preparation.current?.abort();
+      const controller = new AbortController(); preparation.current = controller;
+      const prepared = await preparePitStop("memoryMatch", seed, controller.signal, pairs);
+      if (token !== request.current) { prepared.dispose(); return; }
+      const photos = prepared.photos;
       const deck = memoryDeck(photos, seed, pairs);
-      if (deck.length !== pairs * 2) throw Error(`This game needs ${pairs} available photographs. Try four pairs or choose more photos in Home.`);
+      if (deck.length !== pairs * 2) {
+        prepared.dispose();
+        if (photos.length >= 4) { setCapacity(photos.length); setPairs(4); }
+        throw Error(photos.length >= 4 ? "Standard needs six available photos. Easy is ready to play." : "This Pit Stop needs at least four available photos. Try again when more photos are accessible.");
+      }
       await preferenceWrite.current.catch(() => {});
       await pitStopStore.saveMemoryPairs(pairs);
-      if (token === request.current) setRun({ photos, deck, pairs });
+      if (token === request.current) setRun({ ...prepared, photos, deck, pairs });
+      else prepared.dispose();
     } catch (e) { if (token === request.current) setError(e instanceof Error ? e.message : "Your photos couldn’t be loaded. Try again."); }
     finally { if (token === request.current) { busy.current = false; setLoading(false); } }
   }
-  function restart() { request.current++; busy.current = false; setLoading(false); setError(undefined); setRun(undefined); }
+  function restart() { request.current++; preparation.current?.abort(); busy.current = false; setLoading(false); setError(undefined); setRun(undefined); void start(); }
   return <SafeAreaView className="flex-1 bg-background">
-    <View className="mx-auto w-full max-w-md flex-1 px-4 pb-2">
-      {run ? <MemoryBoard deck={run.deck} photos={run.photos} pairs={run.pairs} onRestart={restart} onExit={exit} /> : <>
+    <View className="mx-auto w-full max-w-3xl flex-1 px-4 pb-2">
+      {run ? <MemoryBoard deck={run.deck} photos={run.photos} uris={run.uris} pairs={run.pairs} onRestart={restart} onExit={exit} /> : <>
         <MemoryHeader onExit={exit} />
-        <ScrollView contentContainerStyle={styles.center}>
+        {loading ? <Loading /> : <ScrollView contentContainerStyle={styles.center}>
           <View className="gap-6 px-4 py-6">
             <View className="self-center rounded-2xl bg-accent p-6"><Icon name="Aperture" size={36} strokeWidth={1.25} className="text-primary" /></View>
             <View className="gap-2"><Text className="text-center text-h2 text-foreground">A little moment to remember.</Text><Text className="text-center text-body text-muted-foreground">Turn two cards. Find the same photograph.</Text></View>
             {capacity === undefined && !error ? <Loading /> : <>
               <View className="flex-row self-center rounded-2xl bg-secondary p-1">
-                {([4, 6] as const).map(value => <Pressable key={value} accessibilityRole="radio" accessibilityLabel={`${value} pairs`} accessibilityState={{ checked: pairs === value, disabled: loading || (capacity ?? 0) < value }}
+                {([4, 6] as const).map(value => <Pressable key={value} accessibilityRole="radio" accessibilityLabel={`${value === 4 ? "Easy" : "Standard"}, ${value} pairs`} accessibilityState={{ checked: pairs === value, disabled: loading || (capacity ?? 0) < value }}
                   disabled={loading || (capacity ?? 0) < value} onPress={() => choosePairs(value)} className={`min-h-11 min-w-24 items-center justify-center rounded-xl px-5 ${(capacity ?? 0) < value ? "opacity-40" : ""} ${pairs === value ? "bg-card" : ""}`}>
-                  <Text className={`text-h6 ${pairs === value ? "text-primary" : "text-muted-foreground"}`}>{value} pairs</Text>
+                  <Text className={`text-h6 ${pairs === value ? "text-primary" : "text-muted-foreground"}`}>{value === 4 ? "Easy · 4 pairs" : "Standard · 6 pairs"}</Text>
                 </Pressable>)}
               </View>
               {(capacity ?? 0) < 4 ? <Text className="text-center text-body text-muted-foreground">Choose at least four photographs in Home to play.</Text> : <Button disabled={loading} onPress={() => void start()}>{loading ? "Preparing your photos…" : "Let’s play"}</Button>}
             </>}
             {!!error && <View className="gap-3"><Text accessibilityLiveRegion="polite" className="text-center text-body text-muted-foreground">{error}</Text>{capacity === undefined && <Button secondary onPress={() => setRetry(value => value + 1)}>Try again</Button>}</View>}
           </View>
-        </ScrollView>
+        </ScrollView>}
       </>}
     </View>
   </SafeAreaView>;
@@ -89,7 +100,7 @@ function MemoryHeader({ onExit, children }: { onExit(): void; children?: ReactNo
   </View>;
 }
 
-export function MemoryBoard({ deck, photos, pairs, onRestart, onExit }: Run & { onRestart(): void; onExit(): void }) {
+export function MemoryBoard({ deck, photos, uris, pairs, onRestart, onExit }: Run & { onRestart(): void; onExit(): void }) {
   const { prefs } = usePictopia();
   const [state, setState] = useState(initialMemoryState);
   const [loaded, setLoaded] = useState<Record<string, boolean>>({});
@@ -142,7 +153,7 @@ export function MemoryBoard({ deck, photos, pairs, onRestart, onExit }: Run & { 
     <MemoryHeader onExit={() => stop(onExit)}>
       <Animated.View style={progress}><Text accessibilityLiveRegion="polite" accessibilityLabel={`${count} of ${pairs} pairs found`} className="text-h6 text-muted-foreground">{count} / {pairs}</Text></Animated.View>
     </MemoryHeader>
-    {state.phase === "complete" ? <MemoryCompletion pairs={pairs} ids={[...new Set(deck.map(cardPhoto))]} reduced={reduced} onRestart={() => stop(onRestart)} onExit={() => stop(() => router.replace("/pit-stops"))} /> : <>
+    {state.phase === "complete" ? <MemoryCompletion pairs={pairs} moves={state.moves} ids={[...new Set(deck.map(cardPhoto))]} reduced={reduced} onRestart={() => stop(onRestart)} onExit={() => stop(onExit)} /> : <>
       <Text accessibilityLiveRegion="polite" className="pb-3 pt-1 text-center text-body text-muted-foreground">{failed ? "A photo couldn’t load. Try a new set." : !ready ? "Preparing your photographs…" : "Turn two cards. Find the pair."}</Text>
       <View className="min-h-0 flex-1" onLayout={event => { const { width, height } = event.nativeEvent.layout; setArea(old => old.width === width && old.height === height ? old : { width, height }); }}>
         {area.width > 0 && <ScrollView contentContainerStyle={styles.board} showsVerticalScrollIndicator={false}>
@@ -150,7 +161,7 @@ export function MemoryBoard({ deck, photos, pairs, onRestart, onExit }: Run & { 
             {deck.map((card, index) => {
               const matched = state.matched.includes(card), open = matched || state.open.includes(card);
               return <MemoryCard key={card} index={index} photoNumber={[...new Set(deck.map(cardPhoto))].indexOf(cardPhoto(card)) + 1}
-                photo={photos.find(photo => photo.id === cardPhoto(card))} open={open} matched={matched} celebrating={state.phase === "matching" && state.open.includes(card)}
+                photo={photos.find(photo => photo.id === cardPhoto(card))} uri={uris?.[cardPhoto(card)]} open={open} matched={matched} celebrating={state.phase === "matching" && state.open.includes(card)}
                 reduced={reduced} active={active && focused} width={frame.cardWidth} height={frame.cardHeight}
                 disabled={!ready || failed || !active || !focused || state.phase !== "ready" || open}
                 onPress={() => controller.current?.select(card)} onSettled={status => { if (status === "failed") setFailed(true); else setLoaded(old => old[card] ? old : { ...old, [card]: true }); }} />;
@@ -162,35 +173,17 @@ export function MemoryBoard({ deck, photos, pairs, onRestart, onExit }: Run & { 
     </>}
   </View>;
 }
-export function MemoryCompletion({ pairs, ids, reduced, onRestart, onExit }: { pairs: MemoryPairs; ids: string[]; reduced: boolean; onRestart(): void; onExit(): void }) {
-  const [reviewing, setReviewing] = useState(false), [error, setError] = useState(false);
-  const alive = useRef(true), busy = useRef(false);
-  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
-  async function review() {
-    if (busy.current) return;
-    busy.current = true; setReviewing(true); setError(false);
-    try {
-      const adventure = await adventureStore.fromPhotos(ids, "Memory Match");
-      if (!adventure) throw Error("unavailable");
-      if (!alive.current) return;
-      await adventureStore.open(adventure.id);
-      if (alive.current) router.replace({ pathname: "/vertical-explore", params: { adventure: adventure.id } });
-    } catch { if (alive.current) setError(true); }
-    finally { busy.current = false; if (alive.current) setReviewing(false); }
-  }
-  return <><ScreenHeader title="Memory Match" onBack={onExit} />
-  <ScrollView contentContainerStyle={styles.center}>
-    <Animated.View entering={FadeIn.duration(reduced ? 0 : 300).reduceMotion(ReduceMotion.System)} ><View className="gap-6 px-5 py-6">
-      <View className="h-20 w-20 items-center justify-center self-center rounded-full bg-accent"><Icon name="Check" size={32} strokeWidth={1.5} className="text-primary" /></View>
-      <View className="gap-2"><Text accessibilityRole="header" className="text-center text-h1 text-foreground">All together.</Text><Text accessibilityLiveRegion="polite" className="text-center text-body text-muted-foreground">{pairs} pairs found. A moment well spent.</Text></View>
-      <View className="gap-3">
-        <Button disabled={reviewing} onPress={onRestart}>Play again</Button>
-        <Button secondary disabled={reviewing} onPress={() => void review()}>{reviewing ? "Opening photos…" : "Review these photos"}</Button>
+export function MemoryCompletion({ pairs, moves = 0, reduced, onRestart, onExit }: { pairs: MemoryPairs; moves?: number; ids: string[]; reduced: boolean; onRestart(): void; onExit(): void }) {
+  return <ScrollView contentContainerStyle={styles.center}>
+    <Animated.View entering={FadeIn.duration(reduced ? 0 : 300).reduceMotion(ReduceMotion.System)}>
+      <View className="gap-6 px-5 py-6">
+        <View className="h-20 w-20 items-center justify-center self-center rounded-full bg-accent"><Icon name="Check" size={32} strokeWidth={1.5} className="text-primary" /></View>
+        <View className="gap-2"><Text accessibilityRole="header" className="text-center text-h1 text-foreground">Perfect Match!</Text><Text className="text-center text-body text-muted-foreground">{pairs} pairs found · {moves} moves</Text></View>
+        <Button onPress={onRestart}>Play Again</Button>
+        <Button secondary onPress={onExit}>Done</Button>
       </View>
-      <Pressable accessibilityRole="button" disabled={reviewing} onPress={onExit} className="min-h-11 items-center justify-center"><Text className="text-h6 text-muted-foreground">Back to Pit Stops</Text></Pressable>
-      {error && <Text accessibilityLiveRegion="polite" className="text-center text-body text-muted-foreground">These photos couldn’t be opened. Please try again.</Text>}
-    </View></Animated.View>
-  </ScrollView></>;
+    </Animated.View>
+  </ScrollView>;
 }
 
 const styles = StyleSheet.create({ center: { flexGrow: 1, justifyContent: "center" }, board: { flexGrow: 1, justifyContent: "center", paddingVertical: 4 }, grid: { flexDirection: "row", flexWrap: "wrap" } });

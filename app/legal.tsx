@@ -37,12 +37,12 @@ const terms = [
     "Marking an item does not delete it. Native deletion requires confirmation and system authorization. Recently Deleted or Trash may retain deleted media. Analysis and best-shot recommendations are fallible suggestions and should always be reviewed.",
   ],
   [
-    "Free and Pro",
-    "Manual review is available without a subscription. Pro unlocks local analysis and additional tools while an active store entitlement is present. An expired subscription does not erase your cleanup history.",
+    "Free and Pictopia+",
+    "Manual review is available without a subscription. Pictopia+ unlocks local analysis and additional tools while an active store entitlement is present. An expired subscription does not erase your cleanup history.",
   ],
   [
     "Billing",
-    "Prices and billing periods are shown by the store before purchase. Monthly and annual subscriptions renew automatically unless cancelled according to the store’s terms. Lifetime is a one-time, non-consumable unlock of the current Pro entitlement. Manage subscriptions through your store account. Refunds are handled under applicable store rules and law.",
+    "Prices and billing periods are shown by the store before purchase. Monthly and annual subscriptions renew automatically unless cancelled according to the store’s terms. Lifetime is a one-time, non-consumable unlock of the current Pictopia+ entitlement. Manage subscriptions through your store account. Refunds are handled under applicable store rules and law.",
   ],
   [
     "Availability",

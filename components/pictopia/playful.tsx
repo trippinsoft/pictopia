@@ -49,9 +49,12 @@ export function GearButton() {
 /** Wordmark (Home) or a tab title, with the one Settings entry point on the right. */
 export function TabHeader({ title }: { title?: string }) {
   return (
-    <View className="flex-row items-center justify-between">
-      {title ? <Text accessibilityRole="header" className="text-h1 text-foreground">{title}</Text> : <Wordmark />}
-      <GearButton />
+    <View>
+      <View className="flex-row items-center justify-between">
+        {title ? <Text accessibilityRole="header" className="text-h1 text-foreground">{title}</Text> : <Wordmark />}
+        <GearButton />
+      </View>
+
     </View>
   );
 }
@@ -178,7 +181,7 @@ export function WaitingPill({ count, onPress }: { count: number; onPress: () => 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${count} waiting to delete. Review`}
+      accessibilityLabel={`Discarded: ${count} to delete. Review`}
       onPress={onPress}
       style={lift}
       className="h-11 flex-row items-center gap-2 self-center rounded-full bg-card pl-2.5 pr-4 active:opacity-80"
@@ -186,7 +189,7 @@ export function WaitingPill({ count, onPress }: { count: number; onPress: () => 
       <View className="h-7 w-7 items-center justify-center rounded-full bg-tomato/15">
         <Icon name="Trash2" size={15} className="text-tertiary" />
       </View>
-      <Text className="text-h5 text-foreground">{count} waiting to delete</Text>
+      <Text className="text-h5 text-foreground">{`Discarded · ${count} to delete`}</Text>
       <Icon name="ChevronRight" size={16} className="text-muted-foreground" />
     </Pressable>
   );
@@ -214,7 +217,7 @@ export function AdventureCard({ entry, kind, blurb, badge, landscape, onPress, o
     <View className="flex-1 gap-0.5">
       <View className="flex-row items-center gap-2">
         <Text numberOfLines={1} className="shrink text-h4 text-foreground">{entry.name}</Text>
-        {entry.pro && <View className="rounded-md bg-primary px-1.5 py-0.5"><Text className="text-[11px] text-sun" style={styles.stampText}>PRO</Text></View>}
+        {entry.pro && <View className="rounded-md bg-primary px-1.5 py-0.5"><Text className="text-[11px] text-sun" style={styles.stampText}>PLUS</Text></View>}
       </View>
       <Text numberOfLines={2} className="text-caption leading-[17px] text-muted-foreground">{blurb ?? entry.blurb}</Text>
     </View>

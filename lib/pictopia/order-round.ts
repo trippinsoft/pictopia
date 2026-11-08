@@ -3,16 +3,17 @@ export const ORDER_FEEDBACK_MS = 1800;
 interface Clock { set(callback: () => void, delay: number): unknown; clear(handle: unknown): void }
 const clock: Clock = { set: (callback, delay) => setTimeout(callback, delay), clear: handle => clearTimeout(handle as ReturnType<typeof setTimeout>) };
 export function orderRoundController(ids: readonly string[], correctId: string, submit: (correct: boolean | undefined) => void, timers: Clock = clock) {
-  let selected: string | undefined, timer: unknown, active = true, automatic = true, disposed = false, submitted = false;
-  const cancel = () => { if (timer !== undefined) timers.clear(timer); timer = undefined; };
+  let selected: string | undefined, timer: unknown, active = true, automatic = true, disposed = false, submitted = false, paused = false, generation = 0;
+  const cancel = () => { generation++; if (timer !== undefined) timers.clear(timer); timer = undefined; };
   const advance = () => {
     if (disposed || submitted || !active || selected === undefined) return;
     submitted = true; cancel(); submit(selected === correctId);
   };
-  const schedule = () => { cancel(); if (selected !== undefined && active && automatic && !disposed && !submitted) timer = timers.set(advance, ORDER_FEEDBACK_MS); };
+  const schedule = () => { cancel(); if (selected !== undefined && active && automatic && !paused && !disposed && !submitted) { const token = generation; timer = timers.set(() => { if (token === generation) advance(); }, ORDER_FEEDBACK_MS); } };
   return {
     select(id: string) { if (disposed || submitted || !active || selected !== undefined || !ids.includes(id)) return false; selected = id; schedule(); return true; },
     advance,
+    pause() { if (disposed || submitted || selected === undefined) return false; paused = true; cancel(); return true; },
     skip() { if (disposed || submitted || !active || selected !== undefined) return; submitted = true; cancel(); submit(undefined); },
     configure(isActive: boolean, autoAdvance: boolean) { active = isActive; automatic = autoAdvance; schedule(); },
     dispose() { disposed = true; cancel(); },
@@ -34,4 +35,10 @@ export function orderPhotoFrames(area: { width: number; height: number }, photos
     heights = ideal.map((h, i) => small[i] ? h : Math.min(h, share + spare / Math.max(1, large)));
   }
   return heights.map((height, i) => ({ width: Math.min(width, height * ratios[i]), height }));
+}
+
+/** Two equal, stable answer targets; images letterbox inside and dates sit below. */
+export function orderChoiceFrames(area: { width: number; height: number }) {
+  const width = Math.max(1, (area.width - ORDER_GAP) / 2);
+  return [0, 1].map(() => ({ width, height: Math.max(96, Math.min(area.height, width * 1.5)) }));
 }

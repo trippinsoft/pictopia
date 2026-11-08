@@ -73,7 +73,7 @@ export const ReviewTrash = forwardRef<ReviewTrashHandle, {
   return <Pressable
     accessibilityRole="button"
     accessibilityState={{ disabled }}
-    accessibilityLabel={`Trash, ${plural(count, "photograph")} marked for deletion. ${label}${unknownSizes ? `; ${plural(unknownSizes, "file size")} unavailable` : ""}. Review or restore them. Files are still in your library.`}
+    accessibilityLabel={`Discarded, ${plural(count, "photograph")}, ${label}. Review or restore them. Files are still in your library.`}
     disabled={disabled}
     onPress={onPress}
     className={`h-12 w-12 items-center justify-center rounded-full bg-card/90 active:opacity-70 ${highlighted ? "border-2 border-sun" : ""}`}

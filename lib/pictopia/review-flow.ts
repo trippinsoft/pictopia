@@ -62,8 +62,8 @@ export type DeviceOs = "ios" | "android" | "web";
  * the precise behaviour still needs confirming on devices, so the copy stays conservative. */
 function binNote(os: DeviceOs) {
   return os === "ios"
-    ? "moved to Recently Deleted. iOS frees the space when that album is emptied, automatically after 30 days."
-    : "removed from your library. Some gallery apps keep a Trash for up to 30 days before the space is freed.";
+    ? "moved to Recently Deleted. Empty it in Photos to free the space now."
+    : "removed from your library. Some gallery apps keep a Trash for up to 30 days first.";
 }
 
 export function sizeText(bytes: number) {
@@ -97,15 +97,17 @@ export function deletionOutcome(
   }
   const word = items(done, kinds);
   const details: string[] = [];
-  if (done) details.push(confirmedBytes > 0 ? `About ${sizeText(confirmedBytes)} ${binNote(os)}` : `${done === 1 ? "It was" : "They were"} ${binNote(os)}`);
+  if (done) details.push(`${done} ${word} ${binNote(os)}`);
   if (r.remaining.length) details.push(`${r.remaining.length} ${r.remaining.length === 1 ? "is" : "are"} still in your library and still marked. Try again anytime.`);
   if (r.uncertain.length) details.push(`We’ll double-check ${r.uncertain.length} more the next time you open Pictopia. ${r.uncertain.length === 1 ? "It isn’t" : "They aren’t"} counted until then.`);
   if (r.skipped.length) details.push(`${r.skipped.length} changed or became unavailable, so ${r.skipped.length === 1 ? "it wasn’t" : "they weren’t"} sent and ${r.skipped.length === 1 ? "is" : "are"} still marked.`);
-  return { screen: "result", headline: done ? `${done} ${word} deleted` : "Checking your cleanup", details };
+  // A win worth celebrating, stated honestly: cleared from the library, freed once the
+  // phone empties its bin.
+  return { screen: "result", headline: done ? (confirmedBytes > 0 ? `${sizeText(confirmedBytes)} cleared` : `${done} ${word} deleted`) : "Checking your cleanup", details };
 }
 
-/** The Delete button names the exact number it will send, at most one OS request's worth. */
-export const DELETE_BATCH = 100;
+/** One tap deletes everything shown, in one OS request; only very large piles go in turns. */
+export const DELETE_BATCH = 1000;
 export function deleteLabel(kinds: { photos: number; videos: number }) {
   const n = kinds.photos + kinds.videos;
   return `Delete ${n} ${items(n, kinds)}`;
@@ -116,15 +118,14 @@ export function deleteLabel(kinds: { photos: number; videos: number }) {
 export function limitCopy(limit: number) {
   return {
     title: `You’ve reviewed ${limit} photos and videos today!`,
-    body: `You’ve reached your daily free limit. Come back tomorrow for ${limit} more, or unlock unlimited photo and video reviews with Pictopia Pro.`,
+    body: `You’ve reached your daily free limit. Come back tomorrow for ${limit} more, or unlock unlimited photo and video reviews with Pictopia+.`,
   };
 }
 
-/** Open-ended collections report session encounters; bounded scopes report their own totals. */
-export function reviewProgressLabel(scope: string | undefined, reviewed: number, position: number, total: number, percent?: number) {
-  if (scope === "recent" || scope === "videos" || scope === "videos-large") return `${reviewed} reviewed this session`;
-  if (scope && percent !== undefined) return `${percent}% of this ${scope.startsWith("album:") ? "album" : scope.startsWith("month:") ? "month" : scope.startsWith("year:") ? "year" : "collection"} explored`;
-  return `${Math.max(1, position + 1)} of ${total}`;
+/** Every review shows the photo's place in its set, counting discarded photos, so the
+ * number never jumps as you scroll back and forth. */
+export function reviewProgressLabel(position: number, total: number) {
+  return `${Math.min(Math.max(1, position + 1), Math.max(1, total))} of ${total}`;
 }
 export function moreCollectionLabel(scope: string) {
   return scope.startsWith("album:") ? "Review more from this album" : scope.startsWith("month:") ? "Review more from this month" : scope.startsWith("year:") ? "Review more from this year" : scope.startsWith("videos") ? "Review more videos" : "Review more photos";

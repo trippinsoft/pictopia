@@ -1,31 +1,51 @@
+import { useReviewVideo } from "@/components/pictopia/use-review-video";
 import { ScreenHeader } from "@/components/pictopia/navigation-header";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { View, Pressable, ScrollView, Platform, AppState } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import { LivePhoto } from "@/components/pictopia/live-photo";
+import { useAllowance } from "@/components/pictopia/use-allowance";
+import { router } from "expo-router";
 import { usePhotoEncounter } from "@/components/pictopia/use-photo-encounter";
 import { ZoomPhoto } from "@/components/pictopia/zoom-photo";
 
-import { useVideoPlayer, VideoView } from "expo-video";
+import { VideoView } from "expo-video";
 import { Text, Icon, Empty, Loading, Button } from "@/components/pictopia/ui";
 import { usePictopia } from "@/components/pictopia/provider";
 import { repository, storage } from "@/services/repository";
 import { mediaService } from "@/services/media";
+import { videoSource } from "@/services/video-source";
 import { CLOUD_ONLY } from "@/services/media-errors";
 import { Media } from "@/lib/pictopia/types";
 import { bytes } from "@/lib/pictopia/logic";
-function Video({ uri, autoplay, onReady }: { uri: string; autoplay: boolean; onReady(): void }) {
-  const player = useVideoPlayer(uri, (p) => {
-    p.loop = false;
-    if (autoplay) p.play();
-  });
-  useFocusEffect(useCallback(() => () => player.pause(), [player]));
-  useEffect(() => { const sub = AppState.addEventListener("change", state => { if (state !== "active") player.pause(); }); return () => sub.remove(); }, [player]);
+export function Video({ uri, autoplay, onReady }: { uri: string; autoplay: boolean; onReady(): void }) {
+  const { player, status, owner } = useReviewVideo();
+  const focused = useRef(false), foreground = useRef(AppState.currentState === "active");
+  useFocusEffect(useCallback(() => {
+    focused.current = true;
+    return () => { focused.current = false; owner.current?.pause(); };
+  }, [owner]));
+  useEffect(() => {
+    let live = true;
+    void owner.current?.replace(uri).then(() => {
+      if (live && focused.current && foreground.current && autoplay) owner.current?.play();
+    });
+    return () => { live = false; };
+  }, [uri, autoplay, player, owner]);
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", state => {
+      foreground.current = state === "active";
+      if (!foreground.current) owner.current?.pause();
+    });
+    return () => sub.remove();
+  }, [owner]);
+  if (status === "error") return <View className="flex-1 items-center justify-center"><Text className="text-body text-muted-foreground">Video couldn’t play. Go back and try again.</Text></View>;
+  if (!player) return null;
   return (
     <VideoView
       player={player}
-      onFirstFrameRender={onReady}
+      onFirstFrameRender={() => { if (focused.current && foreground.current) onReady(); }}
       style={videoStyle}
       nativeControls
       contentFit="contain"
@@ -36,10 +56,13 @@ function Video({ uri, autoplay, onReady }: { uri: string; autoplay: boolean; onR
 export default function Preview() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const app = usePictopia();
-  const downloadGeneration = useRef(0);
-  useEffect(() => () => { downloadGeneration.current++; }, [id]);
+  const downloadGeneration = useRef(0), retrieval = useRef<AbortController | undefined>(undefined);
+  useEffect(() => () => { downloadGeneration.current++; retrieval.current?.abort(); }, [id]);
+  useFocusEffect(useCallback(() => () => { downloadGeneration.current++; retrieval.current?.abort(); setDownloading(false); }, []));
+  useEffect(() => { const sub = AppState.addEventListener("change", state => { if (state !== "active") { downloadGeneration.current++; retrieval.current?.abort(); setDownloading(false); } }); return () => sub.remove(); }, []);
   const [loadedId, setLoadedId] = useState<string>();
-  usePhotoEncounter(id, loadedId === id, undefined, undefined, app.setError);
+  const allowance = useAllowance(undefined, id ? [id] : [], id, app.pro, loadedId === id);
+  usePhotoEncounter(id, loadedId === id && allowance.canReview(id), undefined, undefined, app.setError);
   const [m, setM] = useState<Media>(),
     [uri, setUri] = useState<string>(),
     [error, setError] = useState(""),
@@ -47,6 +70,7 @@ export default function Preview() {
     [motion, setMotion] = useState(false),
     [changing, setChanging] = useState(false),
     [downloading, setDownloading] = useState(false);
+  useEffect(() => { setUri(undefined); setLoadedId(undefined); setM(undefined); setError(""); }, [id]);
   async function change(decision: "keep" | "delete") {
     if (!m) return;
     setChanging(true);
@@ -67,10 +91,10 @@ export default function Preview() {
         if (!item) throw Error("This item is no longer available.");
         if (active) setM(item);
         const resolved = await mediaService.resolve(item).catch(async (e: Error) => {
-          // Native photos display straight from the library (including iCloud originals),
-          // so a missing local file only matters for video playback.
-          if (Platform.OS !== "web" && item.type === "photo")
-            return { uri: item.uri, size: await mediaService.size(item) } as { uri: string; size?: number; systemFavorite?: boolean };
+          // MediaImage handles local photo resolution, retry and explicit iCloud access.
+          // Do not feed its ph:// reference directly to the image loader here.
+          if (item.type === "photo")
+            return { uri: item.uri } as { uri: string; size?: number; systemFavorite?: boolean };
           throw e;
         });
         const updated = {
@@ -134,7 +158,7 @@ export default function Preview() {
           </View>} />
         </View>
         <View className="flex-1 overflow-hidden">
-          {error ? (
+          {!allowance.ready ? <Loading /> : allowance.error || (id && !allowance.canReview(id)) ? <Empty icon="Sparkles" title={allowance.error ? "Couldn’t check daily reviews" : "You’ve explored 150 items today"} description="Your photos and pending marks are safe. Continue tomorrow or explore with Pictopia+." action={<Button onPress={() => allowance.error ? void allowance.reload() : router.push("/paywall")}>{allowance.error ? "Try again" : "Explore with Pictopia+"}</Button>} /> : error ? (
             <Empty
               icon="CloudOff"
               title={m?.type === "video" ? "Video unavailable" : "This photo isn’t available locally"}
@@ -142,7 +166,8 @@ export default function Preview() {
               action={m?.type === "video" && error === CLOUD_ONLY ? <Button disabled={downloading} onPress={() => {
                 const ticket = ++downloadGeneration.current;
                 setDownloading(true);
-                void mediaService.resolve(m, { download: true }).then(value => { if (ticket === downloadGeneration.current) { setUri(value.uri); setError(""); } }).catch(e => { if (ticket === downloadGeneration.current) setError(e instanceof Error ? e.message : "Video download failed. Try again."); }).finally(() => { if (ticket === downloadGeneration.current) setDownloading(false); });
+                const controller = new AbortController(); retrieval.current?.abort(); retrieval.current = controller;
+                void videoSource(m, true, controller.signal).then(value => { if (ticket === downloadGeneration.current) { setUri(value.uri); setError(""); } }).catch(e => { if (ticket === downloadGeneration.current) setError(e instanceof Error ? e.message : "Video download failed. Try again."); }).finally(() => { if (ticket === downloadGeneration.current) setDownloading(false); });
               }}>{downloading ? "Downloading from iCloud…" : "Download video from iCloud"}</Button> : undefined}
             />
           ) : !m || !uri ? (
@@ -183,7 +208,7 @@ export default function Preview() {
             <Text className="text-caption text-center text-muted-foreground">
               {m.decision === "keep"
                 ? "You kept this one."
-                : "Set aside. Nothing is deleted until you confirm in the queue."}
+                : "Discarded. Nothing is deleted until you delete it from Discarded."}
             </Text>
             <View className="flex-row gap-3">
               <View className="flex-1">

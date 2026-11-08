@@ -5,16 +5,18 @@ export const memoryPairs = (value: unknown): MemoryPairs => value === 6 ? 6 : 4;
 export const MEMORY_FLIP_MS = 300;
 export const MEMORY_MATCH_MS = 480;
 export type MemoryPhase = "ready" | "revealing" | "mismatch" | "closing" | "matching" | "complete";
-export interface MemoryState { open: string[]; matched: string[]; phase: MemoryPhase }
-export const initialMemoryState = (): MemoryState => ({ open: [], matched: [], phase: "ready" });
+export interface MemoryState { open: string[]; matched: string[]; phase: MemoryPhase; moves: number }
+export const initialMemoryState = (): MemoryState => ({ open: [], matched: [], phase: "ready", moves: 0 });
 
 /** Four rows in either mode. Minimum height permits scrolling only on very short windows. */
 export function memoryGrid(width: number, height: number, pairs: MemoryPairs) {
-  const columns = pairs === 4 ? 2 : 3;
+  const landscape = width >= 440 && height < width * 0.55;
+  const columns = landscape ? pairs : pairs === 4 ? 2 : 3;
+  const rows = (pairs * 2) / columns;
   const gap = 10;
   const cardWidth = Math.max(1, (width - gap * (columns - 1)) / columns);
-  const cardHeight = Math.max(64, Math.min(cardWidth * 1.05, (height - gap * 3) / 4));
-  return { columns, gap, cardWidth, cardHeight, height: cardHeight * 4 + gap * 3 };
+  const cardHeight = Math.max(64, Math.min(cardWidth * 1.05, (height - gap * (rows - 1)) / rows));
+  return { columns, gap, cardWidth, cardHeight, height: cardHeight * rows + gap * (rows - 1) };
 }
 
 type Clock = { set(callback: () => void, ms: number): unknown; clear(handle: unknown): void };
@@ -50,7 +52,7 @@ export function memoryController(deck: readonly string[], changed: (state: Memor
   return {
     select(card: string) {
       if (disposed || !active || !ready || state.phase !== "ready" || !deck.includes(card) || state.open.includes(card) || state.matched.includes(card)) return false;
-      publish({ ...state, open: [...state.open, card], phase: "revealing" });
+      publish({ ...state, open: [...state.open, card], moves: state.moves + (state.open.length === 1 ? 1 : 0), phase: "revealing" });
       return true;
     },
     configure(options: { active: boolean; ready: boolean; reduced: boolean; reader: boolean }) {

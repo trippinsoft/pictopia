@@ -83,7 +83,7 @@ export default function Settings() {
             <Icon name="Sparkles" size={20} className="text-foreground" />
           </View>
           <View className="flex-1">
-            <Text className="text-h3 text-primary-foreground">{app.pro ? "Pictopia Pro · Active" : "Pictopia Pro"}</Text>
+            <Text className="text-h3 text-primary-foreground">{app.pro ? "Pictopia+ · Active" : "Pictopia+"}</Text>
             <Text className="text-caption text-primary-foreground/80">
               {app.pro
                 ? app.entitlement?.expires

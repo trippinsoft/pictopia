@@ -22,17 +22,19 @@ export interface ExploreDiscard {
 }
 export interface ExploreSession {
   version: 2;
-  /** Browse the snapshot minus photos marked for deletion; finish only explicitly. */
+  /** Browse the v21 live feed; canonical snapshot IDs/history remain intact. */
   review?: boolean;
-  /** A review the user explicitly ended with Done. Running out of photographs never
-   * finishes a review: everything can still be restored from the trash. */
+  /** A segment whose final boundary the user crossed. Simply opening the final photo
+   * or exhausting the daily allowance never finishes it. */
   finished?: boolean;
-  /** Written only by a revision-checked, explicit Finish action. */
+  /** Written by a validated segment boundary or revision-checked compatibility Finish action. */
   completionVerifiedAt?: number;
   /** The fixed snapshot in original order. The feed is derived from it, never stored. */
   ids: string[];
   /** Photo being shown, by stable ID; null is the completion page after the last photo. */
   activeId: string | null;
+  /** Furthest original position reached; separate from the current cursor. */
+  highestPosition?: number;
   revision: number;
   startedAt: number;
   instructionsDismissed: boolean;
@@ -64,11 +66,15 @@ export type ExploreAction =
   /** Restores the latest outstanding discard; `id`, when given, must be that discard. */
   | { type: "undo"; id?: string }
   | { type: "back" }
+  | { type: "unavailable"; id: string }
   | { type: "seen"; id: string; displayedAt?: number }
-  | { type: "finish"; expectedRevision?: number }
+  | { type: "finish"; expectedRevision?: number; endId?: string; boundary?: { startedAt: number; endpoint: string } }
   | { type: "restore"; id: string }
   | { type: "restoreAll" }
   | { type: "restart" }
+  /** Reopen a finished review on a photograph (the first by default) to look again or change
+   * marks. Its completion proof stays; reaching the end shows completion again. */
+  | { type: "revisit"; toId?: string }
   | { type: "dismissInstructions" };
 
 /** Snapshot only references; never media copies or production decisions. */
@@ -97,13 +103,10 @@ export function createExplore(ids: string[], now = Date.now()): ExploreSession {
     history: [],
   };
 }
-/** The vertical feed: the original order without the photos that are currently set aside.
- * A review leaves out exactly what is marked for deletion, so the trash is the one place a
- * marked photograph lives; legacy adventure-only marks are not deletions and stay in place. */
+/** A review keeps every original slot: discarded photographs stay, faded, so places and
+ * counts never shift. Only the isolated prototype removes its discards. */
 export function exploreFeed(s: Pick<ExploreSession, "ids" | "records" | "review">) {
-  return s.ids.filter((id) =>
-    s.review ? !s.records[id]?.queued : !s.records[id]?.discarded,
-  );
+  return s.review ? [...s.ids] : s.ids.filter(id => !s.records[id]?.discarded);
 }
 /** After `id` leaves: the next remaining photo, else completion. Swiping away the last
  * photo ends the exploration; it never falls back to an earlier one. */
@@ -152,35 +155,34 @@ export function reduceExplore(
   a: ExploreAction,
   now = Date.now(),
 ): ExploreSession {
-  const next = { ...s, revision: s.revision + 1 };
+  const next = { ...s, highestPosition: Math.max(s.highestPosition ?? 0, s.activeId ? s.ids.indexOf(s.activeId) : 0, a.type === "page" && a.toId ? s.ids.indexOf(a.toId) : 0), revision: s.revision + 1 };
   switch (a.type) {
     case "page": {
       if (a.revision !== s.revision || a.id !== s.activeId) return s;
       const feed = exploreFeed(s);
       if (s.review) {
         // A review's saved place is always a photograph in its sequence: the end card is
-        // never a saved place. Moving to any photograph that is still in the sequence is
-        // valid from anywhere, including a place an older build saved as "past the end".
+        // never a saved place. Moving to any of its photographs is valid from anywhere,
+        // including a place an older build saved as "past the end".
         if (a.toId === null || a.toId === s.activeId || !feed.includes(a.toId)) return s;
         const from = s.activeId === null ? -1 : feed.indexOf(s.activeId);
-        // Paging proves position, not meaningful display: only explicit visibility events
-        // credit a photograph. Moving forward past one that never loaded notes it.
         if (from < 0 || feed.indexOf(a.toId) < from) return { ...next, activeId: a.toId };
-        const id = feed[from], previous = s.records[id];
-        return {
-          ...next,
-          activeId: a.toId,
-          records: {
-            ...s.records,
-            [id]: {
-              encountered: previous?.encountered === true,
-              unavailable: !new Set(a.availableIds).has(id) && !previous?.encountered,
-              discarded: previous?.discarded ?? false,
-              ...(previous?.queued !== undefined ? { queued: previous.queued } : {}),
-              changedAt: now,
-            },
-          },
-        };
+        // Scrolling past a photograph reviews it, as in any feed. Only a photograph that
+        // failed to load stays unreviewed.
+        const records = { ...s.records };
+        for (const id of feed.slice(from, feed.indexOf(a.toId))) {
+          const previous = records[id];
+          if (previous?.encountered || previous?.unavailable) continue;
+          records[id] = {
+            encountered: true,
+            unavailable: false,
+            discarded: previous?.discarded ?? false,
+            ...(previous?.queued !== undefined ? { queued: previous.queued } : {}),
+            // A mark's time orders Undo; seeing it again never changes that.
+            changedAt: previous?.changedAt ?? now,
+          };
+        }
+        return { ...next, activeId: a.toId, records };
       }
       const from = s.activeId === null ? feed.length : feed.indexOf(s.activeId);
       const to = a.toId === null ? feed.length : feed.indexOf(a.toId);
@@ -213,9 +215,9 @@ export function reduceExplore(
         ...s.records,
         [a.id]: { encountered: true, unavailable: false, discarded: true, ...(s.review ? { queued: true } : {}), changedAt: now },
       };
-      // The saved place moves to the next photograph still in the sequence, else the nearest
-      // earlier one; it is null only when every photograph is marked.
-      const activeId = s.review ? reviewSurvivor(s.ids, records, a.id) : survivor(s.ids, records, a.id);
+      // A review moves on to the next slot, whether or not that photograph is marked. At
+      // the final slot the marked photograph stays the saved place; the end card never is.
+      const activeId = s.review ? (s.ids[s.ids.indexOf(a.id) + 1] ?? a.id) : survivor(s.ids, records, a.id);
       return {
         ...next,
         activeId,
@@ -241,6 +243,10 @@ export function reduceExplore(
       // the closing screen reopens the review on that photograph.
       return { ...next, activeId: last.id, finished: false, records, history: s.history.filter(entry => entry.id !== last.id) };
     }
+    case "unavailable": {
+      if (!s.review || !s.ids.includes(a.id) || s.records[a.id]?.encountered || s.records[a.id]?.unavailable) return s;
+      return { ...next, records: { ...s.records, [a.id]: { ...s.records[a.id], encountered: false, unavailable: true, discarded: s.records[a.id]?.discarded ?? false, changedAt: s.records[a.id]?.changedAt ?? now } } };
+    }
     case "seen": {
       // A qualified visibility event can wait behind another save. Credit the photo that
       // was actually displayed without changing the user's newer place in the feed.
@@ -250,13 +256,19 @@ export function reduceExplore(
       return { ...next, records: { ...s.records, [a.id]: { ...s.records[a.id], encountered: true, unavailable: false, discarded: s.records[a.id]?.discarded ?? false, changedAt: now } } };
     }
     case "finish": {
-      if (a.expectedRevision !== undefined && a.expectedRevision !== s.revision) return s;
+      const boundary = s.review && a.boundary?.startedAt === s.startedAt && a.boundary?.endpoint === s.ids.at(-1);
+      if (!boundary && a.expectedRevision !== undefined && a.expectedRevision !== s.revision) return s;
       // A stale end-page callback cannot finish a review from the middle. The final
       // original discard may have already selected an earlier surviving photograph.
       const feed = exploreFeed(s);
       const last = s.ids[s.ids.length - 1];
-      const atEnd = !!last && (s.activeId === feed[feed.length - 1] || !!s.records[last]?.queued);
-      return s.review && atEnd ? { ...next, activeId: null, finished: true, ...(a.expectedRevision !== undefined ? { completionVerifiedAt: now } : {}) } : s;
+      // Native paging may reach the end before its final photo-position save settles.
+      // An explicit end-page action can identify the last surviving, meaningfully seen
+      // photo, but must still match the captured revision (navigation/Undo invalidate it).
+      const witnessedEnd = a.expectedRevision !== undefined && a.endId !== undefined &&
+        a.endId === feed[feed.length - 1] && !!(s.records[a.endId]?.encountered || s.records[a.endId]?.unavailable);
+      const atEnd = !!last && (s.activeId === feed[feed.length - 1] || !!s.records[last]?.queued || witnessedEnd);
+      return s.review && (atEnd || boundary) ? { ...next, activeId: null, finished: true, ...(a.expectedRevision !== undefined || boundary ? { completionVerifiedAt: now } : {}) } : s;
     }
     case "back": {
       const feed = exploreFeed(s);
@@ -293,6 +305,11 @@ export function reduceExplore(
         revision: next.revision,
         instructionsDismissed: s.instructionsDismissed,
       };
+    case "revisit": {
+      if (!s.review || !s.finished || !s.ids.length) return s;
+      const to = a.toId && s.ids.includes(a.toId) ? a.toId : s.ids[0];
+      return { ...next, finished: false, activeId: to };
+    }
     case "dismissInstructions":
       return { ...next, instructionsDismissed: true };
   }
@@ -358,17 +375,11 @@ export function reconcileReview(session: ExploreSession, media: (Media | undefin
   }
   // Reviews saved before the trash existed used a null active photograph to mean finished.
   const legacyFinish = confirmedLegacy && session.finished === undefined && session.activeId === null && session.ids.length > 0 && session.ids.every(id => session.records[id]?.encountered || session.records[id]?.unavailable);
-  // A queued asset can disappear through another adventure. Keep the persisted active
-  // identity aligned with the visible feed, or the first remaining card cannot be swiped.
-  let activeId = !session.finished && !legacyFinish && session.activeId && records[session.activeId]?.queued
-    ? reviewSurvivor(session.ids, records, session.activeId)
-    : session.activeId;
-  // Earlier builds saved "past the last photograph" as the place after the final photograph
-  // was marked. An unfinished review always resumes on a photograph: the last one still in
-  // its sequence, which is where that user was.
-  if (!session.finished && !legacyFinish && (activeId === null || !session.ids.includes(activeId))) {
-    const live = session.ids.filter(id => !records[id]?.queued);
-    activeId = live[live.length - 1] ?? null;
-  }
+  // Marks never move the saved place: every slot stays in the feed. Earlier builds saved
+  // "past the last photograph" after marking the final one; an unfinished review always
+  // resumes on a photograph, the last one, which is where that user was.
+  let activeId = session.activeId;
+  if (!session.finished && !legacyFinish && (activeId === null || !session.ids.includes(activeId)))
+    activeId = session.ids[session.ids.length - 1] ?? null;
   return { ...session, review: true, activeId, ...(legacyFinish ? { finished: true } : {}), records, history: session.history.filter(entry => records[entry.id]?.discarded) };
 }

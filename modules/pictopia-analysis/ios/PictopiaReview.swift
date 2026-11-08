@@ -18,22 +18,18 @@ final class PictopiaReview {
     }
     return asset
   }
-  // Public PhotoKit file URLs, local only. No private fileSize KVC, data streaming or download.
+  // Every resource the asset owns (original, edits, a Live Photo's motion), including ones
+  // stored only in iCloud. PhotoKit reports each resource's `fileSize` from its metadata, so
+  // nothing is downloaded. It is undocumented: when it is missing, callers estimate instead.
   func localSize(_ id: String, promise: Promise) {
     queue.async {
       do {
         let asset = try Self.asset(id)
-        // A still URL alone cannot represent the paired motion resource of a Live Photo.
-        guard !asset.mediaSubtypes.contains(.photoLive) else { promise.resolve(nil); return }
-        let options = PHContentEditingInputRequestOptions()
-        options.isNetworkAccessAllowed = false
-        asset.requestContentEditingInput(with: options) { input, _ in
-          let url = asset.mediaType == .video ? (input?.audiovisualAsset as? AVURLAsset)?.url : input?.fullSizeImageURL
-          guard let url = url, url.isFileURL,
-            let values = try? url.resourceValues(forKeys: [.fileSizeKey]),
-            let size = values.fileSize, size > 0 else { promise.resolve(nil); return }
-          promise.resolve(Double(size))
+        var total: Int64 = 0
+        for resource in PHAssetResource.assetResources(for: asset) {
+          if let size = (resource.value(forKey: "fileSize") as? NSNumber)?.int64Value, size > 0 { total += size }
         }
+        promise.resolve(total > 0 ? Double(total) : nil)
       } catch { promise.resolve(nil) }
     }
   }
@@ -71,6 +67,89 @@ final class PictopiaReview {
         promise.resolve(file.absoluteString)
       } catch { promise.reject("THUMBNAIL_UNAVAILABLE", error.localizedDescription) }
     }
+  }
+  // Main-queue ownership: cancellation rejects once and late PhotoKit callbacks are inert.
+  private struct DisplayRequest { var id: PHImageRequestID; let promise: Promise }
+  private var displays: [String: DisplayRequest] = [:]
+  func cancelDisplay(_ token: String) {
+    guard let request = displays.removeValue(forKey: token) else { return }
+    PHImageManager.default().cancelImageRequest(request.id)
+    request.promise.reject("DISPLAY_CANCELLED", "Photo loading cancelled.")
+  }
+  func display(_ id: String, version: String, token: String, network: Bool, promise: Promise) {
+    do {
+      let asset = try Self.asset(id)
+      let directory = FileManager.default.temporaryDirectory.appendingPathComponent("pictopia-display", isDirectory: true)
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+      let hash = SHA256.hash(data: Data("\(id):\(version)".utf8)).map { String(format: "%02x", $0) }.joined()
+      let file = directory.appendingPathComponent("\(hash).jpg")
+      if FileManager.default.fileExists(atPath: file.path) { promise.resolve(file.absoluteString); return }
+      let options = PHImageRequestOptions()
+      options.isSynchronous = false
+      options.isNetworkAccessAllowed = network
+      options.deliveryMode = .highQualityFormat
+      options.resizeMode = .exact
+      // Aspect fit within 2048 pixels; Photos chooses the representation without exporting
+      // an original. This is a temporary display cache, never bytes recovered by deletion.
+      displays[token] = DisplayRequest(id: PHInvalidImageRequestID, promise: promise)
+      let request = PHImageManager.default().requestImage(for: asset, targetSize: CGSize(width: 2048, height: 2048), contentMode: .aspectFit, options: options) { image, info in
+        DispatchQueue.main.async {
+          guard self.displays[token] != nil else { return }
+          if (info?[PHImageResultIsDegradedKey] as? Bool) == true { return }
+          if (info?[PHImageCancelledKey] as? Bool) == true {
+            self.displays.removeValue(forKey: token)
+            promise.reject("DISPLAY_CANCELLED", "Photo loading cancelled."); return
+          }
+          guard info?[PHImageErrorKey] == nil, let image = image else {
+            self.displays.removeValue(forKey: token)
+            promise.reject("DISPLAY_UNAVAILABLE", network ? "Photo couldn’t load. Check your connection and photo access, then try again." : "Photo is not available locally.")
+            return
+          }
+          // JPEG preparation and cache maintenance never occupy the gesture/UI thread.
+          self.queue.async {
+            do {
+              guard let data = image.jpegData(compressionQuality: 0.9) else { throw NSError(domain: "Pictopia", code: 3) }
+              try data.write(to: file, options: .atomic)
+              let cached = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+              let sorted = cached.sorted { ((try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast) < ((try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast) }
+              for old in sorted.prefix(max(0, sorted.count - 64)) where old != file { try? FileManager.default.removeItem(at: old) }
+              DispatchQueue.main.async {
+                guard self.displays.removeValue(forKey: token) != nil else { return }
+                promise.resolve(file.absoluteString)
+              }
+            } catch {
+              DispatchQueue.main.async {
+                guard self.displays.removeValue(forKey: token) != nil else { return }
+                promise.reject("DISPLAY_UNAVAILABLE", "Photo display could not be prepared. Try again.")
+              }
+            }
+          }
+        }
+      }
+      displays[token]?.id = request
+    } catch { promise.reject("DISPLAY_UNAVAILABLE", error.localizedDescription) }
+  }
+  func videoSource(_ id: String, token: String, promise: Promise) {
+    do {
+      let asset = try Self.asset(id)
+      guard asset.mediaType == .video else { promise.reject("VIDEO_UNAVAILABLE", "This item is not a video."); return }
+      let options = PHVideoRequestOptions()
+      options.isNetworkAccessAllowed = true
+      options.deliveryMode = .mediumQualityFormat
+      options.version = .current
+      displays[token] = DisplayRequest(id: PHInvalidImageRequestID, promise: promise)
+      let request = PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { value, _, info in
+        DispatchQueue.main.async {
+          guard self.displays.removeValue(forKey: token) != nil else { return }
+          guard info?[PHImageErrorKey] == nil, (info?[PHImageCancelledKey] as? Bool) != true,
+            let source = value as? AVURLAsset else {
+            promise.reject("VIDEO_UNAVAILABLE", "Video couldn’t open. Check your connection and photo access, then retry."); return
+          }
+          promise.resolve(source.url.absoluteString)
+        }
+      }
+      displays[token]?.id = request
+    } catch { promise.reject("VIDEO_UNAVAILABLE", error.localizedDescription) }
   }
   func cancelShare() { shareGeneration += 1 }
   func share(_ id: String, presenter: UIViewController?, promise: Promise) {

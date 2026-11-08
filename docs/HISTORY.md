@@ -86,3 +86,42 @@
 - Consolidated QA separates verified badges from archived claims, locks the approved 150-item daily allowance, strengthens completion/Undo evidence, isolates video playback from posters, adds local-only size metadata, and clarifies session progress, potential savings and collection actions.
 
 - Time Machine is now The Yearbook: choose a year from Home or Explore and independently resume saved years; internal IDs, artwork and Time Capsule behavior remain unchanged.
+
+- Explicit review Finish uses the current end-card state and revision-checked encountered endpoint, tolerates a lagging native position save, and reports rejected writes without changing pending deletions.
+
+- Home has an unboxed, gently tilted daily “Did you know?” note with ten offline tips, persisted once-per-local-day rotation and no effect on review activity or allowance.
+
+- Tapping Home’s daily tip advances to the next saved tip; automatic local-day rotation and offline persistence remain active.
+
+- Home guidance is “For the Journey...” with a compass and fifteen approved guide messages, replacing all prior tips; daily-only offline rotation replaces tap-to-cycle.
+
+- Removed the vague “Feeling adventurous?” guide message and restored tap-to-cycle for the fourteen remaining Journey notes, preserving daily rotation and offline persistence.
+
+- Yearbook uses one canonical active snapshot per year; shared photo loading uses full asset IDs/local-first resolution, and video review/preview explicitly own player lifecycle. Failed media are excluded from allowance charging; no legacy migration or Photos-library reset is added.
+
+- Visit recaps reserve space below the focused screen header instead of floating over Home; regular-view card styling keeps background and padding intact through animation.
+
+- Home dynamically tightens measured section gaps and bottom padding to fit the pending-deletion pill when comfortable; smaller screens and larger text retain scrolling without shrinking content.
+
+- Review segments retain marked slots and exact resume positions; larger Adventures continue in the same journey, while On This Day uses exact dates with seven-day Pro history.
+
+- Segment boundaries lead directly to one completion screen; the two Pit Stops stay read-only and separate from cleanup progress and review allowances.
+
+Adventure and collection summaries use result counts and one progress line instead of hero artwork, retaining at most two continuation/exit actions.
+
+Loaded foreground photos count as reviewed immediately, including rapid scroll passes; no minimum viewing duration applies, and revisits or failed loads add no credit.
+
+Fixed-slot review retains the 1.0.21 next-photo preparation and 300 ms vertical arrival, independently of persistence.
+
+The review interaction uses the original 1.0.21 live feed: marked photos leave scrolling and are restored through Undo/trash; canonical snapshot IDs and deletion safeguards remain intact.
+- Monetization will follow SwipeWipe/Picnic: onboarding ends in a subscription paywall with a 7-day free trial.
+- Paid tier renamed from "Pro" to "Pictopia+"; declining the onboarding trial keeps a limited free tier.
+- Pictopia acts as the user's guide: no onboarding questions; it always offers the next best adventure to avoid decision fatigue.
+- Home leads with one recommended adventure plus a lighter alternative; equal two-postcard choice and shuffle removed.
+- Tabs become Home | Timeline | Explore | Progress; "Library" avoided as a name because Apple/Google use it for the photo collection.
+- No ads at launch; opt-in rewarded videos may be added later based on data.
+- Adventures are whole sets with one "% reviewed" (no rounds/segments); only Surprise Me (20) and big piles like screenshots are subsets. Yearbook, Time Capsule, classic Swipe and Smart Clean retired; Pit Stops move to Progress.
+- Streaks earn one-day milestone gifts (day 3/7/14…), not a permanently higher daily limit.
+- Subscriptions follow the leaders: weekly + yearly with a 7-day trial; dark mode deferred past 1.0.
+- Discarded photos stay in the review feed, faded with Restore; the review counts 'scrolled past' as reviewed; adventures are whole sets (On This Day = whole date, Surprise Me 20, Screenshot Sweep 50).
+- Illustration style: Storybook landscape (flat layered scenes); Home keeps tilted postcards with a larger 'Pictopia's pick' card plus one alternative.

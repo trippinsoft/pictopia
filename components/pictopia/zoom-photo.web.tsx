@@ -66,7 +66,7 @@ export function ZoomPhoto({ media, onSettled }: ZoomPhotoProps) {
       }}
     >
       <div data-testid="photo-transform" style={transformStyle}>
-        <MediaImage onSettled={onSettled} media={media} fit="contain" style={fillStyle} />
+        <MediaImage allowRetry onSettled={onSettled} media={media} fit="contain" style={fillStyle} />
       </div>
     </div>
   );

@@ -3,7 +3,7 @@ import type { Media } from "./types";
 import { bestScore, shuffle, similar } from "./logic";
 import { plural } from "./text";
 import {
-  ADVENTURE_SIZE,
+  adventureSize,
   OFFER_MIN,
   monthName,
   type AdventureDiagnostics,
@@ -189,51 +189,21 @@ function selectTime(candidate: Candidate, ctx: CurationContext, size: number): S
   };
 }
 
-/** Day distance between two MM-DD keys, ignoring the year (wraps around New Year). */
-function dayDistance(a: string, b: string) {
-  const t = (k: string) => Date.UTC(2001, Number(k.slice(0, 2)) - 1, Number(k.slice(3)));
-  const d = Math.abs(t(a) - t(b)) / 86400000;
-  return Math.min(d, 365 - d);
-}
-/** On This Day: the narrowest window that still makes an Adventure. */
-export const DAY_WINDOWS = [0, 3, 7] as const;
-function selectDay(candidate: Candidate, ctx: CurationContext, size: number, minimum: number): Selection {
+/** On This Day never widens dates; February 29 matches only February 29. */
+export const DAY_WINDOWS = [0] as const;
+function selectDay(candidate: Candidate, ctx: CurationContext, size: number, _minimum: number): Selection {
   const today = candidate.source.slice(4, 9);
-  const thisYear = String(new Date(ctx.now ?? Date.now()).getFullYear());
-  const past = (m: Media) => yearOf(m) < thisYear;
-  const prepared = prepare({ ...candidate, pool: candidate.pool.filter(past) }, ctx);
-  let window: number | "month" = "month";
-  for (const w of DAY_WINDOWS)
-    if (prepared.leads.filter((m) => dayDistance(m.day, today) <= w).length >= minimum) {
-      window = w;
-      break;
-    }
-  const inWindow = (m: Media) =>
-    window === "month" ? m.day.slice(0, 2) === today.slice(0, 2) : dayDistance(m.day, today) <= window;
-  const leads = prepared.leads.filter(inWindow);
-  const fresh = leads.filter(prepared.fresh);
-  const base = fresh.length >= size ? fresh : leads;
-  const picks = spread(base, [yearOf, dayOf]).slice(0, size).sort(chronological);
+  // The whole date: every photo, oldest first, so the count matches what you scroll through.
+  const leads = eligible(candidate.pool.filter(m => m.day === today), ctx.exclude);
+  const picks = [...leads].sort(chronological).slice(0, size);
   const years = new Set(picks.map(yearOf)).size;
-  const label =
-    window === 0
-      ? `exactly ${dayLabel(today)}`
-      : window === "month"
-        ? `${monthName(`0000-${today.slice(0, 2)}`)} (no closer dates had enough photos)`
-        : `within ${window} days of ${dayLabel(today)}`;
   return {
     picks,
-    notes: [
-      `Photos taken ${label} in earlier years. The window widens only when a narrower one has fewer than ${minimum} moments.`,
-      `${ctx.modifiedDates ? "Browser photos kept distinct" : "Bursts collapsed to one shot"}; spread across ${plural(years, "year")} before repeating a year.`,
-    ],
+    notes: [`Photos from exactly ${dayLabel(today)}. Adjacent dates are never included.`, `${ctx.modifiedDates ? "File-modified dates in the browser" : "Capture dates from your library"}.`],
     sequencing: "Oldest year first, walking forward to the most recent.",
-    coherence: {
-      value: clamp((window === 0 ? 0.65 : window === "month" ? 0.35 : 0.5) + 0.35 * Math.min(1, years / 5)),
-      reason: `Same calendar ${window === "month" ? "month" : "date"} across ${plural(years, "year")}.`,
-    },
-    why: `Today’s date, ${dayLabel(today)}, has ${plural(leads.length, "moment")} ${label} in earlier years.`,
-    facts: { window: window === "month" ? "month" : window, years, today },
+    coherence: { value: 1, reason: `The same calendar date across ${plural(years, "year")}.` },
+    why: `${dayLabel(today)} has ${plural(leads.length, "moment")}.`,
+    facts: { window: 0, years, today },
   };
 }
 
@@ -242,9 +212,8 @@ function selectScreenshots(candidate: Candidate, ctx: CurationContext, size: num
   const now = ctx.now ?? Date.now();
   const allowed = (m: Media) =>
     m.screenshot && !favorite(m) && (ctx.chosen || !(m.firstSeenAt || ctx.explored.has(m.id)));
-  // A run of screenshots (scrolling captures) keeps up to two, so both can be judged.
-  const runs = groups.map((g) => g.filter(allowed).slice(0, 2)).filter((g) => g.length);
-  const shots = runs.flat();
+  // Every screenshot is shown, including runs of scrolling captures, so counts match.
+  const shots = groups.flatMap((g) => g.filter(allowed));
   const old = (m: Media) => now - m.created > 180 * 86400000;
   const ordered = [
     ...shots.filter((m) => fresh(m) && old(m)),
@@ -457,8 +426,8 @@ export function curate(candidate: Candidate, ctx: CurationContext): CuratedAdven
   candidate = { ...candidate, pool: candidate.kind === "screenshots"
     ? eligibleStills(candidate.pool, ctx.exclude, "screenshots")
     : eligiblePhotographs(candidate.pool, ctx.exclude) };
-  const size = ctx.size ?? ADVENTURE_SIZE;
-  const minimum = ctx.chosen ? 1 : Math.min(OFFER_MIN, size);
+  const size = ctx.size ?? adventureSize(candidate.kind);
+  const minimum = ctx.chosen || candidate.kind === "day" ? 1 : Math.min(OFFER_MIN, size);
   const { kind } = candidate;
   const sel =
     kind === "day"

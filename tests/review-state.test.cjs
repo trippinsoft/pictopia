@@ -16,14 +16,16 @@ const ids18 = Array.from({ length: 18 }, (_, i) => `p${i + 1}`);
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Mirrors ExploreFeed + AdventureReview: the pager renders the sequence (minus marks, plus
- * photos still flying) and an end card (or the daily-limit page when `stopBefore` cuts it). */
+/** Mirrors ExploreFeed + AdventureReview: the pager renders every slot (a marked photo leaves
+ * only while it flies, then returns faded) and an end card (or the daily-limit page when
+ * `stopBefore` cuts it). */
 function review(ids = ids18, { stopBefore, session } = {}) {
   let s = session ?? { ...X.createExplore(ids, 1), review: true };
   let tail = Promise.resolve(), gate = null, failures = 0, rendered, controller;
+  let departing = new Set(), hidden = new Set();
   const errors = [], ended = [];
   const build = () => {
-    const live = s.ids.filter((id) => controller.departing.has(id) || (!s.records[id]?.queued && !controller.hidden.has(id)));
+    const live = s.ids.filter(id => departing.has(id) || !hidden.has(id));
     const cut = stopBefore ? live.indexOf(stopBefore) : -1;
     return [...(cut >= 0 ? live.slice(0, cut) : live), cut >= 0 ? LIMIT : END];
   };
@@ -55,7 +57,7 @@ function review(ids = ids18, { stopBefore, session } = {}) {
     limited: () => rendered.at(-1) === LIMIT,
     onBusy: () => {},
     onError: (message) => errors.push(message),
-    onFeed: () => commit(),
+    onFeed: (nextDeparting, nextHidden) => { departing = new Set(nextDeparting); hidden = new Set(nextHidden); commit(); },
     prepare: async () => {},
   }, s.activeId);
   commit();
@@ -95,7 +97,7 @@ test("the iPhone sequence: mark the last photo, scroll back, mark another — no
   await h.mark("p18");
   assert.equal(h.shown, END, "marking the last photo moves on to the end card");
   agrees(h, "after marking the last photo");
-  assert.equal(h.session.activeId, "p17");
+  assert.equal(h.session.activeId, "p18", "the marked last slot stays the resume point; the end card never is");
   await h.to("p16");
   agrees(h, "after scrolling back");
   await h.mark("p16");
@@ -194,11 +196,11 @@ test("resuming a review an earlier build saved past the end opens on a photograp
   s = X.reduceExplore(s, { type: "discard", id: "p4", revision: s.revision, direction: "left" });
   const corrupted = { ...s, activeId: null, finished: false };
   const repaired = X.reconcileReview(corrupted, ids18.slice(0, 4).map((id) => ({ ...media(id), decision: id === "p4" ? "delete" : undefined })));
-  assert.equal(repaired.activeId, "p3", "the last photograph still in the sequence");
+  assert.equal(repaired.activeId, "p4", "the last slot, where that user was");
   assert.notEqual(repaired.finished, true);
   assert.deepEqual(repaired.ids.filter((id) => repaired.records[id]?.queued), ["p4"], "the pending deletion is kept");
   const h = review(undefined, { session: repaired });
-  assert.equal(h.shown, "p3");
+  assert.equal(h.shown, "p4");
   await h.to("p1");
   await h.mark();
   assert.deepEqual(h.errors, []);
@@ -237,14 +239,14 @@ test("statistics: explored counts unique meaningful views, marked counts unique 
   s = X.reduceExplore(s, { type: "page", id: s.activeId, revision: s.revision, toId: "b", availableIds: s.ids });
   s = X.reduceExplore(s, { type: "page", id: s.activeId, revision: s.revision, toId: "a", availableIds: s.ids });
   s = X.reduceExplore(s, { type: "page", id: s.activeId, revision: s.revision, toId: "c", availableIds: s.ids });
-  assert.equal(X.exploreCounts(s).explored, 1, "passing photos by doesn't count; revisits don't add");
+  assert.equal(X.exploreCounts(s).explored, 2, "scrolling past a photo reviews it once; revisits don't add");
   s = X.reduceExplore(s, { type: "discard", id: "c", revision: s.revision, direction: "left" });
   s = X.reduceExplore(s, { type: "discard", id: "c", revision: s.revision, direction: "left" });
   assert.equal(X.exploreCounts(s).discarded, 1, "a repeated mark is refused");
-  assert.equal(X.exploreCounts(s).explored, 2, "a mark is a meaningful review of that photo");
+  assert.equal(X.exploreCounts(s).explored, 3, "a mark is a meaningful review of that photo");
   s = X.reduceExplore(s, { type: "undo" });
   assert.equal(X.exploreCounts(s).discarded, 0, "Undo removes the mark");
-  assert.equal(X.exploreCounts(s).explored, 2, "Undo never erases a meaningful encounter");
+  assert.equal(X.exploreCounts(s).explored, 3, "Undo never erases a meaningful encounter");
   assert.equal(s.activeId, "c");
 });
 
@@ -271,7 +273,7 @@ test("on SQLite: re-marking never duplicates pending deletions, and the saved pl
   assert.equal((await app.storage.query({ decision: "delete" })).length, 1);
   s = load(); // Back, then reopened
   const resumed = await s.load();
-  assert.equal(resumed.activeId, "b", "resumes on the photograph that was saved");
+  assert.equal(resumed.activeId, "c", "resumes on the saved slot, the marked photo shown faded");
   assert.notEqual(resumed.finished, true);
   assert.equal((await app.storage.get("c")).deletedAt, undefined, "pending is never deleted");
 });
@@ -297,7 +299,9 @@ test("on SQLite: finishing or opening an adventure never awards streak credit; t
 
 test("screen contracts: Back keeps the place, no running allowance counter, date top-right, completion inside the safe area", () => {
   const review = fs.readFileSync("components/pictopia/adventure-review.tsx", "utf8");
-  assert.match(review, /<NavigationBack label="Back\. Your place is saved" onPress=\{exit\}/);
+  assert.match(review, /const empty = !!session && !complete && !session.ids.length;/, "marking every photo cannot unmount the feed during the final flight");
+  assert.match(review, /!sequence.length && !busy && flying === 0/, "all-marked resume waits for in-flight transitions before completion");
+  assert.match(review, /<NavigationBack label="Back" onPress=\{exit\}/);
   assert.doesNotMatch(review, /left today/, "no running daily countdown in review");
   assert.match(review, /absolute right-3 top-2[^"]*"><Text[^>]*>\{label\}/, "the month and year sit top-right of the photo area");
   assert.match(review, /pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" className="absolute right-3 top-2/, "the date never takes touches");
@@ -307,7 +311,7 @@ test("screen contracts: Back keeps the place, no running allowance counter, date
   const finish = fs.readFileSync("components/pictopia/adventure-finish.tsx", "utf8");
   assert.match(finish, /edges=\{\["top", "bottom", "left", "right"\]\}/, "the artwork sits below the status bar");
   assert.doesNotMatch(finish, /marginTop: \d{2,}|top-\[\d+px\]/, "no model-specific offsets");
-  assert.ok(finish.indexOf("Review ${plural(marked") < finish.indexOf("</ScrollView>"), "the actions follow the recap instead of being pinned far below");
+  assert.doesNotMatch(finish, /Review \$\{plural\(marked|Undo last mark|Back to the photos/, "completion does not compete with review controls");
   const m = makeLoader()("lib/pictopia/review-flow.ts");
   assert.equal(m.monthYear(new Date(2024, 9, 3).getTime()), "Oct 2024");
   assert.equal(m.monthYear(0), undefined);

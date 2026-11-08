@@ -5,6 +5,7 @@ function fixture(history = false) {
   const actions = [];
   const router = { canGoBack: () => history, back: () => actions.push('back'), replace: route => actions.push(route), push: route => actions.push(route) };
   const load = makeLoader({
+    './recap': { RecapHost: 'RecapHost' },
     'react-native': { View: 'View', Pressable: 'Pressable', ScrollView: 'ScrollView' },
     'expo-router': { router },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },

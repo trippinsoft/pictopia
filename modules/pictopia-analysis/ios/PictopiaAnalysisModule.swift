@@ -21,6 +21,11 @@ public class PictopiaAnalysisModule: Module {
     AsyncFunction("localAssetSize") { (id: String, promise: Promise) in self.review.localSize(id, promise: promise) }
     AsyncFunction("reviewFavorite") { (id: String) -> Bool in try PictopiaReview.asset(id).isFavorite }
     AsyncFunction("setReviewFavorite") { (id: String, value: Bool, promise: Promise) in self.review.favorite(id, value: value, promise: promise) }
+    AsyncFunction("reviewDisplay") { (id: String, version: String, token: String, network: Bool, promise: Promise) in
+      self.review.display(id, version: version, token: token, network: network, promise: promise)
+    }.runOnQueue(.main)
+    AsyncFunction("reviewVideoSource") { (id: String, token: String, promise: Promise) in self.review.videoSource(id, token: token, promise: promise) }.runOnQueue(.main)
+    AsyncFunction("cancelReviewDisplay") { (token: String) in self.review.cancelDisplay(token) }.runOnQueue(.main)
     AsyncFunction("reviewThumbnail") { (id: String, version: String, promise: Promise) in self.review.thumbnail(id, version: version, promise: promise) }
     AsyncFunction("shareReviewAsset") { (id: String, promise: Promise) in
       self.review.share(id, presenter: self.appContext?.utilities?.currentViewController(), promise: promise)
