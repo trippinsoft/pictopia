@@ -23,7 +23,7 @@ const photo = (id, year, month, extra = {}) => {
 };
 const ctx = (extra = {}) => ({ seed: 7, explored: new Set(), now: at(2026, 10, 30), ...extra });
 
-test("Adventures are short: about 18 photos, never 100", () => {
+test("Adventures are short: about 20 photos, never 100", () => {
   assert.ok(ADVENTURE_SIZE >= 15 && ADVENTURE_SIZE <= 20);
   const pool = [];
   for (let d = 1; d <= 28; d++) for (let i = 0; i < 6; i++) pool.push(photo(`m${d}-${i}`, 2016, 10, { created: at(2016, 10, d, i * 10) }));
@@ -227,7 +227,9 @@ test("native SQLite: two distinct, stable adventures; resume across relaunch; co
   assert.deepEqual(await s.adventureStore.progress(), { explored: 6, setAside: 1 });
   const setAside = await s.adventureStore.setAside();
   assert.equal(setAside.length, 1);
-  // Finish A: Home replaces it with a new adventure unlike B and unlike A.
+  // Finish A: Home retires it and offers a fresh adventure, unlike A and unlike B. Finishing
+  // the on-screen adventure always makes way for a new one, rather than keeping the same
+  // finished card and its photos on Home.
   const done = s.explore.exploreStoreFor(s.adventureSessionKey(A.adventure.id));
   let endpoint = await done.load();
   await done.change({ type: "page", id: endpoint.activeId, revision: endpoint.revision, toId: endpoint.ids.at(-1), availableIds: endpoint.ids });
@@ -237,8 +239,9 @@ test("native SQLite: two distinct, stable adventures; resume across relaunch; co
   assert.equal(refilled.slots.length, 2);
   assert.equal(refilled.slots[1].adventure.id, B.adventure.id, "B is untouched");
   const C = refilled.slots[0].adventure;
-  assert.equal(C.id, A.adventure.id, "a finished segment retains its larger Adventure context");
-  assert.equal(refilled.slots[0].session.finished, true);
+  assert.notEqual(C.id, A.adventure.id, "a finished adventure makes way for a fresh one");
+  assert.notEqual(C.source, B.adventure.source, "the fresh adventure is unlike B");
+  assert.notEqual(refilled.slots[0].session.finished, true, "the fresh slot is ready to begin");
   // A's set-aside photo is still reviewable and restorable after A left Home.
   await s.adventureStore.restore(setAside[0]);
   assert.equal((await s.adventureStore.progress()).setAside, 0);
@@ -352,7 +355,8 @@ test("browser Home offers a short review and can revisit explored photos without
   const next = (await s.adventureStore.home(2)).slots;
   assert.equal(next.length, 2);
   assert.equal(next[1].adventure.id, first[1].adventure.id);
-  assert.equal(next[0].adventure.id, first[0].adventure.id, "segment completion alone does not replace a larger journey");
+  assert.notEqual(next[0].adventure.id, first[0].adventure.id, "finishing an adventure makes way for a fresh one");
+  assert.ok(next[0].session.ids.every(id => !["web-6", "web-7"].includes(id)), "the fresh review still never includes queued photos");
   assert.deepEqual(p.requests, [], "creating reviews never requests deletion");
   db.close();
 });
@@ -389,7 +393,9 @@ test("the Adventure flow exposes no deletion path and never writes media or prod
   const home = fs.readFileSync("app/(tabs)/home.tsx", "utf8");
   assert.doesNotMatch(home, /deleteQueue|deleteMarked|mediaService\.remove\(|deleteAssetsAsync|setDecision\(|storage\.put\((?!\[\],)|repository\.(decide|update|skip|start)/, "Home starts existing review flows without deciding or deleting media");
   assert.doesNotMatch(home, /MediaImage|<Image/, "no photo previews on Home");
-  assert.doesNotMatch(home, /\b(?:freed|bytes|MB|GB)\b/i, "no storage claims");
+  // The Discarded pill now shows the known size of marked items (audit area 3). Home still
+  // never claims freed space; the pending size is a count, not a cleanup number.
+  assert.doesNotMatch(home, /\b(?:freed)\b/i, "Home never claims freed space");
 });
 
 
@@ -472,13 +478,13 @@ test("Yearbook: accessible years, sparse years and bounded month-spread curation
   const s=services(app,p), choices=await s.adventureStore.choices();
   assert.deepEqual(choices.years,["2020","2011","2010"]);
   assert.equal(choices.yearPhotos["2020"],2016);
-  for(const [year,count] of [["2010",1],["2011",2],["2020",18]]) {
+  for(const [year,count] of [["2010",1],["2011",2],["2020",20]]) {
     const a=await s.adventureStore.choose({kind:"year",year},12);
     assert.equal(a.source,`year:${year}`); assert.equal(a.count,count);
     assert.equal(a.hint.title,"The Yearbook");
     const session=await s.explore.exploreStoreFor(s.adventureSessionKey(a.id)).load();
     assert.equal(session.ids.length,count);
-    const selected=await app.storage.query({ids:session.ids,limit:18});
+    const selected=await app.storage.query({ids:session.ids,limit:20});
     assert.ok(selected.every(m=>m.month.startsWith(`${year}-`)));
     if(year==="2020") assert.equal(new Set(selected.map(m=>m.month)).size,12);
   }
@@ -527,7 +533,7 @@ test("Yearbook: legacy rename, independent years and daily-limit restart preserv
 test("Yearbook names keep stable catalog IDs and Time Capsule's automatic month behavior",()=>{
   const c=load("lib/pictopia/catalog.ts");
   assert.equal(c.catalogEntry("time-machine").name,"The Yearbook");
-  assert.equal(c.catalogEntry("time-machine").blurb,"Pick a year. Rediscover the moments that made it memorable.");
+  assert.equal(c.catalogEntry("time-machine").blurb,"Revisit a year. Rediscover the moments that made it memorable.");
   assert.equal(c.adventureLabel({kind:"year",source:"year:2017"}),"The Yearbook · 2017");
   assert.equal(c.adventureName("month"),"The Yearbook");
   assert.equal(c.adventureName("capsule"),"Time Capsule");
@@ -541,7 +547,7 @@ test("Yearbook end-page Finish with five pending discards saves completion once 
   let s=services(app,p);const a=await s.adventureStore.choose({kind:'year',year:'2017'},42);
   await s.adventureStore.open(a.id);
   const key=s.adventureSessionKey(a.id),store=s.explore.exploreStoreFor(key);
-  let session=await store.load();assert.equal(session.ids.length,18);
+  let session=await store.load();assert.equal(session.ids.length,20);
   for(const id of session.ids) await store.change({type:'seen',id,displayedAt:Date.now()});
   for(const id of session.ids.slice(0,5)) {
     session=await store.load();await store.change({type:'discard',id,revision:session.revision,direction:'left'});
@@ -581,7 +587,7 @@ test('one active Yearbook per year is enforced atomically across repeated and co
   await s.adventureStore.finish(a.id);
   const next=await s.adventureStore.choose({kind:'year',year:'2017'},13);assert.equal(next.id,a.id, 'the next segment continues the same year journey');
   const fresh=await s.explore.exploreStoreFor(s.adventureSessionKey(next.id)).load();
-  assert.equal(fresh.ids.length,18);assert.ok(fresh.ids.every(id=>!saved.ids.includes(id)),'subsequent adventures prefer unseen photos');
+  assert.equal(fresh.ids.length,20);assert.ok(fresh.ids.every(id=>!saved.ids.includes(id)),'subsequent adventures prefer unseen photos');
   assert.equal((await s.adventureStore.yearbooks()).filter(slot=>slot.adventure.source==='year:2017').length,1);
   assert.deepEqual(p.requests,[]);db.close();
 });

@@ -6,7 +6,7 @@ const b = makeLoader()("lib/pictopia/badges.ts");
 const zero = { explorer: 0, declutterer: 0, months: 0, years: 0, decades: 0, adventurer: 0, streak: 0 };
 
 test("exactly the seven approved families", () => {
-  assert.deepEqual(b.BADGES.map((d) => d.family), ["explorer", "declutterer", "months", "years", "decades", "adventurer", "streak"]);
+  assert.deepEqual(b.BADGES.map((d) => d.family), ["explorer", "declutterer", "months", "years", "adventurer", "streak"]);
 });
 
 test("existing users are backfilled silently, later tiers celebrate once", () => {

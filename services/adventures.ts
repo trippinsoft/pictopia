@@ -259,14 +259,23 @@ async function scopeStatus(a: Adventure) {
 async function nextSegment(a: Adventure, session: ExploreSession, retryUnavailable = false) {
   if (!extendable(a) || !session.finished) return a;
   const status = await scopeStatus(a);
-  // Never repeat a failed item in the immediate next segment. It remains unresolved and
-  // prevents a false completion; another visit can retry when access/network recovers.
+  // Never repeat any photo already shown in this adventure — not just the segment just
+  // finished, but every earlier segment too, whether or not it qualified as "seen". A
+  // displayed-but-unqualified or unavailable photo has no firstSeenAt, so without this it
+  // falls back into the pool and the next segment is full of repeats.
   const attempted = new Set(session.ids);
+  const priorSessions = await Promise.all((a.segmentKeys ?? []).map(key => exploreStoreFor(key).load()));
+  for (const prior of priorSessions) prior?.ids.forEach(id => attempted.add(id));
+  // "Keep going" shows only genuinely new photos. Reopening a finished adventure may instead
+  // retry previously-unavailable items once nothing new is left (a failed item remains
+  // unresolved and prevents a false completion; another visit can retry when access recovers).
   const fresh = status.remaining.filter(m => !attempted.has(m.id));
-  const pool = fresh.length || !retryUnavailable ? fresh : status.remaining;
+  const onlyFresh = !!fresh.length || !retryUnavailable;
+  const pool = onlyFresh ? fresh : status.remaining;
   if (!pool.length) return a;
   const index = await loadIndex();
-  const ctx = { ...(await curationContext(index, Date.now())), chosen: true, exclude: await deletionBlocked() };
+  const blocked = await deletionBlocked();
+  const ctx = { ...(await curationContext(index, Date.now())), chosen: true, exclude: onlyFresh ? new Set([...blocked, ...attempted]) : blocked };
   const curated = curate({ kind: a.kind, source: a.source, pool }, ctx);
   if (!curated) return a;
   const archive = `adventure:${a.id}:segment:${a.segment ?? 0}:explore`;
@@ -340,10 +349,16 @@ async function homeSlots(seed: number, refresh: boolean) {
   for (const id of index.slots.slice(0, 2)) {
     const [adventure, session] = await Promise.all([loadMeta(id), loadSession(id)]);
     const dayAvailable = adventure?.kind !== "day" || (adventure.source === `day:${daysAround(Date.now(), 0)[0]}` && (await scopeRows("day", adventure.source)).length > 0);
-    const live = adventure && session && !adventure.finishedAt && dayAvailable && await validPhotoOffer(adventure, session);
+    // Once the user has finished the on-screen adventure, the slot is spent and makes way for
+    // a fresh one — even for extendable kinds (a 20-photo Yearbook never exhausts the whole
+    // year, so finishedAt stays unset; completionEvidence is what actually says "done here").
+    const done = completionEvidence(session);
+    const live = adventure && session && !adventure.finishedAt && !done && dayAvailable && await validPhotoOffer(adventure, session);
     if (!live) {
       changed = true;
-      if (adventure?.startedAt && !adventure.finishedAt && !index.parked.includes(id)) index.parked.unshift(id);
+      // A genuinely unfinished slot stays resumable in Explore's Continue; a finished one is
+      // simply retired (its "keep going" option lived on the completion screen).
+      if (adventure?.startedAt && !adventure.finishedAt && !done && !index.parked.includes(id)) index.parked.unshift(id);
     }
     if (live && refresh) {
       avoidSources.add(adventure.source);

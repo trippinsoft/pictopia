@@ -114,7 +114,18 @@ export function AdventureReview({ id, collection, finishContent, onContinue: _on
     if (feed.current) feed.current.action(action);
     else void change(action).catch(() => {});
   };
-  const restore = (target: string) => apply({ type: "restore", id: target });
+  // Restore plays a reverse flight: a miniature flies back out of the trash into the slot, and
+  // the real card is revealed the moment it lands, so the photograph returns the way it left.
+  // Reduced motion, a missing frame, or an already-returning photo falls straight through to
+  // the instant restore.
+  const restore = (target: string) => {
+    const item = media[target];
+    if (item) {
+      flight.reclaim({ id: target, media: item }).landed.then(() => apply({ type: "restore", id: target }));
+    } else {
+      apply({ type: "restore", id: target });
+    }
+  };
   const undo = () => {
     if (!canUndo) return;
     setTransitionError(undefined);
@@ -135,9 +146,14 @@ export function AdventureReview({ id, collection, finishContent, onContinue: _on
   const sizeAttempts = useRef(new Set<string>());
   // Read local size metadata only; never download or hash originals for this counter.
   const markedKey = marked.join("\n");
+  // Gated on `flying === 0`: any native PhotoKit size request and its React state write
+  // would otherwise fight the discard flight for the JS thread, causing a visible hesitation
+  // on the exact action the user performs most. We also kick off work only when the browser
+  // tab is idle (no requestIdleCallback on native, so a 0 ms setTimeout is used there).
   useEffect(() => {
+    if (flying > 0) return;
     let alive = true;
-    void (async () => {
+    const run = () => { void (async () => {
       for (const target of markedKey.split("\n").filter(Boolean)) {
         if (!alive) break;
         const item = media[target];
@@ -155,9 +171,10 @@ export function AdventureReview({ id, collection, finishContent, onContinue: _on
           }
         } catch { if (alive) sizeAttempts.current.add(key); }
       }
-    })();
-    return () => { alive = false; };
-  }, [markedKey, media]);
+    })(); };
+    const handle = setTimeout(run, 0);
+    return () => { alive = false; clearTimeout(handle); };
+  }, [markedKey, media, flying]);
   // Measured where the platform reports it, estimated otherwise: the trash always shows a size.
   let trashBytes = 0;
   for (const target of landedIds) {

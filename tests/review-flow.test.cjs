@@ -126,7 +126,12 @@ test("Duplicate Hunt stays closed for release, advises without pre-marking, and 
   const hunt = read("app/duplicate-hunt.tsx");
   assert.match(hunt, /repository\.setDecision\(/, "marks go through the guarded queue decision");
   assert.doesNotMatch(hunt, /deleteQueue|deleteMarked/, "Duplicate Hunt never deletes by itself");
-  assert.match(read("app/(tabs)/explore.tsx"), /featureOpen\("duplicateHunt"/);
+  // Duplicate Hunt is dropped from Explore entirely — no "Coming soon" placeholder, no
+  // feature-flag gating. The screen and catalog entry stay for backward compatibility and the
+  // developer Lab. (The only `duplicate-hunt` left in Explore is a type-level Exclude.)
+  const explore = read("app/(tabs)/explore.tsx");
+  assert.doesNotMatch(explore, /featureOpen|Coming soon/);
+  assert.doesNotMatch(explore, /begin\("duplicate-hunt"\)|"\/duplicate-hunt"/);
 });
 
 test("albums use the platform's word for them", () => {

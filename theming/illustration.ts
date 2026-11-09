@@ -1,6 +1,6 @@
-/** The illustration palette: warm and vibrant, tuned to sit on the purple/sunset UI in
- * light mode and on the deep night background in dark mode. Illustrations read these values
- * directly (SVG needs raw colors); UI chrome keeps using the theme tokens. */
+/** Storybook landscape palette: warm cream skies, green rolling hills, a purple dashed
+ * trail, a sun, and tomato-and-yellow props, no outlines. Illustrations read these raw
+ * colors directly (SVG needs them); UI chrome keeps using the theme tokens. */
 export interface ArtPalette {
   sky: string;
   skyAlt: string;
@@ -20,42 +20,65 @@ export interface ArtPalette {
   ink: string;
   /** Faint dot texture. */
   grain: string;
+  /** Per-adventure artwork backdrops, so each scene reads as its own soft color instead of
+   * one shared warm sky. Scenes pick one of these for their full-bleed background. */
+  canvasBlue: string;
+  canvasMint: string;
+  canvasLilac: string;
+  canvasBlush: string;
+  canvasButter: string;
+  canvasPeach: string;
 }
 export const lightArt: ArtPalette = {
-  sky: "#F4E7CF",
-  skyAlt: "#E7D5F5",
-  cloud: "#FFF9EE",
-  sun: "#EEA13A",
-  teal: "#8424BF",
-  tealDeep: "#441060",
-  tealLight: "#C599E9",
-  sage: "#DCB7E7",
-  moss: "#8552AA",
-  sand: "#E9D2A9",
-  sandDeep: "#C9A67A",
-  terracotta: "#D46F4D",
-  coral: "#EC9C7E",
-  rose: "#EFC2B1",
-  paper: "#FFFBF3",
-  ink: "#301343",
-  grain: "#301343",
+  sky: "#FDEBD3",
+  skyAlt: "#F6D9C2",
+  cloud: "#FFFFFF",
+  sun: "#FFC93C",
+  // "teal" tokens are the purple-family in Storybook: the dashed trail, phone frames
+  // and other props that read as a cool accent against the warm sky.
+  teal: "#7B3FC4",
+  tealDeep: "#4C1F8A",
+  tealLight: "#C9A6EC",
+  // "sage/moss" are the green hills.
+  sage: "#A8DCC4",
+  moss: "#46A97F",
+  sand: "#F0D9A8",
+  sandDeep: "#C98B55",
+  terracotta: "#FF6B4A",
+  coral: "#F89B7A",
+  rose: "#F7C2AF",
+  paper: "#FFFFFF",
+  ink: "#1C2457",
+  grain: "#1C2457",
+  canvasBlue: "#E3EFFB",
+  canvasMint: "#E3F3E9",
+  canvasLilac: "#EEE7FA",
+  canvasBlush: "#FBE7EC",
+  canvasButter: "#FBF0D3",
+  canvasPeach: "#FDEBD3",
 };
 export const darkArt: ArtPalette = {
-  sky: "#291734",
-  skyAlt: "#351F48",
+  sky: "#2A1E36",
+  skyAlt: "#3A2947",
   cloud: "#4E365E",
-  sun: "#E2A350",
+  sun: "#FFC150",
   teal: "#9C58C8",
   tealDeep: "#633082",
   tealLight: "#C795E6",
-  sage: "#7E9C77",
-  moss: "#4F7657",
-  sand: "#9C8463",
-  sandDeep: "#7D6648",
-  terracotta: "#C9694A",
+  sage: "#6FBF9A",
+  moss: "#3F8E6A",
+  sand: "#A88C60",
+  sandDeep: "#866846",
+  terracotta: "#E66A4D",
   coral: "#D98E72",
   rose: "#C59C8E",
-  paper: "#EDE3D0",
-  ink: "#16242A",
+  paper: "#F7EBD8",
+  ink: "#121A3A",
   grain: "#000000",
+  canvasBlue: "#1D2838",
+  canvasMint: "#1B3127",
+  canvasLilac: "#2A1E36",
+  canvasBlush: "#39212F",
+  canvasButter: "#322817",
+  canvasPeach: "#352519",
 };

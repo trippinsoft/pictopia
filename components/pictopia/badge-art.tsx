@@ -1,101 +1,137 @@
-import { memo } from "react";
-import Svg, { Circle, G, Line, Path, Polygon, Rect } from "react-native-svg";
+import { memo, type ReactNode } from "react";
+import Svg, { Circle, Ellipse, G, Line, Path, Polygon, Rect } from "react-native-svg";
 import type { BadgeFamily } from "@/lib/pictopia/badges";
+import { lightArt } from "@/theming/illustration";
 
-// Playful Adventure badge medals: a tier-coloured rim, a family pastel face and a drawn emblem.
-// Fixed illustration colours (like the adventure artwork), so badges look the same in every theme.
-const INK = "#1B2350";
-const FACE: Record<BadgeFamily, string> = {
-  explorer: "#CFE8FF",
-  declutterer: "#FFD9CF",
-  months: "#FFF1C2",
-  years: "#E6DCFF",
-  decades: "#CFF0DD",
-  adventurer: "#FFE0C4",
-  streak: "#FFE69A",
+/** Storybook-landscape badge medals: a tier-coloured rim, a family-specific sky and a flat
+ * vignette drawn from the same palette as the Adventure artwork. No outlines, no dot grain.
+ * Each family gets its own composition and motif so they read as different at a glance. */
+const C = lightArt;
+
+/** Bronze → silver → gold → enamel tiers, drawn from the Storybook palette. */
+const RIMS = [C.sand, C.sun, C.moss, C.terracotta, C.teal, C.sandDeep, C.tealDeep, C.coral];
+
+/** Each family's face background: a different warm wash so no two badges read the same. */
+const SKY: Record<BadgeFamily, string> = {
+  explorer: C.sky,         // warm cream — a trail map world
+  declutterer: C.skyAlt,   // peachy — an open drawer indoors
+  months: C.sky,           // cream — a calendar page on a desk
+  years: C.skyAlt,         // peachy — a sun through a torn page
+  decades: C.rose,         // rose wash — fanned pages
+  adventurer: C.sky,       // clear sky — a balloon up in clouds
+  streak: C.coral,         // warm sunset — a flame on the horizon
 };
-/** Bronze, silver, gold, then enamel colours for the higher tiers. */
-const RIM = ["#C9CFD8", "#D9894A", "#A9B6C6", "#F2B630", "#4F7BFF", "#FF5A3C", "#2FA36B", "#8B5CF6", "#FF4F9A"];
+
+function Face({ children, family }: { children: ReactNode; family: BadgeFamily }) {
+  return (
+    <G>
+      <Rect x={8} y={8} width={48} height={48} rx={24} fill={SKY[family]} />
+      {children}
+    </G>
+  );
+}
 
 function Emblem({ family }: { family: BadgeFamily }) {
   switch (family) {
     case "explorer":
+      // A dashed trail winding across the face to a map pin — exploration.
       return (
-        <G>
-          <Circle cx={32} cy={32} r={13} fill="#fff" stroke={INK} strokeWidth={2.5} />
-          <Polygon points="32,20 36,32 28,32" fill="#FF5A3C" />
-          <Polygon points="32,44 36,32 28,32" fill={INK} />
-          <Circle cx={32} cy={32} r={2} fill="#fff" stroke={INK} strokeWidth={1.5} />
-        </G>
+        <Face family={family}>
+          <Path d="M14 48 Q22 34 34 36 T52 20" stroke={C.teal} strokeWidth={2.2} strokeDasharray="3 3" fill="none" strokeLinecap="round" />
+          <Path d="M46 10 C40 10 38 16 42 22 L46 28 L50 22 C54 16 52 10 46 10Z" fill={C.terracotta} />
+          <Circle cx={46} cy={16} r={2.4} fill={C.paper} />
+          <Circle cx={16} cy={50} r={1.8} fill={C.moss} />
+        </Face>
       );
     case "declutterer":
+      // An open drawer with a sparkle rising above it — clutter cleared.
       return (
-        <G>
-          <Rect x={23} y={27} width={18} height={18} rx={3} fill="#fff" stroke={INK} strokeWidth={2.5} />
-          <Rect x={20} y={22} width={24} height={5} rx={2.5} fill={INK} />
-          <Line x1={29} y1={31} x2={29} y2={41} stroke={INK} strokeWidth={2} strokeLinecap="round" />
-          <Line x1={35} y1={31} x2={35} y2={41} stroke={INK} strokeWidth={2} strokeLinecap="round" />
-          <Path d="M45 14 l1.6 4 4 1.6 -4 1.6 -1.6 4 -1.6 -4 -4 -1.6 4 -1.6z" fill="#F2B630" />
-        </G>
+        <Face family={family}>
+          <Rect x={16} y={34} width={32} height={18} rx={2.5} fill={C.terracotta} />
+          <Rect x={19} y={38} width={26} height={11} rx={1.5} fill={C.coral} />
+          <Rect x={30} y={42} width={4} height={1.6} rx={0.8} fill={C.paper} />
+          <Rect x={16} y={52} width={32} height={2.5} fill={C.sandDeep} />
+          <Polygon points="40,14 43,20 49,21 44,25 46,31 40,28 34,31 36,25 31,21 37,20" fill={C.sun} />
+          <Path d="M23 18 l1 2 l2 1 l-2 1 l-1 2 l-1 -2 l-2 -1 l2 -1z" fill={C.sun} />
+        </Face>
       );
     case "months":
+      // A calendar page sitting on a desk line, with a big check — a month finished.
       return (
-        <G>
-          <Rect x={19} y={21} width={26} height={24} rx={4} fill="#fff" stroke={INK} strokeWidth={2.5} />
-          <Rect x={19} y={21} width={26} height={7} rx={3} fill="#FF5A3C" />
-          <Line x1={25} y1={17} x2={25} y2={24} stroke={INK} strokeWidth={2.5} strokeLinecap="round" />
-          <Line x1={39} y1={17} x2={39} y2={24} stroke={INK} strokeWidth={2.5} strokeLinecap="round" />
-          <Path d="M25 37 l4.5 4.5 9 -9" fill="none" stroke="#2FA36B" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
-        </G>
+        <Face family={family}>
+          <Rect x={8} y={50} width={48} height={6} fill={C.sand} />
+          <Rect x={18} y={16} width={28} height={30} rx={3} fill={C.paper} />
+          <Rect x={18} y={16} width={28} height={8} rx={3} fill={C.terracotta} />
+          <Rect x={23} y={13} width={2.5} height={7} rx={1} fill={C.ink} />
+          <Rect x={38.5} y={13} width={2.5} height={7} rx={1} fill={C.ink} />
+          <Path d="M24 34 l4.5 4.5 l10 -10" fill="none" stroke={C.moss} strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round" />
+        </Face>
       );
     case "years":
+      // An hourglass with sand mid-fall — time traveller.
       return (
-        <G>
-          <Line x1={22} y1={18} x2={42} y2={18} stroke={INK} strokeWidth={3} strokeLinecap="round" />
-          <Line x1={22} y1={46} x2={42} y2={46} stroke={INK} strokeWidth={3} strokeLinecap="round" />
-          <Path d="M25 19 L39 19 L32 32 Z" fill="#fff" stroke={INK} strokeWidth={2.2} strokeLinejoin="round" />
-          <Path d="M25 45 L39 45 L32 32 Z" fill="#fff" stroke={INK} strokeWidth={2.2} strokeLinejoin="round" />
-          <Path d="M28 44 L36 44 L32 38 Z" fill="#F2B630" />
-          <Path d="M29.5 22 L34.5 22 L32 26 Z" fill="#F2B630" />
-        </G>
+        <Face family={family}>
+          <Circle cx={46} cy={18} r={5} fill={C.sun} />
+          <Path d="M20 15 h24 L32 32 L20 48 h24" fill="none" />
+          <Rect x={18} y={13} width={28} height={3} rx={1} fill={C.teal} />
+          <Rect x={18} y={48} width={28} height={3} rx={1} fill={C.teal} />
+          <Path d="M22 16 L42 16 L32 32 L42 48 L22 48 L32 32Z" fill={C.paper} />
+          <Path d="M24 18 L40 18 L32 30Z" fill={C.sun} opacity={0.75} />
+          <Path d="M27 46 L37 46 L32 36Z" fill={C.sandDeep} opacity={0.9} />
+          <Rect x={31} y={32} width={2} height={6} fill={C.sandDeep} />
+        </Face>
       );
     case "decades":
+      // Fanned calendar pages stacked across time.
       return (
-        <G>
-          <Circle cx={32} cy={32} r={14} fill="#fff" stroke={INK} strokeWidth={2.5} />
-          <Circle cx={32} cy={32} r={3} fill={INK} />
-          {[0, 72, 144, 216, 288].map((a) => (
-            <Circle key={a} cx={32 + 8 * Math.cos(((a - 90) * Math.PI) / 180)} cy={32 + 8 * Math.sin(((a - 90) * Math.PI) / 180)} r={3} fill="#4F7BFF" />
+        <Face family={family}>
+          {[-18, -6, 6, 18].map((rot, i) => (
+            <G key={rot} transform={`rotate(${rot} 32 36)`}>
+              <Rect x={22} y={18} width={20} height={26} rx={2.5} fill={i === 1 || i === 2 ? C.paper : i === 0 ? C.rose : C.sand} />
+              <Rect x={22} y={18} width={20} height={6} rx={2.5} fill={C.teal} />
+              <Circle cx={32} cy={34} r={2.4} fill={C.sun} opacity={0.6} />
+            </G>
           ))}
-        </G>
+        </Face>
       );
     case "adventurer":
+      // A hot-air balloon up among clouds — the Adventurer.
       return (
-        <G>
-          <Path d="M27 22 a5 5 0 0 1 10 0" fill="none" stroke={INK} strokeWidth={2.5} />
-          <Rect x={21} y={22} width={22} height={24} rx={7} fill="#2FA36B" stroke={INK} strokeWidth={2.5} />
-          <Rect x={26} y={33} width={12} height={9} rx={3} fill="#fff" stroke={INK} strokeWidth={2} />
-          <Line x1={26} y1={29} x2={38} y2={29} stroke={INK} strokeWidth={2} strokeLinecap="round" />
-        </G>
+        <Face family={family}>
+          <Ellipse cx={18} cy={20} rx={7} ry={3} fill={C.cloud} />
+          <Ellipse cx={14} cy={18} rx={4} ry={3} fill={C.cloud} />
+          <Ellipse cx={48} cy={42} rx={6} ry={2.4} fill={C.cloud} opacity={0.9} />
+          <Path d="M32 18 C24 18 20 30 23 38 L29 48 H35 L41 38 C44 30 40 18 32 18Z" fill={C.terracotta} />
+          <Path d="M32 18 C28 26 28 42 30 48 H34 C36 42 36 26 32 18Z" fill={C.sun} />
+          <Path d="M22 32 H42" stroke={C.paper} strokeWidth={1.2} opacity={0.6} />
+          <Line x1={29} y1={48} x2={30} y2={52} stroke={C.ink} strokeWidth={0.8} />
+          <Line x1={35} y1={48} x2={34} y2={52} stroke={C.ink} strokeWidth={0.8} />
+          <Rect x={28.5} y={52} width={7} height={4} rx={0.8} fill={C.sandDeep} />
+        </Face>
       );
     case "streak":
+      // Sunset glow with a flame on the horizon — the streak.
       return (
-        <G>
-          <Path d="M32 15 C38 22 43 27 43 35 a11 11 0 0 1 -22 0 c0 -5 3 -8 5 -10 c0 4 2 6 4 6 c-1 -7 0 -12 2 -16z" fill="#FF8A3C" stroke={INK} strokeWidth={2.2} strokeLinejoin="round" />
-          <Path d="M32 30 c3 3 5 5 5 8 a5 5 0 0 1 -10 0 c0 -3 2 -5 5 -8z" fill="#FFD23F" />
-        </G>
+        <Face family={family}>
+          <Rect x={8} y={38} width={48} height={18} fill={C.sand} />
+          <Circle cx={32} cy={38} r={14} fill={C.sun} opacity={0.6} />
+          <Path d="M32 18 C36 23 40 27 40 34 a8 8 0 0 1 -16 0 c0 -4 2 -6 4 -8 c0 3 2 4 3 4 c-1 -5 0 -8 1 -12z" fill={C.terracotta} />
+          <Path d="M32 28 c2 2 3 4 3 6 a3 3 0 0 1 -6 0 c0 -2 1 -4 3 -6z" fill={C.sun} />
+          <Path d="M8 42 H56" stroke={C.sandDeep} strokeWidth={0.8} opacity={0.5} />
+        </Face>
       );
   }
 }
 
-/** A badge medal. Unearned families show as an embossed outline. */
+/** A badge medal. Unearned families show in cream and sand, with a soft rim. */
 export const BadgeArt = memo(function BadgeArt({ family, tier, size = 64 }: { family: BadgeFamily; tier: number; size?: number }) {
   const earned = tier > 0;
+  const rim = earned ? RIMS[Math.min(tier - 1, RIMS.length - 1)] : C.sand;
   return (
     <Svg width={size} height={size} viewBox="0 0 64 64" aria-hidden>
-      <Circle cx={32} cy={32} r={30} fill={earned ? RIM[Math.min(tier, RIM.length - 1)] : "#EEF1F5"} />
-      <Circle cx={32} cy={32} r={25} fill={earned ? FACE[family] : "#F7F8FA"} stroke={earned ? "#fff" : "#C9CFD8"} strokeWidth={2} strokeDasharray={earned ? undefined : "4 3"} />
-      <G opacity={earned ? 1 : 0.3}>
+      <Circle cx={32} cy={32} r={30} fill={rim} opacity={earned ? 1 : 0.55} />
+      <Circle cx={32} cy={32} r={25} fill={earned ? C.paper : "#F6EFE0"} />
+      <G opacity={earned ? 1 : 0.5}>
         <Emblem family={family} />
       </G>
     </Svg>

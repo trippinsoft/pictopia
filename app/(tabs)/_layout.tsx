@@ -19,11 +19,12 @@ export default function TabLayout() {
       {(
         [
           { name: "home", title: "Home", icon: "House" },
+          { name: "timeline", title: "Timeline", icon: "CalendarDays" },
           { name: "explore", title: "Explore", icon: "Compass" },
+          { name: "progress", title: "Progress", icon: "ChartNoAxesColumn" },
           // Retired from navigation (code and saved data kept); old links still resolve.
           { name: "swipe", title: "Swipe", icon: "Layers2", hidden: true },
           { name: "smart", title: "Smart Clean", icon: "Sparkles", hidden: true },
-          { name: "progress", title: "Progress", icon: "ChartNoAxesCombined" },
         ] as { name: string; title: string; icon: IconName; hidden?: boolean }[]
       ).map((t) => (
         <Tabs.Screen

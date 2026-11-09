@@ -27,9 +27,9 @@ export const CATALOG: readonly CatalogEntry[] = [
   {
     id: "time-machine",
     name: "The Yearbook",
-    blurb: "Pick a year. Rediscover the moments that made it memorable.",
+    blurb: "Revisit a year. Rediscover the moments that made it memorable.",
     details:
-      "You choose a year. Pictopia picks up to 18 photos spread across its months, in the order they were taken. Photos you haven’t explored come first.",
+      "Pictopia picks a year and up to 20 photos spread across its months, in the order they were taken. Photos you haven’t explored come first.",
     art: "timeMachine",
   },
   {
@@ -37,7 +37,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     name: "Time Capsule",
     blurb: "One month Pictopia picks for you",
     details:
-      "Pictopia chooses one month you’ve explored the least, from months with at least 20 photos. 18 photos spread across its days, in the order they were taken.",
+      "Pictopia chooses one month you’ve explored the least, from months with at least 20 photos. 20 photos spread across its days, in the order they were taken.",
     art: "capsule",
   },
   {
@@ -45,7 +45,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     name: "Surprise Me",
     blurb: "A mix from across your years",
     details:
-      "18 photos from the months you’ve explored least, drawn from across all your years and arranged so no two in a row come from the same year.",
+      "20 photos from the months you’ve explored least, drawn from across all your years and arranged so no two in a row come from the same year.",
     art: "detour",
   },
   {

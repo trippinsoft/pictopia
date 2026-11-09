@@ -1,6 +1,6 @@
 import { memo, type ReactNode } from "react";
 import { type StyleProp, type ViewStyle } from "react-native";
-import Svg, { Circle, Defs, Ellipse, G, Line, Path, Pattern, Polygon, Rect } from "react-native-svg";
+import Svg, { Circle, Ellipse, G, Line, Path, Polygon, Rect } from "react-native-svg";
 import { useTheme } from "@/theming/ThemeProvider";
 import { darkArt, lightArt, type ArtPalette } from "@/theming/illustration";
 import type { AdventureKind } from "@/lib/pictopia/adventures";
@@ -67,14 +67,7 @@ export const Illustration = memo(function Illustration({
       preserveAspectRatio="xMidYMid slice"
       {...(accessibilityLabel ? { accessible: true, accessibilityLabel } : {})}
     >
-      <Defs>
-        <Pattern id="grain" width="6" height="6" patternUnits="userSpaceOnUse">
-          <Circle cx="1.5" cy="1.5" r="0.45" fill={c.grain} opacity={0.08} />
-          <Circle cx="4.5" cy="4.5" r="0.35" fill={c.grain} opacity={0.06} />
-        </Pattern>
-      </Defs>
       {SCENES[name](c)}
-      <Rect width="120" height="150" fill="url(#grain)" />
     </Svg>
   );
 });
@@ -117,10 +110,10 @@ const print = (x: number, y: number, w: number, rot: number, c: ArtPalette, tint
 };
 
 const SEASONS: Record<"spring" | "summer" | "autumn" | "winter", (c: ArtPalette) => [string, string, string, string]> = {
-  spring: (c) => [c.skyAlt, c.sage, c.moss, c.rose],
-  summer: (c) => [c.sky, c.tealLight, c.teal, c.sun],
-  autumn: (c) => [c.sky, c.sandDeep, c.terracotta, c.coral],
-  winter: (c) => [c.skyAlt, c.cloud, c.tealLight, c.paper],
+  spring: (c) => [c.canvasMint, c.sage, c.moss, c.rose],
+  summer: (c) => [c.canvasBlue, c.tealLight, c.teal, c.sun],
+  autumn: (c) => [c.canvasPeach, c.sandDeep, c.terracotta, c.coral],
+  winter: (c) => [c.canvasLilac, c.cloud, c.tealLight, c.paper],
 };
 const season = (kind: keyof typeof SEASONS): Scene => (c) => {
   const [bg, back, front, accent] = SEASONS[kind](c);
@@ -153,7 +146,7 @@ const SCENES: Record<ArtName, Scene> = {
   // Layered seasons under a clock-face sun: time folding back on itself.
   timeMachine: (c) => (
     <G>
-      {sky(c.sky)}
+      {sky(c.canvasMint)}
       {cloud(24, 34, c.cloud)}
       {cloud(100, 26, c.cloud, 0.7)}
       <Circle cx="60" cy="58" r="27" fill={c.sun} />
@@ -192,7 +185,7 @@ const SCENES: Record<ArtName, Scene> = {
   // A torn-off calendar page holding the season, with a sprig reaching in.
   onThisDay: (c) => (
     <G>
-      {sky(c.skyAlt)}
+      {sky(c.canvasButter)}
       <Circle cx="96" cy="30" r="10" fill={c.sun} />
       <Path d="M0 124 Q40 112 70 120 T120 116 V150 H0Z" fill={c.sage} />
       <G transform="rotate(-5 60 76)">
@@ -224,7 +217,7 @@ const SCENES: Record<ArtName, Scene> = {
   // A balloon drifting off a looping, dashed route among stray shapes.
   detour: (c) => (
     <G>
-      {sky(c.sky)}
+      {sky(c.canvasBlue)}
       {cloud(22, 30, c.cloud)}
       {cloud(98, 98, c.cloud, 0.8)}
       <Path
@@ -254,7 +247,7 @@ const SCENES: Record<ArtName, Scene> = {
   // A jar of small keepsakes buried among the soil layers.
   capsule: (c) => (
     <G>
-      {sky(c.sky)}
+      {sky(c.canvasPeach)}
       <Circle cx="92" cy="28" r="10" fill={c.sun} />
       {cloud(30, 26, c.cloud, 0.8)}
       <Rect y="62" width="120" height="88" fill={c.sand} />
@@ -278,7 +271,7 @@ const SCENES: Record<ArtName, Scene> = {
   // Stacked screens and prints, with a gentle sweep of sparkles.
   screenshots: (c) => (
     <G>
-      {sky(c.skyAlt)}
+      {sky(c.canvasLilac)}
       {print(14, 52, 34, -14, c)}
       <G transform="rotate(-8 54 76)">
         <Rect x="36" y="34" width="38" height="72" rx="7" fill={c.ink} />
@@ -306,7 +299,7 @@ const SCENES: Record<ArtName, Scene> = {
   // An open drawer of tucked-away things under a lamp's glow.
   corners: (c) => (
     <G>
-      {sky(c.sky)}
+      {sky(c.canvasBlush)}
       <Rect y="112" width="120" height="38" fill={c.sandDeep} />
       <Polygon points="26,30 14,96 50,96" fill={c.cloud} opacity={0.75} />
       <Line x1="26" y1="10" x2="26" y2="24" stroke={c.ink} strokeWidth="1.2" />
@@ -331,7 +324,7 @@ const SCENES: Record<ArtName, Scene> = {
   // Fanned calendar pages and a question mark: which year?
   guessYear: (c) => (
     <G>
-      {sky(c.sky)}
+      {sky(c.canvasButter)}
       <G transform="rotate(-14 60 80)">
         <Rect x="34" y="46" width="52" height="62" rx="5" fill={c.sand} />
       </G>
@@ -358,7 +351,7 @@ const SCENES: Record<ArtName, Scene> = {
   // A folded map with a dashed route and a pin.
   whereWasThis: (c) => (
     <G>
-      {sky(c.skyAlt)}
+      {sky(c.canvasMint)}
       <Polygon points="18,50 46,42 46,112 18,120" fill={c.sand} />
       <Polygon points="46,42 74,50 74,120 46,112" fill={c.sage} />
       <Polygon points="74,50 102,42 102,112 74,120" fill={c.sand} />
@@ -369,57 +362,84 @@ const SCENES: Record<ArtName, Scene> = {
     </G>
   ),
 
-  // Two prints and a curved arrow: which came first?
+  // Two tilted photo prints with a calendar page between them and a big question mark —
+  // "which came first?". No landscape, so it reads clearly against the Memory Match one.
   whichFirst: (c) => (
     <G>
-      {sky(c.sky)}
-      {print(18, 46, 40, -10, c, c.skyAlt)}
-      {print(62, 58, 40, 9, c, c.rose)}
-      <Path d="M44 36 Q66 18 86 40" stroke={c.teal} strokeWidth="2" fill="none" strokeLinecap="round" />
-      <Path d="M86 40 l-6 -1 M86 40 l1 -6" stroke={c.teal} strokeWidth="2" strokeLinecap="round" />
-      <Circle cx="26" cy="112" r="6" fill={c.teal} />
-      <Circle cx="26" cy="112" r="1.8" fill={c.paper} />
-      <Circle cx="102" cy="122" r="6" fill={c.terracotta} />
-      <Circle cx="99.5" cy="122" r="1.6" fill={c.paper} />
-      <Circle cx="104.5" cy="122" r="1.6" fill={c.paper} />
+      {sky(c.canvasBlush)}
+      {sparkle(16, 22, 3.2, c.sun)}
+      {sparkle(104, 128, 3, c.terracotta)}
+      <G transform="rotate(-10 34 76)">
+        <Rect x="14" y="52" width="40" height="48" rx="4" fill={c.paper} />
+        <Rect x="18" y="56" width="32" height="30" fill={c.sky} />
+        <Circle cx="44" cy="64" r="4" fill={c.sun} />
+        <Path d="M18 86 Q30 72 50 86Z" fill={c.moss} />
+        <Rect x="20" y="90" width="12" height="2.5" rx="1" fill={c.sandDeep} opacity={0.6} />
+        <Rect x="20" y="94" width="20" height="2.5" rx="1" fill={c.sandDeep} opacity={0.35} />
+      </G>
+      <G transform="rotate(11 88 84)">
+        <Rect x="66" y="56" width="40" height="48" rx="4" fill={c.paper} />
+        <Rect x="70" y="60" width="32" height="30" fill={c.rose} />
+        <Circle cx="92" cy="68" r="4" fill={c.terracotta} />
+        <Path d="M70 90 Q82 76 102 90Z" fill={c.terracotta} opacity={0.75} />
+        <Rect x="72" y="94" width="12" height="2.5" rx="1" fill={c.sandDeep} opacity={0.6} />
+        <Rect x="72" y="98" width="20" height="2.5" rx="1" fill={c.sandDeep} opacity={0.35} />
+      </G>
+      {/* Big "?" between the two prints — the question. */}
+      <G transform="translate(54 24)">
+        <Circle cx="6" cy="6" r="14" fill={c.teal} />
+        <Path d="M0 2 Q0 -6 6 -6 Q12 -6 12 1 Q12 6 6 9 L6 12" fill="none" stroke={c.paper} strokeWidth="2.6" strokeLinecap="round" />
+        <Circle cx="6" cy="16" r="1.8" fill={c.paper} />
+      </G>
     </G>
   ),
 
-  // A small grid of cards, two turned up and matching.
+  // A tidy 3×4 card grid: two pairs flipped up showing the same sun scene, the rest still
+  // face-down in warm paper + purple. No landscape — this is a flat table-top of cards.
   memoryMatch: (c) => (
     <G>
-      {sky(c.skyAlt)}
+      {sky(c.canvasBlue)}
+      {sparkle(14, 18, 3, c.sun)}
+      {sparkle(106, 134, 3, c.terracotta)}
       {[
-        [26, 38, false],
-        [62, 38, true],
-        [26, 80, true],
-        [62, 80, false],
-      ].map(([x, y, up]) => (
-        <G key={`${x}${y}`}>
-          <Rect x={x as number} y={y as number} width="32" height="38" rx="4" fill={up ? c.paper : c.teal} />
-          {up ? (
-            <G>
-              <Rect x={(x as number) + 4} y={(y as number) + 4} width="24" height="22" fill={c.sky} />
-              <Circle cx={(x as number) + 20} cy={(y as number) + 11} r="3.5" fill={c.sun} />
-              <Path d={`M${(x as number) + 4} ${(y as number) + 26} Q${(x as number) + 14} ${(y as number) + 12} ${(x as number) + 28} ${(y as number) + 26}Z`} fill={c.moss} />
-            </G>
-          ) : (
-            <G>
-              <Circle cx={(x as number) + 16} cy={(y as number) + 19} r="7" fill="none" stroke={c.tealLight} strokeWidth="1.4" />
-              <Circle cx={(x as number) + 16} cy={(y as number) + 19} r="2" fill={c.tealLight} />
-            </G>
-          )}
-        </G>
-      ))}
-      {sparkle(100, 30, 4, c.sun)}
-      {sparkle(16, 126, 3, c.terracotta)}
+        [10, 16, "down"], [44, 16, "up"], [78, 16, "down"],
+        [10, 52, "up"], [44, 52, "down"], [78, 52, "match"],
+        [10, 88, "down"], [44, 88, "match"], [78, 88, "down"],
+        [10, 124, "match"], [44, 124, "down"], [78, 124, "down"],
+      ].map(([x, y, kind], i) => {
+        const X = x as number, Y = y as number;
+        if (kind === "up") return (
+          <G key={i}>
+            <Rect x={X} y={Y} width="30" height="30" rx="4" fill={c.paper} />
+            <Rect x={X + 3} y={Y + 3} width="24" height="20" fill={c.sky} />
+            <Circle cx={X + 22} cy={Y + 9} r="2.4" fill={c.sun} />
+            <Path d={`M${X + 3} ${Y + 23} Q${X + 15} ${Y + 12} ${X + 27} ${Y + 23}Z`} fill={c.moss} />
+          </G>
+        );
+        if (kind === "match") return (
+          <G key={i}>
+            <Rect x={X} y={Y} width="30" height="30" rx="4" fill={c.paper} />
+            <Rect x={X + 3} y={Y + 3} width="24" height="20" fill={c.rose} />
+            <Circle cx={X + 22} cy={Y + 9} r="2.4" fill={c.terracotta} />
+            <Path d={`M${X + 3} ${Y + 23} Q${X + 15} ${Y + 12} ${X + 27} ${Y + 23}Z`} fill={c.terracotta} opacity="0.7" />
+          </G>
+        );
+        return (
+          <G key={i}>
+            <Rect x={X} y={Y} width="30" height="30" rx="4" fill={c.teal} />
+            {/* The pictopia "dot" on the back: a little sun among curves, like a stamp. */}
+            <Circle cx={X + 15} cy={Y + 11} r="3.4" fill={c.sun} opacity="0.9" />
+            <Path d={`M${X + 4} ${Y + 22} Q${X + 15} ${Y + 15} ${X + 26} ${Y + 22}`} fill="none" stroke={c.tealLight} strokeWidth="1.4" strokeLinecap="round" />
+          </G>
+        );
+      })}
     </G>
   ),
 
   // A path winding up to a little flag: you made it.
   finish: (c) => (
     <G>
-      {sky(c.sky)}
+      {sky(c.canvasButter)}
       <Circle cx="78" cy="40" r="16" fill={c.sun} />
       {cloud(28, 34, c.cloud)}
       <Path d="M0 96 Q30 70 62 84 T120 74 V150 H0Z" fill={c.tealLight} />
@@ -438,7 +458,7 @@ const SCENES: Record<ArtName, Scene> = {
   // A camera among sparkles.
   gameResult: (c) => (
     <G>
-      {sky(c.sky)}
+      {sky(c.canvasLilac)}
       <Rect x="28" y="52" width="64" height="46" rx="8" fill={c.teal} />
       <Rect x="44" y="44" width="20" height="10" rx="3" fill={c.tealDeep} />
       <Rect x="28" y="62" width="64" height="8" fill={c.tealDeep} opacity={0.5} />

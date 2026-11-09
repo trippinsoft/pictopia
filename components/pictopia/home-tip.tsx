@@ -45,16 +45,18 @@ export function JourneyNote({ message, onNext, busy = false, error = false, spac
   message: string; onNext?: () => void; busy?: boolean; error?: boolean; spacing?: number;
 }) {
   return <Pressable accessibilityRole={onNext ? "button" : undefined}
-    accessibilityLabel={onNext ? `For the Journey... ${message}` : undefined}
-    accessibilityHint={onNext ? "Shows the next message" : undefined}
+    accessibilityLabel={onNext ? `Did you know? ${message}` : undefined}
+    accessibilityHint={onNext ? "Shows the next tip" : undefined}
     accessibilityState={{ disabled: busy || !onNext }} disabled={busy || !onNext} onPress={onNext}
-    style={{ marginTop: spacing }} className="min-h-12 items-center gap-2 px-4 active:opacity-70">
-    <View className="flex-row items-center justify-center gap-2" style={headingStyle}>
-      <Icon name="Compass" size={19} className="text-tertiary" />
-      <Text accessibilityRole="header" className="text-headline text-foreground">For the Journey...</Text>
+    style={{ marginTop: spacing }} className="min-h-12 flex-row items-start gap-2.5 px-1 py-2 active:opacity-70">
+    <Icon name="Lightbulb" size={19} className="mt-0.5 text-sun" />
+    <View className="flex-1">
+      <Text accessibilityLiveRegion="polite" className="text-body leading-[22px] text-muted-foreground">
+        <Text className="text-body text-foreground" style={bodyBoldStyle}>Did you know? </Text>
+        {message}
+      </Text>
+      {error && <Text accessibilityRole="alert" className="mt-1 text-caption text-muted-foreground">Couldn’t save this tip. Tap to try again.</Text>}
     </View>
-    <Text accessibilityLiveRegion="polite" className="max-w-xs text-center text-caption leading-5 text-muted-foreground">{message}</Text>
-    {error && <Text accessibilityRole="alert" className="text-center text-caption text-muted-foreground">Couldn’t save this message. Tap to try again.</Text>}
   </Pressable>;
 }
-const headingStyle = { transform: [{ rotate: "-2.5deg" }] };
+const bodyBoldStyle = { fontFamily: "Inter_600SemiBold" };

@@ -188,8 +188,8 @@ test('all badge thresholds award only at the threshold, including reported Explo
     assert.equal(b.tierFor(def, threshold - 1), i);
     assert.equal(b.tierFor(def, threshold), i + 1);
   }
-  const explorer = b.badgeView(b.BADGES[0], undefined, 396);
+  const explorer = b.badgeView(b.BADGES.find(d => d.family === 'explorer'), undefined, 396);
   assert.equal(explorer.tier, 1); assert.equal(explorer.label, '100 photos explored'); assert.equal(explorer.next, 500);
-  const adventurer = b.badgeView(b.BADGES[5], undefined, 25);
+  const adventurer = b.badgeView(b.BADGES.find(d => d.family === 'adventurer'), undefined, 25);
   assert.equal(adventurer.tier, 4); assert.equal(adventurer.next, 50);
 });

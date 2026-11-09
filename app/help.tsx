@@ -28,12 +28,8 @@ export default function Help() {
             "Yes: choose your own files and try swiping, zoom, video playback, undo, and resumable progress. Original-file deletion and store purchases require the native app.",
           ],
           [
-            "What does Smart Clean detect?",
-            "Exact duplicates use SHA-256 hashes of accessible originals. Similar groups use a 64-bit difference hash within a two-minute capture window. Blur uses an edge-sharpness heuristic. These suggestions need your review.",
-          ],
-          [
             "Where are my favorites?",
-            "The heart in Adventure review updates Photos favorites on iOS or device MediaStore favorites on Android 11 and later, after any required system approval. Android favorites do not imply Google Photos cloud synchronization. Browser favorites and older Android versions are unsupported. Classic review’s older app favorites remain local to Pictopia.",
+            "The heart in Adventure review updates Photos favorites on iOS or device MediaStore favorites on Android 11 and later, after any required system approval. Android favorites do not imply Google Photos cloud synchronization. Browser favorites and older Android versions are unsupported.",
           ],
         ].map(([title, body]) => (
           <View key={title}>

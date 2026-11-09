@@ -75,8 +75,25 @@ export function MediaImage({
     const resolve = async () => {
       if (nativeVideo && media) return reviewMedia.thumbnail(media);
       if (media?.type === "photo") {
-        try { return await photoDisplay(media, active && foreground && allowRetry, controller.signal); }
-        catch (error) { if (active && download && downloadFor.current === media.id) return (await mediaService.resolve(media, { download: true })).uri; throw error; }
+        const downloading = active && download && downloadFor.current === media.id;
+        // A fresh display can hit a transient PhotoKit/iCloud hiccup. Retry a few times —
+        // staying in the loading state — before letting the error surface as "unavailable",
+        // so a photo that is simply still loading never shows the failure copy. The outer
+        // timeout still bounds the total wait; a download attempt keeps its single long pass.
+        const passes = downloading ? 0 : RESOLVE_RETRIES;
+        let lastError: unknown;
+        for (let pass = 0; pass <= passes; pass++) {
+          try { return await photoDisplay(media, active && foreground && allowRetry, controller.signal); }
+          catch (error) {
+            lastError = error;
+            if (downloading) return (await mediaService.resolve(media, { download: true })).uri;
+            // Cloud-only is a real, actionable state (offer the download) — stop retrying.
+            if (error instanceof Error && error.message === CLOUD_ONLY) throw error;
+            if (controller.signal.aborted || pass === passes) throw error;
+            await wait(RESOLVE_RETRY_MS, controller.signal);
+          }
+        }
+        throw lastError;
       }
       if (media) return (await mediaService.resolve(media, { download: active && download && downloadFor.current === media.id })).uri;
       if (uri?.startsWith("web:")) {
@@ -140,3 +157,15 @@ export function MediaImage({
 }
 
 const fillStyle = { width: "100%" as const, height: "100%" as const };
+
+// A transient resolution failure is retried this many times before surfacing as "unavailable".
+const RESOLVE_RETRIES = 3;
+const RESOLVE_RETRY_MS = 700;
+/** Abortable delay: rejects the moment the generation is cancelled so retries stop at once. */
+function wait(ms: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) return reject(new Error("Aborted"));
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener("abort", () => { clearTimeout(timer); reject(new Error("Aborted")); }, { once: true });
+  });
+}

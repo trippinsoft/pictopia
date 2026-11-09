@@ -5,8 +5,9 @@ import { createExplore } from "@/lib/pictopia/explore";
 import type { Media, Query } from "@/lib/pictopia/types";
 import { albumService } from "./albums";
 
-/** `album:<id>` is an iOS album or an Android folder; `videos-large` is videos, largest first. */
-export type PhotoCollection = "recent" | "screenshots" | "videos" | "videos-large" | "unknown" | `month:${string}` | `year:${string}` | `album:${string}`;
+/** `album:<id>` is an iOS album or an Android folder; `videos-large` is videos, largest first;
+ * `favorites` is the photos the user has marked as favourites in Photos (iOS) or MediaStore. */
+export type PhotoCollection = "recent" | "screenshots" | "favorites" | "videos" | "videos-large" | "unknown" | `month:${string}` | `year:${string}` | `album:${string}`;
 export const COLLECTION_BATCH = 120;
 interface Batch { sessionKey: string; mode: "unseen" | "all"; cursor?: { created: number; id: string }; }
 export interface CollectionReview { scope: PhotoCollection; batches: Batch[]; position: number; openedAt: number; /** Albums: the name shown when opened. */ title?: string }
@@ -14,11 +15,12 @@ const INDEX = "photoCollections:v1";
 const metaKey = (scope: PhotoCollection) => `photoCollection:${scope}`;
 export const currentBatch = (state: CollectionReview) => state.batches[state.position];
 export function isPhotoCollection(value: string): value is PhotoCollection {
-  return value === "recent" || value === "screenshots" || value === "videos" || value === "videos-large" || value === "unknown" || /^album:.+/.test(value) || /^month:\d{4}-(0[1-9]|1[0-2])$/.test(value) || /^year:\d{4}$/.test(value);
+  return value === "recent" || value === "screenshots" || value === "favorites" || value === "videos" || value === "videos-large" || value === "unknown" || /^album:.+/.test(value) || /^month:\d{4}-(0[1-9]|1[0-2])$/.test(value) || /^year:\d{4}$/.test(value);
 }
 export function collectionTitle(scope: PhotoCollection, title?: string) {
   if (scope === "recent") return "Recent Photos";
   if (scope === "screenshots") return "Screenshots";
+  if (scope === "favorites") return "Favorites";
   if (scope === "videos") return "Videos";
   if (scope === "videos-large") return "Largest videos";
   if (scope.startsWith("album:")) return title || "Album";
@@ -32,6 +34,7 @@ export function collectionQuery(scope: PhotoCollection): Query {
   if (scope === "videos-large") return { type: "video", order: "size" };
   // Album members come from the platform's album, not a stored column.
   if (scope.startsWith("album:")) return { ids: [] };
+  if (scope === "favorites") return { type: "photo", order: "newest", favorite: true };
   return { type: "photo", order: scope === "recent" ? "newest" : "oldest", ...(scope === "screenshots" ? { screenshot: true } : scope === "unknown" ? { month: "unknown" } : scope.startsWith("month:") ? { month: scope.slice(6) } : scope.startsWith("year:") ? { year: scope.slice(5) } : {}) };
 }
 async function remember(state: CollectionReview) {

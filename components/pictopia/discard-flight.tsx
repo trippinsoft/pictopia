@@ -28,12 +28,19 @@ export interface FlightRequest {
   /** Horizontal gesture velocity, points per second. */
   velocity: number;
 }
+export interface ReclaimRequest {
+  id: string;
+  media: Media;
+}
 export interface DiscardFlight {
   /** Starts the flight and resolves once the flying photograph is on screen, so the card
    * underneath can step aside without a gap. Always resolves, even if nothing can be shown. */
   launch(request: FlightRequest): { handoff: Promise<void>; landed: Promise<void> };
   /** The discard did not stick: the photograph goes back to the feed, not the trash. */
   cancel(id: string): void;
+  /** Restore: a miniature flies back out of the trash to the photograph's slot. `landed`
+   * resolves when it arrives so the caller reveals the real card then. Always resolves. */
+  reclaim(request: ReclaimRequest): { landed: Promise<void> };
 }
 interface Rect {
   x: number;
@@ -68,9 +75,13 @@ export function useDiscardFlights({
   onArrive(id: string): void;
 }) {
   const [flights, setFlights] = useState<Flight[]>([]);
+  // Returning photographs (restore): a miniature flies back out of the trash into its slot.
+  const [returns, setReturns] = useState<Flight[]>([]);
   // Mirrors the rendered flights so a cancel can resolve their handoffs outside the updater.
   const current = useRef(flights);
   current.current = flights;
+  const currentReturns = useRef(returns);
+  currentReturns.current = returns;
   const sequence = useRef(0);
   const latest = useRef({ geometry, reduced, onArrive });
   latest.current = { geometry, reduced, onArrive };
@@ -80,10 +91,14 @@ export function useDiscardFlights({
     return () => {
       alive.current = false;
       for (const entry of current.current) { entry.ready(); entry.landed(); }
+      for (const entry of currentReturns.current) entry.landed();
     };
   }, []);
   const remove = useCallback((key: string) => {
     setFlights((entries) => entries.filter((flight) => flight.key !== key));
+  }, []);
+  const removeReturn = useCallback((key: string) => {
+    setReturns((entries) => entries.filter((flight) => flight.key !== key));
   }, []);
   const flight = useMemo<DiscardFlight>(
     () => ({
@@ -117,6 +132,24 @@ export function useDiscardFlights({
         for (const entry of current.current) if (entry.id === id) { entry.ready(); entry.landed(); }
         setFlights((entries) => entries.filter((entry) => entry.id !== id));
       },
+      reclaim(request) {
+        const { frame, target } = latest.current.geometry();
+        // No travel to animate, reduced motion, or one already on its way back: reveal at once.
+        if (!alive.current || !frame || !target || latest.current.reduced || currentReturns.current.some((entry) => entry.id === request.id)) {
+          return { landed: Promise.resolve() };
+        }
+        // Reuse the forward curve, played in reverse: the miniature starts in the can (progress
+        // 1) and grows into the resting slot (progress 0, offset {0,0}), so it mirrors the throw.
+        const path = flightPath(frame, { x: 0, y: 0 }, target, "right", 0);
+        const key = `return#${request.id}#${++sequence.current}`;
+        let landed!: () => void;
+        const arrival = new Promise<void>((resolve) => { landed = resolve; });
+        setReturns((entries) => [
+          ...entries,
+          { key, id: request.id, media: request.media, displayUri: rememberedDisplay(request.media), frame, path, reduced: false, ready: () => {}, landed },
+        ]);
+        return { landed: arrival };
+      },
     }),
     [],
   );
@@ -130,6 +163,16 @@ export function useDiscardFlights({
             entry.landed();
             remove(entry.key);
             latest.current.onArrive(entry.id);
+          }}
+        />
+      ))}
+      {returns.map((entry) => (
+        <ReturningPhoto
+          key={entry.key}
+          flight={entry}
+          onArrive={() => {
+            entry.landed();
+            removeReturn(entry.key);
           }}
         />
       ))}
@@ -195,6 +238,62 @@ function FlyingPhoto({ flight, onArrive }: { flight: Flight; onArrive(): void })
       ]}
     >
       <MediaImage media={flight.displayUri ? undefined : flight.media} uri={flight.displayUri} fit="contain" style={styles.fill} onSettled={begin} />
+    </Animated.View>
+  );
+}
+/** Restore's mirror of FlyingPhoto: the same curve on the UI thread, driven from the can back
+ * to the slot. One timing value runs position, scale and tilt in reverse; opacity fades in so
+ * the photograph grows out of the trash and settles into place. */
+function ReturningPhoto({ flight, onArrive }: { flight: Flight; onArrive(): void }) {
+  // Starts in the can (progress 1) and travels to the resting slot (progress 0).
+  const progress = useSharedValue(1);
+  const landed = useRef(false);
+  const land = useCallback(() => {
+    if (landed.current) return;
+    landed.current = true;
+    onArrive();
+  }, [onArrive]);
+  useEffect(() => {
+    progress.value = withTiming(
+      0,
+      { duration: flight.path.duration, easing: Easing.out(Easing.cubic), reduceMotion: ReduceMotion.Never },
+      () => runOnJS(land)(),
+    );
+    // A stopped animation (backgrounding) must never leave the photograph stuck or the count
+    // out of step: land after the same budget the throw uses.
+    const watchdog = setTimeout(land, flight.path.duration + 900);
+    return () => clearTimeout(watchdog);
+  }, [flight, land, progress]);
+  const style = useAnimatedStyle(() => {
+    const at = flightAt(flight.path, progress.value);
+    return {
+      // Fade in over the first stretch of the return, then hold full while it settles.
+      opacity: Math.min(1, 1.15 - progress.value),
+      transform: [
+        { translateX: at.x },
+        { translateY: at.y },
+        { scale: at.scale },
+        { rotate: `${at.rotate}deg` },
+      ],
+    };
+  });
+  return (
+    <Animated.View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      pointerEvents="none"
+      style={[
+        styles.photo,
+        {
+          left: flight.frame.x,
+          top: flight.frame.y,
+          width: flight.frame.width,
+          height: flight.frame.height,
+        },
+        style,
+      ]}
+    >
+      <MediaImage media={flight.displayUri ? undefined : flight.media} uri={flight.displayUri} fit="contain" style={styles.fill} />
     </Animated.View>
   );
 }

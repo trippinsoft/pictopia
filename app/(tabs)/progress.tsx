@@ -3,15 +3,15 @@ import { Modal, Platform, Pressable, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Button, Icon, Text } from "@/components/pictopia/ui";
-import { ProgressRing } from "@/components/pictopia/progress-ring";
 import { BadgeDetail } from "@/components/pictopia/badge-detail";
 import { BadgeArt } from "@/components/pictopia/badge-art";
+import { PitStopMenu } from "@/components/pictopia/pit-stop-menu";
 import { SectionTitle, Sticker, TabHeader, WaitingPill, useLift } from "@/components/pictopia/playful";
 import { useLibraryProgress } from "@/components/pictopia/use-library-progress";
 import { usePictopia } from "@/components/pictopia/provider";
 import { progressResource } from "@/services/progress";
 import { dailyStore } from "@/services/daily";
-import { BADGES, ROMAN, badgeView, calendarValues, type BadgeDefinition } from "@/lib/pictopia/badges";
+import { BADGES, ROMAN, badgeView, type BadgeDefinition } from "@/lib/pictopia/badges";
 import { addDays, qualifies } from "@/lib/pictopia/daily";
 import { bytes } from "@/lib/pictopia/logic";
 
@@ -26,7 +26,17 @@ function Dot({ state, size = 22 }: { state: "done" | "restored" | "missed" | "to
   );
 }
 
-/** Progress: streak and history, library exploration, badges and honest cleanup numbers. */
+function HeadlineTile({ icon, value, caption, onPress, label }: { icon: "Flame" | "Compass" | "HardDrive"; value: string; caption: string; onPress?: () => void; label: string }) {
+  return (
+    <Sticker className="flex-1 items-center gap-1.5 py-4" rotate={0} onPress={onPress} label={label}>
+      <Icon name={icon} size={22} className={icon === "Flame" ? "text-sun" : icon === "HardDrive" ? "text-grass" : "text-tertiary"} />
+      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} className="text-h1 leading-9 text-foreground">{value}</Text>
+      <Text numberOfLines={2} className="h-8 text-center text-caption leading-4 text-muted-foreground">{caption}</Text>
+    </Sticker>
+  );
+}
+
+/** Progress: three headlines, Discarded link, streak calendar w/ restore, badges, Take a break. */
 export default function Progress() {
   const app = usePictopia();
   const lift = useLift();
@@ -34,12 +44,10 @@ export default function Progress() {
   const streak = snapshot?.streak;
   const activity = snapshot?.activity;
   const restoredDays = new Set(snapshot?.restores.map(x => x.date) ?? []);
-  const months = snapshot ? calendarValues(snapshot.months).months : undefined;
-  const videos = snapshot?.videos;
   const badges = snapshot?.badges;
   const [detail, setDetail] = useState<BadgeDefinition>();
-  const [history, setHistory] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [history, setHistory] = useState(false);
   const [message, setMessage] = useState<string>();
   async function restore() {
     try {
@@ -53,7 +61,6 @@ export default function Progress() {
   }
   const today = streak?.week[6]?.date;
   // Five weeks, Monday-start rows ending this week.
-  const restored = restoredDays;
   const calendar = today
     ? Array.from({ length: 5 }, (_, w) => {
         const monday = addDays(today, -((new Date(`${today}T12:00:00`).getDay() + 6) % 7) - (4 - w) * 7);
@@ -61,26 +68,49 @@ export default function Progress() {
           const date = addDays(monday, i);
           const day = activity?.days[date];
           const done = qualifies(day);
-          const state = date > today ? "future" : done ? "done" : restored.has(date) ? "restored" : date === today ? "today" : "missed";
+          const state = date > today ? "future" : done ? "done" : restoredDays.has(date) ? "restored" : date === today ? "today" : "missed";
           return { date, state } as const;
         });
       })
     : [];
   const earnedCount = badges ? BADGES.filter((d) => (badges.state.earned[d.family]?.tier ?? 0) > 0).length : 0;
+  const streakValue = streak ? `${streak.current}` : "—";
+  const percentValue = percent === undefined ? "—" : `${percent}%`;
+  const clearedValue = progress ? (progress.deletedBytes > 0 ? bytes(progress.deletedBytes) : progress.deleted > 0 ? "—" : "0 B") : "—";
+  const clearedCaption = progress ? (progress.deleted > 0 ? `${progress.deleted.toLocaleString()} ${progress.deleted === 1 ? "photo" : "photos"} cleared` : "nothing deleted yet") : "cleared";
   return (
     <SafeAreaView className="flex-1 bg-background" edges={["top", "left", "right"]}>
       <ScrollView contentContainerClassName="mx-auto w-full max-w-lg px-[18px] pb-10 pt-2">
         <TabHeader title="Progress" />
-        {error && <Text accessibilityRole="alert" className="mt-3 text-body text-destructive">{snapshot ? "Couldn’t refresh progress. Showing your last saved statistics." : "Couldn’t load progress."}</Text>}
-        {error && <Button secondary onPress={() => void progressResource.refresh()}>Retry progress</Button>}
+        {error && <View className="mt-3 gap-2"><Text accessibilityRole="alert" className="text-body text-destructive">{snapshot ? "Couldn’t refresh progress. Showing your last saved statistics." : "Couldn’t load progress."}</Text><Button secondary onPress={() => void progressResource.refresh()}>Retry progress</Button></View>}
         {!!message && <Text accessibilityRole="alert" className="mt-3 text-body text-destructive">{message}</Text>}
-
         {snapshot && (refreshing || !app.libraryReliable) && <Text className="mt-2 text-caption text-muted-foreground">Showing saved progress while your library updates.</Text>}
-        <Sticker className="mt-4 gap-3.5 p-4">
+
+        {/* Three headline numbers */}
+        <View className="mt-4 flex-row items-stretch gap-2.5">
+          <HeadlineTile icon="Flame" value={streakValue} caption="day streak" label={`${streakValue} day streak`} />
+          <HeadlineTile icon="Compass" value={percentValue} caption="reviewed" onPress={() => router.push("/(tabs)/timeline")} label={`${percentValue} of your library reviewed`} />
+          <HeadlineTile icon="HardDrive" value={clearedValue} caption={clearedCaption} label={`${clearedValue} cleared`} />
+        </View>
+
+        {/* Discarded link — size always shown when any marked items had a known size */}
+        {!!snapshot?.stats.pending && (
+          <View className="mt-4 gap-2">
+            <WaitingPill
+              count={snapshot.stats.pending}
+              size={snapshot.stats.pendingBytes > 0 ? bytes(snapshot.stats.pendingBytes) : undefined}
+              onPress={() => router.push("/queue")}
+            />
+            <Text className="text-center text-caption text-muted-foreground">Marked items are not deleted yet. Confirm deletion from Discarded.</Text>
+          </View>
+        )}
+
+        {/* Streak calendar + Restore streak */}
+        <Sticker className="mt-5 gap-3.5 p-4">
           <View className="flex-row items-center gap-3">
             <View className="h-14 w-14 items-center justify-center rounded-full bg-sun"><Icon name="Flame" size={28} className="text-foreground" /></View>
             <View className="flex-1">
-              <Text className="text-h1 leading-8 text-foreground">{streak?.current ?? "…"} day streak</Text>
+              <Text className="text-h2 leading-8 text-foreground">{streak?.current ?? "…"} day streak</Text>
               <Text className="text-caption text-muted-foreground">Best {streak?.best ?? "…"} · {streak?.activeDays ?? "…"} active days</Text>
             </View>
           </View>
@@ -94,6 +124,7 @@ export default function Progress() {
               <Icon name="ChevronRight" size={18} className="text-foreground" />
             </Pressable>
           )}
+          {/* This week by default; History expands into a 5-week calendar. */}
           {history ? (
             <View className="gap-2">
               <View className="flex-row justify-between">{["M", "T", "W", "T", "F", "S", "S"].map((d, i) => <Text key={i} className="w-[30px] text-center text-[11px] text-muted-foreground">{d}</Text>)}</View>
@@ -114,31 +145,13 @@ export default function Progress() {
               {streak?.todayDone ? "Today counts. See you tomorrow." : "Explore 10 photos or videos, or confirm a deletion today."}
               {streak?.nextRestoreFrom && Date.now() < streak.nextRestoreFrom ? ` Next free restore from ${new Date(streak.nextRestoreFrom).toLocaleDateString()}.` : ""}
             </Text>
-            <Pressable accessibilityRole="button" onPress={() => setHistory((h) => !h)} className="min-h-11 justify-center pl-3">
+            <Pressable accessibilityRole="button" accessibilityLabel={history ? "Show this week only" : "Show the last five weeks"} onPress={() => setHistory(h => !h)} className="min-h-11 justify-center pl-3">
               <Text className="text-h5 text-tertiary">{history ? "This week" : "History"}</Text>
             </Pressable>
           </View>
         </Sticker>
 
-        <View className="mt-3.5 flex-row items-stretch gap-2.5">
-          <Sticker rotate={-1.2} className="flex-1 items-center gap-1.5 py-4" onPress={() => router.push("/library")} label={percent === undefined ? "Library progress" : `${percent}% of your library explored`}>
-            <ProgressRing percent={percent} size={96} />
-            <Text className="text-center text-h6 leading-4 text-foreground">of your library explored</Text>
-            <Text className="text-caption text-muted-foreground">{progress ? `${progress.accessibleExplored.toLocaleString()} of ${progress.accessible.toLocaleString()}` : error ? "Couldn’t load" : "…"}</Text>
-          </Sticker>
-          <View className="flex-1 gap-2.5">
-            <Sticker rotate={1.2} className="flex-1 justify-center">
-              <Text className="text-h2 text-foreground">{progress ? progress.explored.toLocaleString() : "—"}</Text>
-              <Text className="text-h6 leading-4 text-foreground">photos explored all-time</Text>
-            </Sticker>
-            <Sticker rotate={-0.8} className="flex-1 justify-center" onPress={() => router.push("/library")} label="Months fully explored. Open Months and Years">
-              <Text className="text-h2 text-foreground">{months ?? "—"}</Text>
-              <Text className="text-h6 leading-4 text-foreground">months fully explored</Text>
-            </Sticker>
-          </View>
-        </View>
-        {!!videos?.total && <Text className="mt-2.5 px-1 text-caption text-muted-foreground">Videos in accessible library: {videos.explored.toLocaleString()} of {videos.total.toLocaleString()} explored (kept separate from photo progress)</Text>}
-
+        {/* Badges */}
         <SectionTitle>Badges</SectionTitle>
         <Text className="-mt-2 mb-3 text-caption text-muted-foreground">{badges ? `${earnedCount} of ${BADGES.length} badge families earned` : "Loading badges…"}</Text>
         <View className="flex-row flex-wrap justify-between gap-y-2.5">
@@ -155,31 +168,24 @@ export default function Progress() {
                 <View className="mt-0.5 h-1.5 w-full overflow-hidden rounded-full bg-foreground/10">
                   <View className={`h-full rounded-full ${v.earned ? "bg-grass" : "bg-foreground/30"}`} style={{ width: `${Math.round(v.progress * 100)}%` }} />
                 </View>
-                <Text className="text-[11px] text-muted-foreground">{badges ? v.earned ? `Level ${ROMAN[v.tier]} earned` : "Locked" : "Loading…"}</Text>
                 <Text className="text-[11px] text-muted-foreground">{!badges ? "…" : v.maxed ? "Top tier" : `${v.value.toLocaleString()} / ${v.next?.toLocaleString()}`}</Text>
                 {needsVerification && <Text className="text-center text-[11px] text-muted-foreground">Needs verification</Text>}
-                {!v.maxed && badges && <Text className="text-[11px] text-muted-foreground">{`Toward level ${ROMAN[v.tier + 1]}`}</Text>}
               </Pressable>
             );
           })}
         </View>
 
-        <SectionTitle>Confirmed cleanup</SectionTitle>
-        <View style={lift} className="overflow-hidden rounded-[20px] bg-card">
-          <View className="flex-row px-4 py-4">
-            <View className="flex-1"><Text className="text-h2 text-foreground">{progress ? progress.deleted.toLocaleString() : "—"}</Text><Text className="text-caption text-muted-foreground">photos deleted</Text></View>
-            <View className="flex-1"><Text className="text-h2 text-foreground">{progress ? progress.deletedBytes > 0 ? bytes(progress.deletedBytes) : progress.deleted > 0 && progress.unknownSizes > 0 ? "Not estimated" : "0 B" : "—"}</Text><Text className="text-caption text-muted-foreground">confirmed deletions (estimate)</Text></View>
-          </View>
-        </View>
-        {!!snapshot?.stats.pending && <View className="mt-3.5 gap-2"><WaitingPill count={snapshot.stats.pending} onPress={() => router.push("/queue")} /><Text className="text-caption text-muted-foreground">{snapshot.stats.pendingBytes > 0 ? `${bytes(snapshot.stats.pendingBytes)} in marked items (known sizes only). Not deleted yet.` : "Marked items are not deleted yet. Confirm deletion to record cleanup."}</Text></View>}
-        <Text className="mt-2.5 px-1 text-caption leading-5 text-muted-foreground">
-          From known file sizes of deletions your phone confirmed{progress?.unknownSizes ? `; ${progress.unknownSizes} without a known size` : ""}. {Platform.OS === "ios" ? "iOS frees the space once Recently Deleted is emptied." : "Your phone may keep deleted items in its trash for a while."}
-        </Text>
-        <Pressable accessibilityRole="button" onPress={() => router.push("/library")} style={lift} className="mt-5 min-h-14 flex-row items-center gap-3 rounded-[18px] bg-card px-4 active:opacity-80">
-          <Icon name="CalendarDays" size={20} className="text-foreground" />
-          <Text className="flex-1 text-h4 text-foreground">Months & Years</Text>
-          <Icon name="ChevronRight" size={18} className="text-muted-foreground" />
-        </Pressable>
+        {/* Cleanup footnote — explains the headline number honestly */}
+        {progress && progress.deleted > 0 && (
+          <Text className="mt-4 px-1 text-caption leading-5 text-muted-foreground">
+            Cleared from known file sizes of deletions your phone confirmed{progress.unknownSizes ? `; ${progress.unknownSizes} without a known size` : ""}. {Platform.OS === "ios" ? "iOS frees the space once Recently Deleted is emptied." : "Your phone may keep deleted items in its trash for a while."}
+          </Text>
+        )}
+
+        {/* Take a break — Pit Stops live here as a reward */}
+        <SectionTitle>Take a break</SectionTitle>
+        <Text className="mb-3 text-body leading-6 text-muted-foreground">A playful pause from cleanup. Pit Stops reuse your photos without changing anything.</Text>
+        <PitStopMenu compact />
       </ScrollView>
 
       {detail && <BadgeDetail key={detail.family} definition={detail} badges={badges} onClose={() => setDetail(undefined)} />}

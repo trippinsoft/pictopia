@@ -25,16 +25,16 @@ async function completeSegment(store) {
   return store.change({type:'finish',expectedRevision:s.revision,endId:s.ids.at(-1)});
 }
 
-test('25-photo Yearbook continues as 18 + 7 without repeats, retains its ID, and awards milestones once', async () => {
+test('25-photo Yearbook continues as 20 + 5 without repeats, retains its ID, and awards milestones once', async () => {
   const f = await fixture();
   try {
     const a = await f.adventureStore.choose({kind:'year',year:'2020'},11);
     await f.adventureStore.open(a.id);
     const store = f.explore.exploreStoreFor(f.adventureSessionKey(a.id));
     const first = await completeSegment(store);
-    assert.equal(first.ids.length,18);
+    assert.equal(first.ids.length,20);
     let status = await f.adventureStore.segmentStatus(a.id);
-    assert.deepEqual([status.explored,status.total,status.nextCount,status.milestone,status.complete],[18,25,7,50,false]);
+    assert.deepEqual([status.explored,status.total,status.nextCount,status.milestone,status.complete],[20,25,5,75,false]);
     await f.adventureStore.finish(a.id);
     assert.equal((await f.adventureStore.segmentStatus(a.id)).milestone,undefined);
     assert.equal((await f.adventureStore.get(a.id)).finishedAt,undefined);
@@ -42,7 +42,7 @@ test('25-photo Yearbook continues as 18 + 7 without repeats, retains its ID, and
     const next = await f.adventureStore.choose({kind:'year',year:'2020'},99);
     assert.equal(next.id,a.id);
     const second = await store.load();
-    assert.equal(second.ids.length,7);
+    assert.equal(second.ids.length,5);
     assert.ok(second.ids.every(id=>!first.ids.includes(id)));
     assert.deepEqual((await f.app.storage.getValue(next.segmentKeys[0])).ids,first.ids);
     await completeSegment(store);

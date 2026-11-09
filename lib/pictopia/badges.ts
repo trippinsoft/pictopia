@@ -14,10 +14,11 @@ export const BADGES: readonly BadgeDefinition[] = [
   { family: "declutterer", name: "Declutterer", unit: (v) => `${n(v)} photos deleted`, tiers: [10, 50, 100, 500, 1000, 5000] },
   { family: "months", name: "Month Finisher", unit: (v) => `${n(v)} ${v === 1 ? "month" : "months"} fully explored`, tiers: [1, 6, 12, 36, 120] },
   { family: "years", name: "Time Traveller", unit: (v) => `${n(v)} ${v === 1 ? "year" : "years"} fully explored`, tiers: [1, 3, 5, 10, 20] },
-  { family: "decades", name: "Across the Decades", unit: (v) => `${n(v)} decades with a full year`, tiers: [2, 3, 4] },
   { family: "adventurer", name: "Adventurer", unit: (v) => `${n(v)} ${v === 1 ? "adventure" : "adventures"} finished`, tiers: [1, 5, 10, 25, 50, 100] },
   { family: "streak", name: "Streak", unit: (v) => `${n(v)}-day best streak`, tiers: [3, 7, 14, 30, 50, 100, 200, 365] },
 ];
+// "decades" (Across the Decades) is retired from the visible six families so Progress fits a
+// 3×2 grid. The type and legacy saved tiers are preserved so older installs don't lose data.
 export type BadgeValues = Record<BadgeFamily, number>;
 export interface EarnedBadge { tier: number; earnedAt: number; value: number }
 export interface BadgeState { version: 1; earned: Partial<Record<BadgeFamily, EarnedBadge>>; backfilled: boolean; verification?: 2; legacy?: Partial<Record<BadgeFamily, EarnedBadge>> }

@@ -48,14 +48,17 @@ export function AlbumCover({ album, revision = 0 }: { album: AlbumSummary; revis
   </View>;
 }
 
-export function AlbumCard({ album, percent, revision, progressLoading = false }: { album: AlbumSummary; percent?: number; revision?: number; progressLoading?: boolean }) {
+export function AlbumCard({ album, percent, revision, progressLoading = false, locked = false }: { album: AlbumSummary; percent?: number; revision?: number; progressLoading?: boolean; locked?: boolean }) {
   const lift = useLift();
-  return <Pressable accessibilityRole="button" accessibilityLabel={`${album.title}, ${plural(album.count, "item")}${percent !== undefined ? `, ${percent}% explored` : ""}`} onPress={() => router.push({ pathname: "/collection-review", params: { scope: `album:${album.id}`, title: album.title } })} style={lift} className="w-[48.5%] self-start gap-1.5 rounded-[16px] bg-card p-1.5 pb-3 active:opacity-80">
+  const open = () => router.push(locked ? "/paywall" : { pathname: "/collection-review", params: { scope: `album:${album.id}`, title: album.title } });
+  return <Pressable accessibilityRole="button" accessibilityLabel={`${album.title}, ${plural(album.count, "item")}${percent !== undefined ? `, ${percent}% explored` : ""}${locked ? ", Pictopia+" : ""}`} onPress={open} style={lift} className="w-[48.5%] self-start gap-1.5 rounded-[16px] bg-card p-1.5 pb-3 active:opacity-80">
     <AlbumCover album={album} revision={revision} />
-    <View className="min-h-10 justify-center px-1">
-      <Text numberOfLines={2} className="text-h5 text-foreground">{album.title}</Text>
+    <View className="min-h-10 flex-row items-start justify-between gap-1 px-1 pt-1">
+      <Text numberOfLines={2} className="shrink text-h5 text-foreground">{album.title}</Text>
+      {locked && <View className="rounded-md bg-primary px-1.5 py-0.5"><Text className="text-[11px] text-sun" style={plusTagText}>PLUS</Text></View>}
     </View>
     <Text className="px-1 text-caption text-muted-foreground">{plural(album.count, "item")}</Text>
     <Text className="px-1 text-caption text-muted-foreground">{percent !== undefined ? `${percent}% explored` : progressLoading ? "Loading progress…" : album.count === 0 ? "No accessible items" : "Progress unavailable"}</Text>
   </Pressable>;
 }
+const plusTagText = { fontFamily: "Inter_700Bold" };

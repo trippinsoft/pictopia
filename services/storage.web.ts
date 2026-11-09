@@ -154,7 +154,8 @@ export const storage: Storage = {
         s.knownSizes++;
         s.knownBytes += m.size;
       }
-      if (m.decision === "delete") {
+      // Exclude already-deleted records so pending matches the Discarded queue.
+      if (m.decision === "delete" && !m.deletedAt) {
         s.pending++;
         s.pendingBytes += m.size ?? 0;
       }

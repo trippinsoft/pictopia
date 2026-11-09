@@ -139,7 +139,9 @@ export const storage: Storage = {
   },
   async stats() {
     const r = await db.getFirstAsync<Stats>(
-      `SELECT COUNT(*) total, COALESCE(SUM(type='photo'),0) photos, COALESCE(SUM(type='video'),0) videos, COALESCE(SUM(decision IS NOT NULL),0) reviewed, COALESCE(SUM(decision='delete'),0) pending, COALESCE(SUM(size),0) knownBytes,COUNT(size) knownSizes,COALESCE(SUM(CASE WHEN decision='delete' THEN size ELSE 0 END),0) pendingBytes FROM media WHERE active=1`,
+      // pending/pendingBytes exclude already-deleted records (deletedAt set) so the count
+      // matches the Discarded queue — a confirmed deletion must stop counting as "to delete".
+      `SELECT COUNT(*) total, COALESCE(SUM(type='photo'),0) photos, COALESCE(SUM(type='video'),0) videos, COALESCE(SUM(decision IS NOT NULL),0) reviewed, COALESCE(SUM(decision='delete' AND json_extract(data,'$.deletedAt') IS NULL),0) pending, COALESCE(SUM(size),0) knownBytes,COUNT(size) knownSizes,COALESCE(SUM(CASE WHEN decision='delete' AND json_extract(data,'$.deletedAt') IS NULL THEN size ELSE 0 END),0) pendingBytes FROM media WHERE active=1`,
     );
     return r!;
   },

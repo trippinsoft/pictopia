@@ -58,7 +58,7 @@ test('review hook exposes a mark before storage, hydrates one snapshot, and refr
   h.unmount();release();await writing;assert.equal(saved.records.a.queued,true);assert.ok(refreshes>=1);
 });
 
-test('full SQLite journey: mark/back/Restore, exit at 15 then 8, resume, complete 18 + 7 without deleting',async()=>{
+test('full SQLite journey: mark/back/Restore, exit at 15 then 8, resume, complete 20 + 5 without deleting',async()=>{
   const db=new DatabaseSync(':memory:');
   const rows=Array.from({length:25},(_,i)=>{const created=new Date(2020,0,i+1,12).getTime();return media(`p${i}`,{created,modified:created,month:'2020-01',day:`01-${String(i+1).padStart(2,'0')}`});});
   const p=platform({library:rows.map(m=>m.id)});let app=await boot(db,p);await app.storage.put(rows);
@@ -81,13 +81,13 @@ test('full SQLite journey: mark/back/Restore, exit at 15 then 8, resume, complet
   controller.flushPosition(14,ids);await tail;assert.equal((await store.load()).activeId,ids[14]);
   controller.flushPosition(7,ids);await tail;
   app=await boot(db,p);services=makeLoader({...p.mocks,'./repository':app,'./media':{mediaService:app.mediaService}});store=services('services/explore.ts').exploreStoreFor(adventureSessionKey(a.id));
-  assert.equal((await store.load()).activeId,ids[7]);assert.equal((await store.load()).ids.length,18);
+  assert.equal((await store.load()).activeId,ids[7]);assert.equal((await store.load()).ids.length,20);
   assert.equal((await adventureStore.resumable()).find(slot=>slot.adventure.id===a.id).session.activeId,ids[7], 'Home reads the exact same saved cursor');
   for(const id of ids)await store.change({type:'seen',id,displayedAt:Date.now()});
   await store.change(c=>({type:'discard',id:ids[0],revision:c.revision,direction:'right'}));
   state.load(await store.load());controller.jump(ids.at(-1),ids);await tail;controller.next(ids);await tail;assert.equal(endCalls,1,'crossing the final boundary commits directly to the single completion destination');
-  await adventureStore.finish(a.id);assert.equal((await adventureStore.segmentStatus(a.id)).nextCount,7);
-  await adventureStore.continue(a.id);const second=await store.load();assert.equal(second.ids.length,7);assert.ok(second.ids.every(id=>!ids.includes(id)));
+  await adventureStore.finish(a.id);assert.equal((await adventureStore.segmentStatus(a.id)).nextCount,5);
+  await adventureStore.continue(a.id);const second=await store.load();assert.equal(second.ids.length,5);assert.ok(second.ids.every(id=>!ids.includes(id)));
   for(const id of second.ids)await store.change({type:'seen',id,displayedAt:Date.now()});
   await store.change({type:'finish',boundary:{startedAt:second.startedAt,endpoint:second.ids.at(-1)}});
   await adventureStore.finish(a.id);await adventureStore.finish(a.id);
@@ -124,9 +124,11 @@ test('a finished set with nothing discarded offers Done, and Back to photos',asy
   try{h.render();await tick();const tree=h.render();assert.deepEqual(findAll(tree,'Button').map(n=>n.props.children),['Done']);assert.match(textOf(tree),/100% reviewed/);assert.match(textOf(tree),/20 photos kept/);assert.match(textOf(tree),/Back to photos/);}finally{h.unmount();}
 });
 
-test('selection screens have no transient recap producers or hosts; Explore permanently exposes just the two Pit Stops',()=>{
+test('selection screens have no transient recap producers or hosts; Progress permanently exposes just the two Pit Stops',()=>{
   for(const file of ['components/pictopia/adventure-review.tsx','components/pictopia/navigation-header.tsx','components/pictopia/playful.tsx','app/on-this-day.tsx'])assert.doesNotMatch(fs.readFileSync(file,'utf8'),/showRecap|RecapHost/);
-  const explore=fs.readFileSync('app/(tabs)/explore.tsx','utf8');assert.match(explore,/<SectionTitle>Pit Stops<\/SectionTitle>/);assert.match(explore,/<PitStopMenu compact/);
+  // Pit Stops moved from Explore to Progress as a "Take a break" reward (audit area 7).
+  const progress=fs.readFileSync('app/(tabs)/progress.tsx','utf8');assert.match(progress,/<SectionTitle>Take a break<\/SectionTitle>/);assert.match(progress,/<PitStopMenu compact/);
+  const explore=fs.readFileSync('app/(tabs)/explore.tsx','utf8');assert.doesNotMatch(explore,/PitStopMenu/);
   assert.deepEqual(load('lib/pictopia/pitstops.ts').ACTIVE_PIT_STOPS,['memoryMatch','whichFirst']);
   for(const file of ['app/pit-stop.tsx','components/pictopia/memory-match.tsx'])assert.doesNotMatch(fs.readFileSync(file,'utf8'),/adventureStore|useAllowance|usePhotoEncounter|Review these photos/);
   assert.match(fs.readFileSync('components/pictopia/adventure-review.tsx','utf8'),/onEnd=\{finish\}/);

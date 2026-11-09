@@ -5,6 +5,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
 import Animated, { cancelAnimation, FadeIn, ReduceMotion, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from "react-native-reanimated";
 import { Button, Icon, Loading, Text } from "./ui";
+import { Illustration } from "./illustration";
 import { MemoryCard } from "./memory-card";
 import { usePictopia } from "./provider";
 import { cardPhoto, memoryDeck } from "@/lib/pictopia/pitstops";
@@ -75,7 +76,7 @@ export function MemoryMatchScreen() {
         <MemoryHeader onExit={exit} />
         {loading ? <Loading /> : <ScrollView contentContainerStyle={styles.center}>
           <View className="gap-6 px-4 py-6">
-            <View className="self-center rounded-2xl bg-accent p-6"><Icon name="Aperture" size={36} strokeWidth={1.25} className="text-primary" /></View>
+            <View className="h-32 w-40 self-center overflow-hidden rounded-2xl"><Illustration name="memoryMatch" /></View>
             <View className="gap-2"><Text className="text-center text-h2 text-foreground">A little moment to remember.</Text><Text className="text-center text-body text-muted-foreground">Turn two cards. Find the same photograph.</Text></View>
             {capacity === undefined && !error ? <Loading /> : <>
               <View className="flex-row self-center rounded-2xl bg-secondary p-1">

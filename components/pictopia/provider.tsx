@@ -69,6 +69,9 @@ interface Context {
   deleteQueue: (items: Media[]) => Promise<DeletionResult>;
 }
 const Ctx = createContext<Context | null>(null);
+/** Minimum gap between blind foreground re-syncs. Real library changes still sync instantly
+ * through the media change listener; this only throttles the belt-and-suspenders resync. */
+const FOREGROUND_RESYNC_MS = 5 * 60 * 1000;
 export function PictopiaProvider({ children }: { children: React.ReactNode }) {
   const [libraryReliable, setLibraryReliable] = useState(false);
   const [ready, setReady] = useState(false),
@@ -87,7 +90,13 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
   const syncRef = useRef<AbortController | null>(null),
     scanRef = useRef<AbortController | null>(null),
     alive = useRef(true),
-    deletingRef = useRef(false);
+    deletingRef = useRef(false),
+    // True once a full sync has succeeded (or on web, where data loads on connect). After
+    // that, background re-syncs keep the library "reliable" so screens never blank to a
+    // loader — they keep showing current data and update in place when the refresh lands.
+    syncedRef = useRef(Platform.OS === "web"),
+    // Last successful sync time, used to throttle the blind re-sync on every foreground.
+    lastSyncAtRef = useRef(0);
   const refresh = useCallback(async () => {
     const [s, m, se] = await Promise.all([
       storage.stats(),
@@ -123,7 +132,10 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
   async function sync(request: boolean) {
     if (syncRef.current || deletingRef.current) return false;
     setBusy(true);
-    setLibraryReliable(false);
+    // Only blank the UI for the very first sync, when there is genuinely no data to show.
+    // Later background syncs keep current data on screen and update it when they finish.
+    const firstSync = !syncedRef.current;
+    if (firstSync) setLibraryReliable(false);
     setError(null);
     const controller = new AbortController();
     syncRef.current = controller;
@@ -140,10 +152,17 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
       );
       if (Platform.OS !== "web" && !controller.signal.aborted) await repository.reconcile(epoch);
       await refresh();
-      setLibraryReliable(!controller.signal.aborted);
+      if (!controller.signal.aborted) {
+        syncedRef.current = true;
+        lastSyncAtRef.current = Date.now();
+        setLibraryReliable(true);
+      } else if (firstSync) {
+        setLibraryReliable(false);
+      }
       return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Your library could not be loaded. Try again.");
+      if (firstSync) setLibraryReliable(false);
       return false;
     } finally {
       syncRef.current = null;
@@ -199,7 +218,13 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
           .refresh()
           .then(saveEnt)
           .catch(() => {});
-        if (Platform.OS !== "web") void recover().then(() => sync(false));
+        // Always finish any interrupted deletion, but don't re-scan the whole library on
+        // every single return to the app — a quick screen off/on shouldn't cost a full
+        // sync. Real photo changes still sync immediately via the media change listener.
+        if (Platform.OS !== "web")
+          void recover().then(() => {
+            if (Date.now() - lastSyncAtRef.current > FOREGROUND_RESYNC_MS) void sync(false);
+          });
       }
     });
     const timer = setInterval(() => setClock(Date.now()), 30000);

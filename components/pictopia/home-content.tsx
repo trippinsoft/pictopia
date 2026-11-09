@@ -5,10 +5,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { HomeTip } from "./home-tip";
 import { AdventureCover } from "./adventure-art";
 import { Button, Icon, Loading, Text } from "./ui";
-import { OrBadge, Postcard, Sticker, TabHeader, Ticket, WaitingPill, useLift } from "./playful";
+import { OrBadge, Postcard, Sticker, TabHeader, WaitingPill, useLift } from "./playful";
 import type { AdventureKind } from "@/lib/pictopia/adventures";
 import type { StreakState } from "@/lib/pictopia/daily";
-import type { Media } from "@/lib/pictopia/types";
 import { adventureName } from "@/lib/pictopia/catalog";
 
 export interface HomeFeature {
@@ -17,33 +16,20 @@ export interface HomeFeature {
   hint: string;
   ids: string[];
 }
-export interface HomeResume {
-  title: string;
-  detail: string;
-  kind?: AdventureKind;
-  media?: Media;
-}
 export interface HomeContentProps {
   percent?: number;
-  explored?: { done: number; total: number };
   streak?: StreakState;
   pending: number;
+  pendingSize?: string;
   ready: boolean;
   hasPhotos: boolean;
   busy: boolean;
   connecting: boolean;
-  resume?: HomeResume;
   features?: HomeFeature[];
   error?: string;
   adventureError?: string;
   onConnect(): void;
-  onResume(): void;
   onAdventure(id: string): void;
-  onShuffle(): void;
-  /** A gentle note, e.g. when a shuffle found nothing new. */
-  notice?: string;
-  /** Only an in-progress shuffle or opening holds the shuffle button, never a library sync. */
-  shuffling?: boolean;
   onStreak(): void;
   onProgress(): void;
   onPending(): void;
@@ -55,7 +41,7 @@ function StreakSticker({ streak, onPress }: { streak?: StreakState; onPress(): v
   const count = streak?.current ?? 0;
   const label = streak ? `${count}-day streak${streak.todayDone ? ", today done" : ", today not yet explored"}` : "Streak";
   return (
-    <Sticker rotate={-1.5} onPress={onPress} label={label} className="flex-[1.35] gap-2">
+    <Sticker rotate={-1.5} onPress={onPress} label={label} className="flex-1 gap-2">
       <View className="flex-row items-center gap-1.5">
         <Icon name="Flame" size={20} className={streak?.todayDone ? "text-sun" : "text-muted-foreground"} fill={streak?.todayDone ? "currentColor" : "none"} />
         <Text className="text-h2 text-foreground">{count}</Text>
@@ -81,9 +67,9 @@ function StreakSticker({ streak, onPress }: { streak?: StreakState; onPress(): v
 
 function ProgressSticker({ percent, onPress }: { percent?: number; onPress(): void }) {
   return (
-    <Sticker rotate={1.5} onPress={onPress} label={percent === undefined ? "Library progress" : `${percent}% of your library explored`} className="flex-1 justify-between gap-1.5">
+    <Sticker rotate={1.5} onPress={onPress} label={percent === undefined ? "Library progress" : `${percent}% of your library reviewed`} className="flex-1 justify-between gap-1.5">
       <Text className="text-h2 text-foreground">{percent === undefined ? "—" : `${percent}%`}</Text>
-      <Text className="text-h6 leading-4 text-foreground">of your library explored</Text>
+      <Text className="text-h6 leading-4 text-foreground">of your library reviewed</Text>
       <View className="h-2 overflow-hidden rounded-full bg-foreground/10">
         <View className="h-full rounded-full bg-grass" style={{ width: `${Math.min(100, percent ?? 0)}%` }} />
       </View>
@@ -109,9 +95,10 @@ function RestoreCard({ streak, onPress }: { streak: StreakState; onPress(): void
 
 /** Presentation only. Existing stores and review routes own every action. */
 export function HomeContent(props: HomeContentProps) {
-  const { ready, hasPhotos, busy, connecting, resume, features, error, adventureError, streak } = props;
+  const { ready, hasPhotos, connecting, features, error, adventureError, streak } = props;
   const [viewport, setViewport] = useState(0), [intrinsic, setIntrinsic] = useState(0);
-  const spacing = homeSpacing(Math.max(0, viewport - 8), intrinsic, !!resume, props.pending > 0);
+  const spacing = homeSpacing(Math.max(0, viewport - 8), intrinsic, false, props.pending > 0);
+  const [pick, alt] = features ?? [];
   return (
     <SafeAreaView className="flex-1 bg-background" edges={["top", "left", "right"]}>
       <ScrollView onLayout={event => setViewport(event.nativeEvent.layout.height)} contentContainerClassName="mx-auto w-full max-w-lg grow px-[18px] pt-2">
@@ -143,24 +130,33 @@ export function HomeContent(props: HomeContentProps) {
               <ProgressSticker percent={props.percent} onPress={props.onProgress} />
             </View>
             {streak?.restore && <RestoreCard streak={streak} onPress={props.onStreak} />}
-            {resume && (
-              <View style={{ marginTop: spacing.resume }}>
-                <Ticket kind={resume.kind} media={resume.media} eyebrow={busy ? "Opening…" : resume.detail} title={resume.title} onPress={props.onResume} />
-              </View>
-            )}
-            {/* Measured gaps tighten only when the full page would otherwise overflow. */}
             <View style={{ height: spacing.adventure }} />
-            <View style={{ marginBottom: spacing.postcards }} className="flex-row items-center justify-between">
+            <View style={{ marginBottom: spacing.postcards }}>
               <Text accessibilityRole="header" className="text-display text-foreground">Where to today?</Text>
-              <Pressable accessibilityRole="button" accessibilityLabel="Shuffle two more adventures" accessibilityState={{ busy: props.shuffling }} disabled={props.shuffling} onPress={props.onShuffle} className={`h-11 w-11 items-center justify-center rounded-full bg-card active:opacity-70 ${props.shuffling ? "opacity-50" : ""}`}>
-                <Icon name="Shuffle" size={18} className="text-foreground" />
-              </Pressable>
             </View>
             {features?.length ? (
               <View className="relative flex-row items-start gap-2.5">
-                <Postcard kind={features[0].kind} ids={features[0].ids} title={adventureName(features[0].kind)} hint={features[0].hint} rotate={-3} onPress={() => props.onAdventure(features[0].id)} />
-                {features[1] && <OrBadge />}
-                {features[1] && <Postcard kind={features[1].kind} ids={features[1].ids} title={adventureName(features[1].kind)} hint={features[1].hint} rotate={3} offset={10} onPress={() => props.onAdventure(features[1].id)} />}
+                <Postcard
+                  kind={pick.kind}
+                  ids={pick.ids}
+                  title={adventureName(pick.kind)}
+                  hint={pick.hint}
+                  rotate={-3}
+                  variant="pick"
+                  onPress={() => props.onAdventure(pick.id)}
+                />
+                {alt && <OrBadge />}
+                {alt && (
+                  <Postcard
+                    kind={alt.kind}
+                    ids={alt.ids}
+                    title={adventureName(alt.kind)}
+                    hint={alt.hint}
+                    rotate={3}
+                    variant="alt"
+                    onPress={() => props.onAdventure(alt.id)}
+                  />
+                )}
               </View>
             ) : features ? (
               <Text className="text-body leading-6 text-muted-foreground">You’re caught up on these adventures. Explore has more ways in.</Text>
@@ -176,10 +172,9 @@ export function HomeContent(props: HomeContentProps) {
                 <Text className="text-body text-destructive">{adventureError} Tap to retry.</Text>
               </Pressable>
             )}
-            {!!props.notice && <Text accessibilityLiveRegion="polite" className="mt-3 text-center text-body text-muted-foreground">{props.notice}</Text>}
             {!!error && <Text accessibilityRole="alert" className="mt-3 text-body text-destructive">{error}</Text>}
             <View style={{ paddingTop: spacing.note }}><HomeTip spacing={0} /></View>
-            {props.pending > 0 && <><View style={{ height: spacing.pending }} /><WaitingPill count={props.pending} onPress={props.onPending} /></>}
+            {props.pending > 0 && <><View style={{ height: spacing.pending }} /><WaitingPill count={props.pending} size={props.pendingSize} onPress={props.onPending} /></>}
           </>
         )}
         </View>

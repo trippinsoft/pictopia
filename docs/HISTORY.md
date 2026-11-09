@@ -125,3 +125,5 @@ The review interaction uses the original 1.0.21 live feed: marked photos leave s
 - Subscriptions follow the leaders: weekly + yearly with a 7-day trial; dark mode deferred past 1.0.
 - Discarded photos stay in the review feed, faded with Restore; the review counts 'scrolled past' as reviewed; adventures are whole sets (On This Day = whole date, Surprise Me 20, Screenshot Sweep 50).
 - Illustration style: Storybook landscape (flat layered scenes); Home keeps tilted postcards with a larger 'Pictopia's pick' card plus one alternative.
+- Phase 2 remodel: four-tab shell Home | Timeline | Explore | Progress; Home drops shuffle and the Continue ticket, Discarded pill now shows size, tip is 'Did you know?'; Timeline (years → months) replaces the old Months & Years index; Pit Stops move to Progress as Take a break.
+- Finishing a Home adventure always retires it and offers a fresh one (completing the on-screen set, not exhausting a whole year); 'Keep going' lives only on the completion screen. Restore in the reviewer flies the photo back out of the trash.

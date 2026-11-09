@@ -1,10 +1,11 @@
 import { useEffect } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withSequence, withTiming } from "react-native-reanimated";
-import { Icon } from "./ui";
+import Svg, { Circle, G, Path, Rect } from "react-native-svg";
 import { MediaImage, type MediaSettled } from "./media-image";
 import type { Media } from "@/lib/pictopia/types";
 import { MEMORY_FLIP_MS } from "@/lib/pictopia/memory-match";
+import { lightArt } from "@/theming/illustration";
 
 export function MemoryCard({ index, photoNumber, photo, uri, open, matched, celebrating, disabled, reduced, active, width, height, onPress, onSettled }: {
   index: number; photoNumber: number; photo?: Media; uri?: string; open: boolean; matched: boolean; celebrating: boolean;
@@ -32,9 +33,7 @@ export function MemoryCard({ index, photoNumber, photo, uri, open, matched, cele
   return <Pressable accessibilityRole="button" accessibilityLabel={`Card ${index + 1}, ${matched ? `photo ${photoNumber}, matched` : open ? `photo ${photoNumber}, face up` : "face down"}`}
     accessibilityState={{ disabled, selected: open }} disabled={disabled} onPress={onPress} style={{ width, height }}>
     <Animated.View pointerEvents="none" style={[styles.fill, outer]}>
-      <Animated.View style={[styles.face, back]}><View className="flex-1 items-center justify-center rounded-2xl bg-accent">
-        <View className="opacity-60"><Icon name="Aperture" size={25} strokeWidth={1.25} className="text-primary" /></View>
-      </View></Animated.View>
+      <Animated.View style={[styles.face, back]}><View className="flex-1 overflow-hidden rounded-2xl"><CardBack /></View></Animated.View>
       <Animated.View style={[styles.face, front]}><View className="flex-1 overflow-hidden rounded-2xl bg-secondary">
         <MediaImage media={uri ? undefined : photo} uri={uri} className="h-full w-full" fit="contain" onSettled={onSettled} />
         <Animated.View style={[styles.fill, glow]}><View className="flex-1 rounded-2xl border-2 border-primary" /></Animated.View>
@@ -43,3 +42,29 @@ export function MemoryCard({ index, photoNumber, photo, uri, open, matched, cele
   </Pressable>;
 }
 const styles = StyleSheet.create({ fill: { ...StyleSheet.absoluteFillObject }, face: { ...StyleSheet.absoluteFillObject, backfaceVisibility: "hidden" } });
+
+/** A Pictopia "postcard stamp" card back: warm paper with a dashed inner frame and a
+ * centered postmark emblem. A pattern, not a landscape — so a whole deck of face-down
+ * cards reads as a clean grid rather than twelve repeated scenes. */
+function CardBack() {
+  const C = lightArt;
+  return (
+    <Svg width="100%" height="100%" viewBox="0 0 80 100" preserveAspectRatio="xMidYMid meet" aria-hidden>
+      {/* Warm paper with a faint ruled texture, like the back of a postcard. */}
+      <Rect width="80" height="100" fill={C.sky} />
+      <Path d="M8 32 H72 M8 44 H72 M8 56 H56 M8 68 H72 M8 80 H60" stroke={C.sandDeep} strokeWidth="0.6" opacity="0.18" strokeLinecap="round" />
+      {/* Dashed inner frame, inset from the edges. */}
+      <Rect x="6" y="6" width="68" height="88" rx="6" fill="none" stroke={C.ink} strokeWidth="0.8" strokeDasharray="3 3" opacity="0.35" />
+      {/* Postmark circle with the little sun + hill monogram, tilted like a real stamp. */}
+      <G transform="translate(40 50) rotate(-8)">
+        <Circle cx="0" cy="0" r="20" fill="none" stroke={C.terracotta} strokeWidth="1.2" opacity="0.65" />
+        <Circle cx="0" cy="0" r="16" fill={C.paper} />
+        <Circle cx="4" cy="-5" r="4.5" fill={C.sun} />
+        <Path d="M-11 6 Q-4 -1 3 4 T13 6 V13 H-11Z" fill={C.moss} />
+        <Path d="M-11 9 Q-2 4 6 8 T13 9 V13 H-11Z" fill={C.tealDeep} opacity="0.85" />
+      </G>
+      {/* Tiny tomato dot in the lower right, like the pictopia wordmark's period. */}
+      <Circle cx="60" cy="80" r="1.8" fill={C.terracotta} />
+    </Svg>
+  );
+}

@@ -107,33 +107,46 @@ export function Stamp({ children, tone = "sun" }: { children: string; tone?: "su
   );
 }
 
-/** A Home choice: a white-bordered postcard with the adventure's own artwork, slightly tilted. */
-export function Postcard({ kind, ids, title, hint, rotate, onPress, offset = 0 }: {
+/** A Home choice: a white-bordered postcard with the adventure's own artwork, slightly tilted.
+ * The `pick` variant is larger and carries the "Pictopia's pick" ribbon; `alt` is smaller and
+ * sits lower so the two sit together like two postcards tossed on a table. */
+export function Postcard({ kind, ids, title, hint, rotate, onPress, variant = "alt", pickLabel }: {
   kind: AdventureKind;
   ids?: string[];
   title: string;
   hint: string;
   rotate: number;
   onPress: () => void;
-  offset?: number;
+  variant?: "pick" | "alt";
+  pickLabel?: string;
 }) {
+  const isPick = variant === "pick";
+  const label = pickLabel ?? "Pictopia’s pick";
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${title}. ${hint}`}
+      accessibilityLabel={isPick ? `${label}: ${title}. ${hint}` : `Or try ${title}. ${hint}`}
       onPress={onPress}
-      style={[styles.postcard, { transform: [{ rotate: `${rotate}deg` }], marginTop: offset }]}
-      className="flex-1 gap-2 rounded-[22px] bg-card p-2 pb-3.5 active:opacity-90"
+      style={[styles.postcard, isPick ? styles.postcardPick : styles.postcardAlt, { transform: [{ rotate: `${rotate}deg` }] }]}
+      className="gap-1.5 rounded-[22px] bg-card p-2 pb-3 active:opacity-90"
     >
-      <View className="h-[178px] overflow-hidden rounded-[15px] bg-muted">
+      <View style={isPick ? styles.artPick : styles.artAlt} className="overflow-hidden rounded-[15px] bg-muted">
         <AdventureCover kind={kind} ids={ids} />
       </View>
-      <Text numberOfLines={2} className="px-1 text-h3 leading-[22px] text-foreground">{title}</Text>
+      {isPick && (
+        <View className="-mt-0.5 ml-1 self-start rounded-md bg-sun px-2 py-0.5">
+          <Text className="text-[11px] text-foreground" style={styles.stampText}>{label.toUpperCase()}</Text>
+        </View>
+      )}
+      <Text numberOfLines={2} className={`${isPick ? "text-h3" : "text-h4"} px-1 leading-[22px] text-foreground`}>{title}</Text>
       <Text numberOfLines={2} className="px-1 text-caption leading-[17px] text-muted-foreground">{hint}</Text>
     </Pressable>
   );
 }
 
+/** The tomato "or" badge floats between the two postcards, overlapping both. The left offset
+ * matches where the pick card's right edge sits (its flex is 1.3 / 2.2 ≈ 59%). The badge's
+ * z-index sits above the pick card, which sits above the alt. */
 export function OrBadge() {
   const { theme } = useTheme();
   return (
@@ -142,7 +155,7 @@ export function OrBadge() {
       importantForAccessibility="no-hide-descendants"
       pointerEvents="none"
       style={[styles.or, { boxShadow: `0px 0px 0px 4px ${theme.colors.background}` } as ViewStyle]}
-      className="absolute left-1/2 top-[84px] z-10 h-11 w-11 items-center justify-center rounded-full bg-tomato"
+      className="absolute top-[94px] z-20 h-11 w-11 items-center justify-center rounded-full bg-tomato"
     >
       <Text className="text-h4 text-white">or</Text>
     </View>
@@ -175,13 +188,15 @@ export function Ticket({ kind, media, eyebrow, title, onPress }: {
   );
 }
 
-/** Pending deletions, visible but calm: a small white pill, never a red tile. */
-export function WaitingPill({ count, onPress }: { count: number; onPress: () => void }) {
+/** Pending deletions, visible but calm: a small white pill, never a red tile. Shows the
+ * running total size when any marked items had a known file size, like Picnic. */
+export function WaitingPill({ count, size, onPress }: { count: number; size?: string; onPress: () => void }) {
   const lift = useLift();
+  const label = size ? `Discarded · ${count} to delete · ${size}` : `Discarded · ${count} to delete`;
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Discarded: ${count} to delete. Review`}
+      accessibilityLabel={`${label}. Review`}
       onPress={onPress}
       style={lift}
       className="h-11 flex-row items-center gap-2 self-center rounded-full bg-card pl-2.5 pr-4 active:opacity-80"
@@ -189,7 +204,7 @@ export function WaitingPill({ count, onPress }: { count: number; onPress: () => 
       <View className="h-7 w-7 items-center justify-center rounded-full bg-tomato/15">
         <Icon name="Trash2" size={15} className="text-tertiary" />
       </View>
-      <Text className="text-h5 text-foreground">{`Discarded · ${count} to delete`}</Text>
+      <Text className="text-h5 text-foreground">{label}</Text>
       <Icon name="ChevronRight" size={16} className="text-muted-foreground" />
     </Pressable>
   );
@@ -282,7 +297,16 @@ export function InfoSheet({ entry, note, onClose }: { entry?: CatalogEntry; note
 
 const styles = StyleSheet.create({
   postcard: { boxShadow: "0px 10px 24px rgba(27,35,80,0.16)" } as ViewStyle,
-  or: { marginLeft: -22 },
+  // Pick sits on top of alt with a tiny overlap so the two read as a stack of postcards
+  // tossed on a table, not two separate tiles. The overlap only shaves the alt's rounded
+  // corner — it never covers the alt's text, so the title and hint stay fully readable.
+  postcardPick: { flex: 1.3, marginTop: 0, zIndex: 2 },
+  postcardAlt: { flex: 0.9, marginTop: 28, marginLeft: -8, zIndex: 1 },
+  artPick: { height: 186 },
+  artAlt: { height: 128 },
+  // Over the seam between the two cards: pick is ≈ 1.3 / 2.2 of the row, so its right edge
+  // lands near 59 %. The marginLeft centres the 44 px badge on that seam.
+  or: { left: "59%", marginLeft: -22 },
   perforation: { borderLeftWidth: 2, borderStyle: "dashed" },
   stampText: { fontFamily: "Inter_700Bold" },
 });
