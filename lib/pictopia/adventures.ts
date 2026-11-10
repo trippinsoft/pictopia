@@ -1,4 +1,4 @@
-import { exploreCounts, type ExploreSession } from "./explore";
+import { exploreCounts, exploreFeed, type ExploreSession } from "./explore";
 
 /** Target photos per Adventure: short enough to finish in a few minutes. Configurable;
  * anything up to the explorer's snapshot limit works. */
@@ -128,10 +128,12 @@ export const adventureComplete = (s: ExploreSession | undefined) =>
  * need a nonempty snapshot, saved activity and evidence at its original endpoint. */
 export function completionEvidence(s: ExploreSession | undefined) {
   if (!s || !Array.isArray(s.ids) || !s.records || !s.ids.length || new Set(s.ids).size !== s.ids.length) return false;
-  const last = s.ids[s.ids.length - 1];
-  const covered = s.ids.every(id => s.records[id]?.encountered || s.records[id]?.unavailable);
+  // Photos deleted since the review leave its feed; the rest must still be covered.
+  const shown = s.review ? exploreFeed(s) : s.ids;
+  const last = shown[shown.length - 1] ?? s.ids[s.ids.length - 1];
+  const covered = shown.every(id => s.records[id]?.encountered || s.records[id]?.unavailable);
   if (!s.completionVerifiedAt && !covered) return false;
-  return !!(s.review ? s.finished || (s.finished === undefined && s.activeId === null && s.ids.every(id => s.records[id]?.encountered || s.records[id]?.unavailable)) : s.activeId === null) &&
+  return !!(s.review ? s.finished || (s.finished === undefined && s.activeId === null && covered) : s.activeId === null) &&
     s.ids.some(id => s.records[id]?.encountered) &&
     !!(s.records[last]?.encountered || s.records[last]?.unavailable);
 }
@@ -148,7 +150,9 @@ export function savedCompletion(meta: Adventure, s: ExploreSession | undefined) 
 
 /** "23 of 100": photos meaningfully seen in this Adventure. */
 export function adventurePlace(s: ExploreSession) {
-  return { explored: exploreCounts(s).explored, total: s.ids.length };
+  if (!s.review) return { explored: exploreCounts(s).explored, total: s.ids.length };
+  const feed = exploreFeed(s);
+  return { explored: feed.filter(id => s.records[id]?.encountered).length, total: feed.length };
 }
 /** Cumulative progress across every Adventure. A photo counts once however often it is
  * revisited or appears again; "set aside" means currently provisionally discarded. */

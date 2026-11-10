@@ -299,7 +299,7 @@ test("on SQLite: finishing or opening an adventure never awards streak credit; t
 
 test("screen contracts: Back keeps the place, no running allowance counter, date top-right, completion inside the safe area", () => {
   const review = fs.readFileSync("components/pictopia/adventure-review.tsx", "utf8");
-  assert.match(review, /const empty = !!session && !complete && !session.ids.length;/, "marking every photo cannot unmount the feed during the final flight");
+  assert.match(review, /const empty = !!session && !complete && !sequence.length;/, "marking every photo cannot unmount the feed during the final flight");
   assert.match(review, /!sequence.length && !busy && flying === 0/, "all-marked resume waits for in-flight transitions before completion");
   assert.match(review, /<NavigationBack label="Back" onPress=\{exit\}/);
   assert.doesNotMatch(review, /left today/, "no running daily countdown in review");
@@ -315,4 +315,19 @@ test("screen contracts: Back keeps the place, no running allowance counter, date
   const m = makeLoader()("lib/pictopia/review-flow.ts");
   assert.equal(m.monthYear(new Date(2024, 9, 3).getTime()), "Oct 2024");
   assert.equal(m.monthYear(0), undefined);
+});
+
+test("photos deleted since a review leave its feed, count and place", () => {
+  const ids = Array.from({ length: 10 }, (_, i) => `f${i}`);
+  const base = { ...X.createExplore(ids, 1), review: true, activeId: "f3" };
+  const row = (id) => ({ id, active: true, ...(id === "f3" ? { deletedAt: 5 } : {}) });
+  const s = X.reconcileReview(base, ids.map(row));
+  assert.deepEqual(s.gone, ["f3"]);
+  assert.equal(X.exploreFeed(s).length, 9);
+  assert.ok(!X.exploreFeed(s).includes("f3"));
+  assert.equal(s.activeId, "f4", "the deleted photo's place moves to the next one");
+  assert.equal(s.ids.length, 10, "the saved snapshot itself is unchanged");
+  const marked = X.reduceExplore({ ...s, activeId: "f2" }, { type: "discard", id: "f2", direction: "left", revision: s.revision });
+  assert.equal(marked.activeId, "f4", "marking skips the deleted slot");
+  assert.equal(X.reconcileReview(base, ids.map((id) => ({ id, active: true }))).gone, undefined);
 });

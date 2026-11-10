@@ -98,13 +98,14 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
   // slides into its place exactly as before, and once the feed is at rest the discarded one
   // returns, faded, to its original slot above. Re-anchoring keeps the shown photo still.
   // The isolated prototype removes its discards.
+  const gone = new Set(session.gone);
   const ids = session.ids.filter(
     (id) =>
-      feed.departing.has(id) ||
+      !gone.has(id) && (feed.departing.has(id) ||
       (!feed.hidden.has(id) &&
         (session.review
           ? !(feed.parked.has(id) && session.records[id]?.queued)
-          : !session.records[id]?.discarded)),
+          : !session.records[id]?.discarded))),
   );
   const idsKey = ids.join("\n");
   const cut = props.stopBefore ? ids.indexOf(props.stopBefore) : -1;

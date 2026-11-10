@@ -6,7 +6,7 @@ export const STREAK_VIEWS = 10;
 export const RESTORE_MIN_STREAK = 3;
 export const RESTORE_EVERY_DAYS = 30;
 export const STREAK_MILESTONES = [3, 7, 14, 30, 50, 100, 200, 365] as const;
-export const DEFAULT_FREE_SWIPES = 150;
+export const DEFAULT_FREE_SWIPES = 100;
 const DAY = 86400000;
 
 export function localDate(t: number) {

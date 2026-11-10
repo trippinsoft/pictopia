@@ -75,21 +75,21 @@ test("the allowance persists across sessions and restarts, counts each asset onc
   await app.storage.setValue("swipeLimit:v1", 10); // legacy config must not override the approved allowance
   let store = load();
   let r = await store.present("a", false, day(9)); // adventure
-  assert.equal(r.left, 149);
+  assert.equal(r.left, 99);
   r = await store.present("a", false, day(10)); // the same photo in an album, another session
-  assert.equal(r.left, 149, "the same asset never counts twice in a day");
+  assert.equal(r.left, 99, "the same asset never counts twice in a day");
   await store.present("v", false, day(11)); // a video counts too
   store = load(); // restart
   assert.equal((await store.state(day(12))).counted.length, 2, "counted ids persist across restarts");
   r = await store.present("b", true, day(12));
-  assert.equal(r.left, 148, "Pro is never counted");
-  for (let i = 0; i < 148; i++) await store.present(`n${i}`, false, day(13));
+  assert.equal(r.left, 98, "Pro is never counted");
+  for (let i = 0; i < 98; i++) await store.present(`n${i}`, false, day(13));
   r = await store.present("c", false, day(14));
   assert.equal(r.allowed, false, "past the limit a new asset is refused");
   assert.equal((await store.present("a", false, day(14))).allowed, true, "already counted stays viewable");
   assert.equal((await store.present("c", true, day(14))).allowed, true, "Pro continues past the limit");
   assert.equal((await store.state(day(0, 5))).counted.length, 0, "a new local day starts fresh");
-  assert.equal((await store.state(day(9, 3))).counted.length, 150, "a clock moved backwards doesn't reset");
+  assert.equal((await store.state(day(9, 3))).counted.length, 100, "a clock moved backwards doesn't reset");
 });
 
 test("review exits, endings and the paywall keep their contracts", () => {

@@ -127,3 +127,5 @@ The review interaction uses the original 1.0.21 live feed: marked photos leave s
 - Illustration style: Storybook landscape (flat layered scenes); Home keeps tilted postcards with a larger 'Pictopia's pick' card plus one alternative.
 - Phase 2 remodel: four-tab shell Home | Timeline | Explore | Progress; Home drops shuffle and the Continue ticket, Discarded pill now shows size, tip is 'Did you know?'; Timeline (years → months) replaces the old Months & Years index; Pit Stops move to Progress as Take a break.
 - Finishing a Home adventure always retires it and offers a fresh one (completing the on-screen set, not exhausting a whole year); 'Keep going' lives only on the completion screen. Restore in the reviewer flies the photo back out of the trash.
+- Free daily limit lowered from 150 to 100 items; onboarding doesn't announce the number (Picnic's didn't either).
+- Reminders are local notifications: at most one a day with a real reason (streak at risk, On This Day, Discarded waiting), default 7 pm.

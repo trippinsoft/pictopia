@@ -541,6 +541,18 @@ export const adventureStore = {
       return { date, count: (await scopeRows("day", `day:${day}`)).length };
     }));
   },
+  /** Photos from earlier years on each of the next `days` calendar dates, for reminders. */
+  async upcomingDays(now = Date.now(), days = 7) {
+    const today = localDate(now);
+    const year = Number(today.slice(0, 4));
+    const out: Record<string, { count: number; years: number[] }> = {};
+    for (let i = 0; i < days; i++) {
+      const date = addDays(today, i);
+      const years = (await scopeRows("day", `day:${date.slice(5)}`)).map(m => Number(m.month.slice(0, 4))).filter(y => y < year);
+      out[date] = { count: years.length, years: [...new Set(years)] };
+    }
+    return out;
+  },
   /** Home's two Adventures, chosen by the engine as a pair. A finished one is replaced by the
    * best partner for the other; an unfinished one stays until it is done. */
   async home(seed = Date.now()) {

@@ -6,6 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import { LivePhoto } from "@/components/pictopia/live-photo";
 import { useAllowance } from "@/components/pictopia/use-allowance";
+import { DEFAULT_FREE_SWIPES } from "@/lib/pictopia/daily";
 import { router } from "expo-router";
 import { usePhotoEncounter } from "@/components/pictopia/use-photo-encounter";
 import { ZoomPhoto } from "@/components/pictopia/zoom-photo";
@@ -158,7 +159,7 @@ export default function Preview() {
           </View>} />
         </View>
         <View className="flex-1 overflow-hidden">
-          {!allowance.ready ? <Loading /> : allowance.error || (id && !allowance.canReview(id)) ? <Empty icon="Sparkles" title={allowance.error ? "Couldn’t check daily reviews" : "You’ve explored 150 items today"} description="Your photos and pending marks are safe. Continue tomorrow or explore with Pictopia+." action={<Button onPress={() => allowance.error ? void allowance.reload() : router.push("/paywall")}>{allowance.error ? "Try again" : "Explore with Pictopia+"}</Button>} /> : error ? (
+          {!allowance.ready ? <Loading /> : allowance.error || (id && !allowance.canReview(id)) ? <Empty icon="Sparkles" title={allowance.error ? "Couldn’t check daily reviews" : `You’ve explored ${allowance.limit ?? DEFAULT_FREE_SWIPES} items today`} description="Your photos and pending marks are safe. Continue tomorrow or explore with Pictopia+." action={<Button onPress={() => allowance.error ? void allowance.reload() : router.push("/paywall")}>{allowance.error ? "Try again" : "Explore with Pictopia+"}</Button>} /> : error ? (
             <Empty
               icon="CloudOff"
               title={m?.type === "video" ? "Video unavailable" : "This photo isn’t available locally"}

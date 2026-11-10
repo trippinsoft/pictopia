@@ -5,38 +5,49 @@ import { lightArt } from "@/theming/illustration";
 
 /** Storybook-landscape badge medals: a tier-coloured rim, a family-specific sky and a flat
  * vignette drawn from the same palette as the Adventure artwork. No outlines, no dot grain.
- * Each family gets its own composition and motif so they read as different at a glance. */
-const C = lightArt;
+ * Each family gets its own composition, motif and face colour so they read as different at
+ * a glance; badges not yet earned are drawn entirely in greys. */
+type Palette = typeof lightArt;
 
-/** Bronze → silver → gold → enamel tiers, drawn from the Storybook palette. */
-const RIMS = [C.sand, C.sun, C.moss, C.terracotta, C.teal, C.sandDeep, C.tealDeep, C.coral];
+/** Luminance-matched grey for a hex colour, lifted slightly so locked badges read soft. */
+function grey(hex: string) {
+  const n = parseInt(hex.slice(1), 16);
+  const y = 0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255);
+  const v = Math.round(y + (255 - y) * 0.25).toString(16).padStart(2, "0");
+  return `#${v}${v}${v}`;
+}
+const LOCKED: Palette = Object.fromEntries(Object.entries(lightArt).map(([k, v]) => [k, grey(v)])) as unknown as Palette;
 
-/** Each family's face background: a different warm wash so no two badges read the same. */
+/** Bronze → silver → gold → enamel tiers. */
+const RIMS = ["#E0955A", "#AEBBD0", "#FFC93C", "#46A97F", "#4F9BE8", "#7B3FC4", "#FF6B4A", "#1C2457"];
+
+/** Each family's face colour when earned: a distinct, clear hue per badge. */
 const SKY: Record<BadgeFamily, string> = {
-  explorer: C.sky,         // warm cream — a trail map world
-  declutterer: C.skyAlt,   // peachy — an open drawer indoors
-  months: C.sky,           // cream — a calendar page on a desk
-  years: C.skyAlt,         // peachy — a sun through a torn page
-  decades: C.rose,         // rose wash — fanned pages
-  adventurer: C.sky,       // clear sky — a balloon up in clouds
-  streak: C.coral,         // warm sunset — a flame on the horizon
+  explorer: "#CFE5FB",     // sky blue — a trail map world
+  declutterer: "#CDEFDB",  // mint — an open drawer, freshly cleared
+  months: "#FFE7A3",       // butter — a calendar page in sunlight
+  years: "#E2D3F8",        // lilac — time travel
+  decades: "#FBD0DC",      // blush — fanned pages
+  adventurer: "#BFEAF0",   // aqua — a balloon up in clear sky
+  streak: "#FFCFB8",       // sunset peach — a flame on the horizon
 };
+const LOCKED_SKY = "#E6E7EA";
 
-function Face({ children, family }: { children: ReactNode; family: BadgeFamily }) {
+function Face({ children, family, c }: { children: ReactNode; family: BadgeFamily; c: Palette }) {
   return (
     <G>
-      <Rect x={8} y={8} width={48} height={48} rx={24} fill={SKY[family]} />
+      <Rect x={8} y={8} width={48} height={48} rx={24} fill={c === LOCKED ? LOCKED_SKY : SKY[family]} />
       {children}
     </G>
   );
 }
 
-function Emblem({ family }: { family: BadgeFamily }) {
+function Emblem({ family, c: C }: { family: BadgeFamily; c: Palette }) {
   switch (family) {
     case "explorer":
       // A dashed trail winding across the face to a map pin — exploration.
       return (
-        <Face family={family}>
+        <Face family={family} c={C}>
           <Path d="M14 48 Q22 34 34 36 T52 20" stroke={C.teal} strokeWidth={2.2} strokeDasharray="3 3" fill="none" strokeLinecap="round" />
           <Path d="M46 10 C40 10 38 16 42 22 L46 28 L50 22 C54 16 52 10 46 10Z" fill={C.terracotta} />
           <Circle cx={46} cy={16} r={2.4} fill={C.paper} />
@@ -46,7 +57,7 @@ function Emblem({ family }: { family: BadgeFamily }) {
     case "declutterer":
       // An open drawer with a sparkle rising above it — clutter cleared.
       return (
-        <Face family={family}>
+        <Face family={family} c={C}>
           <Rect x={16} y={34} width={32} height={18} rx={2.5} fill={C.terracotta} />
           <Rect x={19} y={38} width={26} height={11} rx={1.5} fill={C.coral} />
           <Rect x={30} y={42} width={4} height={1.6} rx={0.8} fill={C.paper} />
@@ -58,7 +69,7 @@ function Emblem({ family }: { family: BadgeFamily }) {
     case "months":
       // A calendar page sitting on a desk line, with a big check — a month finished.
       return (
-        <Face family={family}>
+        <Face family={family} c={C}>
           <Rect x={8} y={50} width={48} height={6} fill={C.sand} />
           <Rect x={18} y={16} width={28} height={30} rx={3} fill={C.paper} />
           <Rect x={18} y={16} width={28} height={8} rx={3} fill={C.terracotta} />
@@ -70,7 +81,7 @@ function Emblem({ family }: { family: BadgeFamily }) {
     case "years":
       // An hourglass with sand mid-fall — time traveller.
       return (
-        <Face family={family}>
+        <Face family={family} c={C}>
           <Circle cx={46} cy={18} r={5} fill={C.sun} />
           <Path d="M20 15 h24 L32 32 L20 48 h24" fill="none" />
           <Rect x={18} y={13} width={28} height={3} rx={1} fill={C.teal} />
@@ -84,7 +95,7 @@ function Emblem({ family }: { family: BadgeFamily }) {
     case "decades":
       // Fanned calendar pages stacked across time.
       return (
-        <Face family={family}>
+        <Face family={family} c={C}>
           {[-18, -6, 6, 18].map((rot, i) => (
             <G key={rot} transform={`rotate(${rot} 32 36)`}>
               <Rect x={22} y={18} width={20} height={26} rx={2.5} fill={i === 1 || i === 2 ? C.paper : i === 0 ? C.rose : C.sand} />
@@ -97,7 +108,7 @@ function Emblem({ family }: { family: BadgeFamily }) {
     case "adventurer":
       // A hot-air balloon up among clouds — the Adventurer.
       return (
-        <Face family={family}>
+        <Face family={family} c={C}>
           <Ellipse cx={18} cy={20} rx={7} ry={3} fill={C.cloud} />
           <Ellipse cx={14} cy={18} rx={4} ry={3} fill={C.cloud} />
           <Ellipse cx={48} cy={42} rx={6} ry={2.4} fill={C.cloud} opacity={0.9} />
@@ -112,7 +123,7 @@ function Emblem({ family }: { family: BadgeFamily }) {
     case "streak":
       // Sunset glow with a flame on the horizon — the streak.
       return (
-        <Face family={family}>
+        <Face family={family} c={C}>
           <Rect x={8} y={38} width={48} height={18} fill={C.sand} />
           <Circle cx={32} cy={38} r={14} fill={C.sun} opacity={0.6} />
           <Path d="M32 18 C36 23 40 27 40 34 a8 8 0 0 1 -16 0 c0 -4 2 -6 4 -8 c0 3 2 4 3 4 c-1 -5 0 -8 1 -12z" fill={C.terracotta} />
@@ -123,16 +134,16 @@ function Emblem({ family }: { family: BadgeFamily }) {
   }
 }
 
-/** A badge medal. Unearned families show in cream and sand, with a soft rim. */
+/** A badge medal. Unearned families are drawn in greys with a soft grey rim. */
 export const BadgeArt = memo(function BadgeArt({ family, tier, size = 64 }: { family: BadgeFamily; tier: number; size?: number }) {
   const earned = tier > 0;
-  const rim = earned ? RIMS[Math.min(tier - 1, RIMS.length - 1)] : C.sand;
+  const rim = earned ? RIMS[Math.min(tier - 1, RIMS.length - 1)] : "#D3D5DA";
   return (
     <Svg width={size} height={size} viewBox="0 0 64 64" aria-hidden>
-      <Circle cx={32} cy={32} r={30} fill={rim} opacity={earned ? 1 : 0.55} />
-      <Circle cx={32} cy={32} r={25} fill={earned ? C.paper : "#F6EFE0"} />
-      <G opacity={earned ? 1 : 0.5}>
-        <Emblem family={family} />
+      <Circle cx={32} cy={32} r={30} fill={rim} />
+      <Circle cx={32} cy={32} r={25} fill={earned ? "#FFFFFF" : "#F3F4F6"} />
+      <G opacity={earned ? 1 : 0.8}>
+        <Emblem family={family} c={earned ? lightArt : LOCKED} />
       </G>
     </Svg>
   );

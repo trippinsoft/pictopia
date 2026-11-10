@@ -19,6 +19,7 @@ import { useSessionTally } from "@/components/pictopia/use-session-tally";
 import { useSwipeDeck } from "@/components/pictopia/use-swipe-deck";
 import { usePhotoEncounter } from "@/components/pictopia/use-photo-encounter";
 import { useAllowance } from "@/components/pictopia/use-allowance";
+import { DEFAULT_FREE_SWIPES } from "@/lib/pictopia/daily";
 import { useReviewClock } from "@/components/pictopia/use-review-clock";
 import { storage, repository } from "@/services/repository";
 import { Media, Collection, Decision } from "@/lib/pictopia/types";
@@ -204,7 +205,7 @@ export default function Swipe() {
   if (!session.complete && item && (!allowance.ready || allowance.error || !allowance.canReview(item.id))) return (
     <Page showQueue fallback="/settings" compactHeader title="Daily reviews">
       {!allowance.ready ? <Loading /> : <View className="gap-4 px-5 py-8">
-        <Text className="text-h2 text-foreground">{allowance.error ? "Couldn’t check daily reviews" : "You’ve explored 150 items today"}</Text>
+        <Text className="text-h2 text-foreground">{allowance.error ? "Couldn’t check daily reviews" : `You’ve explored ${allowance.limit ?? DEFAULT_FREE_SWIPES} items today`}</Text>
         <Text className="text-body text-muted-foreground">{allowance.error ? "Your saved review is safe. Please try again." : "Come back tomorrow or keep exploring with Pictopia+. Your marks are saved."}</Text>
         <Button onPress={() => allowance.error ? void allowance.reload() : router.push("/paywall")}>{allowance.error ? "Try again" : "Explore with Pictopia+"}</Button>
         <Button secondary onPress={undo}>Undo last decision</Button>

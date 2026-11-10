@@ -18,6 +18,7 @@ import { ReviewTrash, type ReviewTrashHandle } from "./review-trash";
 import { DiscardTray } from "./discard-tray";
 import { useDiscardFlights } from "./discard-flight";
 import { useAllowance } from "./use-allowance";
+import { DEFAULT_FREE_SWIPES } from "@/lib/pictopia/daily";
 import { exploreCounts, exploreFeed, lastExploreDiscard, type ExploreAction } from "@/lib/pictopia/explore";
 import { limitCopy, monthYear, reviewProgressLabel } from "@/lib/pictopia/review-flow";
 import { explorationPercent } from "@/lib/pictopia/library-progress";
@@ -133,10 +134,11 @@ export function AdventureReview({ id, collection, finishContent, onContinue: _on
     else void change({ type: "undo" }).catch(() => {});
   };
   const exit = () => { feed.current?.flush(); router.canGoBack() ? router.back() : router.replace("/(tabs)/home"); };
-  const counts = session ? exploreCounts(session) : { explored: 0, discarded: 0, unavailable: 0 };
   // What is still in the sequence, and what is waiting in the trash. The queue decision on
   // each photograph is the one source for both.
   const sequence = session ? exploreFeed(session) : [];
+  // Counted over the photos still in the review, so deleted ones don't inflate its numbers.
+  const counts = session ? exploreCounts({ ...session, ids: sequence }) : { explored: 0, discarded: 0, unavailable: 0 };
   const marked = session ? session.ids.filter(target => session.records[target]?.queued) : [];
   const discardedMedia = marked.flatMap(target => media[target] ? [media[target]] : []);
   // Photographs still in the air are counted when they land, so the number arrives with them.
@@ -181,7 +183,7 @@ export function AdventureReview({ id, collection, finishContent, onContinue: _on
     const item = media[target];
     trashBytes += item ? displayMediaSize(item, resolvedSizes[target]) : resolvedSizes[target] ?? 0;
   }
-  const empty = !!session && !complete && !session.ids.length;
+  const empty = !!session && !complete && !sequence.length;
   const allowance = useAllowance(session, sequence, valid && !complete ? photo : undefined, app.pro, available);
   const encounter = useCallback((displayedAt: number) => photo ? change({ type: "seen", id: photo, displayedAt }) : Promise.resolve(), [photo, change]);
   usePhotoEncounter(photo, !!photo && allowance.canReview(photo) && available && valid === true && !!session?.review && photo === session.activeId && !!current?.active && !current.deletedAt && !session.records[photo]?.encountered && !complete && !busy && !tray, undefined, encounter, app.setError);
@@ -190,7 +192,7 @@ export function AdventureReview({ id, collection, finishContent, onContinue: _on
   const reviewMarked = () => router.push({ pathname: "/queue", params: { session: sessionKey, from: "review", only: "1" } });
   const deleteNow = () => router.push({ pathname: "/queue", params: { session: sessionKey, from: "review", only: "1", auto: "1" } });
   const backToPhotos = () => { setSelected(undefined); setAtEnd(false); void change({ type: "revisit", toId: session?.ids.at(-1) }).catch(() => {}); };
-  const limit = limitCopy(allowance.limit ?? 150);
+  const limit = limitCopy(allowance.limit ?? DEFAULT_FREE_SWIPES);
   // The daily limit pauses the review where it is. It is never a finish.
   const limitPage = <View className="flex-1 items-center justify-center gap-3 px-8">
     <View className="h-16 w-16 items-center justify-center rounded-full bg-sun"><Icon name="Sparkles" size={28} className="text-primary-foreground" /></View>
@@ -206,7 +208,7 @@ export function AdventureReview({ id, collection, finishContent, onContinue: _on
   const finish = useCallback(() => {
     const snapshot = finishState.current.session;
     if (finishing.current || !snapshot || snapshot.finished || !feed.current?.isAtEnd()) return;
-    const endpoint = snapshot.ids.at(-1);
+    const endpoint = exploreFeed(snapshot).at(-1);
     if (!endpoint) return;
     finishing.current = true; setTransitionError(undefined);
     void finishState.current.change(saved => feed.current && !feed.current.isAtEnd()
@@ -218,8 +220,8 @@ export function AdventureReview({ id, collection, finishContent, onContinue: _on
   // Keep the feed mounted for the final flight, including when every item is marked.
   // Reopening an all-marked review reaches the same completion destination.
   useEffect(() => {
-    if (valid === true && session?.ids.length && !complete && !sequence.length && !busy && flying === 0) finish();
-  }, [valid, session?.ids.length, complete, sequence.length, busy, flying, finish]);
+    if (valid === true && session?.ids.length && !session.review && !complete && !sequence.length && !busy && flying === 0) finish();
+  }, [valid, session?.ids.length, session?.review, complete, sequence.length, busy, flying, finish]);
   const endPage = <View className="flex-1 items-center justify-center px-8">
     {transitionError ? <View className="w-full max-w-xs gap-3">
       <Text className="text-center text-body text-foreground">{transitionError}</Text>
@@ -227,12 +229,12 @@ export function AdventureReview({ id, collection, finishContent, onContinue: _on
       <Button secondary onPress={exit}>Finish for Now</Button>
     </View> : <Loading />}
   </View>;
-  const originalPlace = photo && session ? session.ids.indexOf(photo) : -1;
+  const originalPlace = photo ? sequence.indexOf(photo) : -1;
   useEffect(() => {
-    if (atEnd && !allowance.stopBefore && session) line.current?.setPosition(session.ids.length - 1);
+    if (atEnd && !allowance.stopBefore && session) line.current?.setPosition(sequence.length - 1);
     else if (originalPlace >= 0) line.current?.setPosition(originalPlace);
-  }, [originalPlace, atEnd, allowance.stopBefore, session?.ids.length]);
-  const contextProgress = reviewProgressLabel(atEnd ? (session?.ids.length ?? 1) - 1 : originalPlace, session?.ids.length ?? 0);
+  }, [originalPlace, atEnd, allowance.stopBefore, sequence.length]);
+  const contextProgress = reviewProgressLabel(atEnd ? Math.max(0, sequence.length - 1) : originalPlace, sequence.length);
   const label = current ? monthYear(current.created) : undefined;
   if (!session || valid === undefined || (!collection && !adventure) || (complete && awaitingReopen)) return <AdventureTheme enabled><SafeAreaView className="flex-1 bg-background">
     <Stack.Screen options={{ title: "Photo review", headerShown: false }} />
@@ -242,8 +244,8 @@ export function AdventureReview({ id, collection, finishContent, onContinue: _on
   if (complete && session && !awaitingReopen) {
     return <>
       <Stack.Screen options={{ title, headerShown: false }} />
-      {finishContent?.({ onUndo: () => { setSelected(undefined); undo(); }, onPreviousPhoto: () => { setSelected(undefined); apply({ type: "back" }); }, onReview: reviewMarked, onDone: exit, onBackToPhotos: backToPhotos, onDeleteNow: deleteNow, canUndo, canReview: sequence.length > 0, pending, explored: counts.explored, marked: marked.length, unavailable: counts.unavailable, libraryBefore: opened.current?.finished ? undefined : libraryBefore.current, photoIds: session.ids, discarded: discardedMedia }) ??
-        <AdventureFinish onContinueSegment={next => { setSelected(undefined); setAtEnd(false); opened.current = undefined; void reload().then(() => setAdventure(next)); }} adventure={adventure} photoIds={session.ids} explored={counts.explored} marked={marked.length} unavailable={counts.unavailable} libraryBefore={opened.current?.finished ? undefined : libraryBefore.current} canUndo={canUndo} pending={pending}
+      {finishContent?.({ onUndo: () => { setSelected(undefined); undo(); }, onPreviousPhoto: () => { setSelected(undefined); apply({ type: "back" }); }, onReview: reviewMarked, onDone: exit, onBackToPhotos: backToPhotos, onDeleteNow: deleteNow, canUndo, canReview: sequence.length > 0, pending, explored: counts.explored, marked: marked.length, unavailable: counts.unavailable, libraryBefore: opened.current?.finished ? undefined : libraryBefore.current, photoIds: sequence, discarded: discardedMedia }) ??
+        <AdventureFinish onContinueSegment={next => { setSelected(undefined); setAtEnd(false); opened.current = undefined; void reload().then(() => setAdventure(next)); }} adventure={adventure} photoIds={sequence} explored={counts.explored} marked={marked.length} unavailable={counts.unavailable} libraryBefore={opened.current?.finished ? undefined : libraryBefore.current} canUndo={canUndo} pending={pending}
           discarded={discardedMedia} onBackToPhotos={backToPhotos} onDeleteNow={deleteNow}
           onReview={reviewMarked} onDone={exit} onUndo={() => { setSelected(undefined); void change({ type: "undo" }).catch(() => {}); }} onPrevious={() => { setSelected(undefined); void change({ type: "back" }).catch(() => {}); }} />}
     </>;
@@ -260,7 +262,7 @@ export function AdventureReview({ id, collection, finishContent, onContinue: _on
           </View>
           {valid && session ? <ReviewTrash ref={trash} count={trashCount} bytes={trashBytes} unknownSizes={0} onMeasure={centre => { frames.current.trash = centre; }} onPress={() => setTray(true)} /> : <View className="h-12 w-12" />}
         </View>
-        {session && <ProgressLine ref={line} total={session.ids.length} initial={Math.max(0, originalPlace)} />}
+        {session && <ProgressLine ref={line} total={sequence.length} initial={Math.max(0, originalPlace)} />}
         {/* On This Day states its window, including when it widened beyond today's date. */}
         {adventure?.kind === "day" && <Text numberOfLines={1} className="text-center text-caption text-muted-foreground">{adventure.hint.detail}</Text>}
       </View>
@@ -275,7 +277,7 @@ export function AdventureReview({ id, collection, finishContent, onContinue: _on
               <Button secondary icon="Trash2" onPress={() => setTray(true)}>Open Discarded</Button>
             </View>
           </View> : allowance.error ? <View className="flex-1 items-center justify-center gap-4 px-8"><Text className="text-center text-body text-foreground">Couldn’t check your daily free reviews. Your saved review is safe.</Text><Button onPress={() => void allowance.reload()}>Try again</Button></View> : !allowance.ready ? <Loading /> : <ExploreFeed ref={feed} session={session} media={media} change={change} getSession={getSession} flight={flight} canReview={allowance.canReview} stopBefore={allowance.stopBefore} limitPage={limitPage} endPage={endPage} onEnd={finish}
-            onPage={(index, total) => { setAtEnd(index >= total); if (index < total) setSelected(session.ids[index]); }} onScrollPosition={position => line.current?.setPosition(position)} onScrollActive={(target, ready) => { setSelected(target); setAvailable(ready); }} onBusy={setBusy} onAvailability={setAvailable} onError={setTransitionError} onRestore={restore}
+            onPage={(index, total) => { setAtEnd(index >= total); if (index < total) setSelected(sequence[index]); }} onScrollPosition={position => line.current?.setPosition(position)} onScrollActive={(target, ready) => { setSelected(target); setAvailable(ready); }} onBusy={setBusy} onAvailability={setAvailable} onError={setTransitionError} onRestore={restore}
             onBrowse={() => guidance.complete("browse")} onDiscard={() => guidance.complete("discard")} />}
           {!!label && !empty && !atEnd && <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" className="absolute right-3 top-2 rounded-[9px] bg-black/50 px-2.5 py-1"><Text className="text-caption text-white">{label}</Text></View>}
           {/* Over the photos, never above them: inserting it would resize every page mid-scroll. */}

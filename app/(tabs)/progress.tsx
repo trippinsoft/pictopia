@@ -16,6 +16,23 @@ import { addDays, qualifies } from "@/lib/pictopia/daily";
 import { bytes } from "@/lib/pictopia/logic";
 
 const weekday = (date: string, style: "narrow" | "long" = "narrow") => new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: style });
+const dayOfMonth = (date: string) => Number(date.slice(8, 10));
+const monthName = (date: string, style: "short" | "long" = "long") => new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { month: style });
+const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"];
+
+/** One calendar day: its streak dot over its real date. The 1st of a month names the month. */
+function DayCell({ date, state, size, today }: { date: string; state: "done" | "restored" | "missed" | "today" | "future"; size: number; today?: boolean }) {
+  const label = new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+  const status = state === "done" ? "streak day" : state === "restored" ? "restored" : state === "future" ? "upcoming" : today ? "today, not yet" : "missed";
+  return (
+    <View accessible accessibilityLabel={`${label}, ${status}`} className="w-[40px] items-center gap-1">
+      <Dot state={state} size={size} />
+      <Text numberOfLines={1} className={`text-[11px] ${today ? "font-semibold text-foreground" : state === "future" ? "text-muted-foreground/60" : "text-muted-foreground"}`}>
+        {dayOfMonth(date) === 1 ? `${monthName(date, "short")} 1` : dayOfMonth(date)}
+      </Text>
+    </View>
+  );
+}
 
 function Dot({ state, size = 22 }: { state: "done" | "restored" | "missed" | "today" | "future"; size?: number }) {
   const cls = state === "done" ? "bg-sun" : state === "restored" ? "border-2 border-dashed border-sun bg-sun-soft" : state === "today" ? "border-2 border-foreground bg-card" : state === "future" ? "border border-dashed border-foreground/20" : "bg-foreground/5";
@@ -73,6 +90,12 @@ export default function Progress() {
         });
       })
     : [];
+  // "November 2026", or "October – November 2026" when the shown weeks cross months.
+  const shownDays = (history ? calendar : calendar.slice(-1)).flat();
+  const first = shownDays[0]?.date, last = shownDays[shownDays.length - 1]?.date;
+  const calendarSpan = !first || !last ? "" : first.slice(0, 7) === last.slice(0, 7)
+    ? `${monthName(last)} ${last.slice(0, 4)}`
+    : `${monthName(first)}${first.slice(0, 4) === last.slice(0, 4) ? "" : ` ${first.slice(0, 4)}`} – ${monthName(last)} ${last.slice(0, 4)}`;
   const earnedCount = badges ? BADGES.filter((d) => (badges.state.earned[d.family]?.tier ?? 0) > 0).length : 0;
   const streakValue = streak ? `${streak.current}` : "—";
   const percentValue = percent === undefined ? "—" : `${percent}%`;
@@ -124,19 +147,13 @@ export default function Progress() {
               <Icon name="ChevronRight" size={18} className="text-foreground" />
             </Pressable>
           )}
-          {/* This week by default; History expands into a 5-week calendar. */}
-          {history ? (
+          {/* This calendar week (Monday–Sunday) by default; History expands to five weeks. */}
+          {calendar.length > 0 && (
             <View className="gap-2">
-              <View className="flex-row justify-between">{["M", "T", "W", "T", "F", "S", "S"].map((d, i) => <Text key={i} className="w-[30px] text-center text-[11px] text-muted-foreground">{d}</Text>)}</View>
-              {calendar.map((row, i) => <View key={i} className="flex-row justify-between">{row.map((d) => <Dot key={d.date} state={d.state} size={30} />)}</View>)}
-            </View>
-          ) : (
-            <View className="flex-row justify-between">
-              {(streak?.week ?? []).map((d) => (
-                <View key={d.date} className="items-center gap-1">
-                  <Dot state={d.state} />
-                  <Text className="text-[11px] text-muted-foreground">{weekday(d.date)}</Text>
-                </View>
+              <Text className="text-caption text-muted-foreground">{calendarSpan}</Text>
+              <View className="flex-row justify-between">{WEEKDAYS.map((d, i) => <Text key={i} className="w-[40px] text-center text-[11px] text-muted-foreground">{d}</Text>)}</View>
+              {(history ? calendar : calendar.slice(-1)).map((row, i) => (
+                <View key={i} className="flex-row justify-between">{row.map((d) => <DayCell key={d.date} date={d.date} state={d.state} size={history ? 26 : 24} today={d.date === today} />)}</View>
               ))}
             </View>
           )}

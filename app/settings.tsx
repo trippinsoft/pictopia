@@ -1,6 +1,6 @@
 import { ScreenHeader } from "@/components/pictopia/navigation-header";
-import { useState, type ReactNode } from "react";
-import { Linking, Platform, Pressable, ScrollView, Switch, View } from "react-native";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { AppState, Linking, Platform, Pressable, ScrollView, Switch, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Constants from "expo-constants";
 import { router } from "expo-router";
@@ -12,6 +12,11 @@ import { useTheme } from "@/theming/ThemeProvider";
 import { PASTELS, savedPastel, type PastelId } from "@/theming/pastels";
 import { mediaService } from "@/services/media";
 import { openLegal, manageSubscription } from "@/lib/pictopia/links";
+import { REMINDER_TIMES, reminderTimeLabel } from "@/lib/pictopia/reminders";
+import type { ReminderPrefs } from "@/lib/pictopia/types";
+import { notificationService } from "@/services/notifications";
+import { syncReminders } from "@/services/reminders";
+import type { ReminderPermission } from "@/services/notifications.types";
 
 const SUPPORT = process.env.EXPO_PUBLIC_SUPPORT_EMAIL;
 
@@ -57,6 +62,25 @@ export default function Settings() {
       setMessage((e as Error).message);
     }
   }
+  // Reminders: the OS permission decides what's shown; re-read when returning from Settings.
+  const [notify, setNotify] = useState<ReminderPermission>();
+  const readNotify = useCallback(() => { void notificationService.permission().then(setNotify).catch(() => setNotify("unsupported")); }, []);
+  useEffect(() => {
+    readNotify();
+    const subscription = AppState.addEventListener("change", state => { if (state === "active") readNotify(); });
+    return () => subscription.remove();
+  }, [readNotify]);
+  const reminders = app.prefs.reminders;
+  const setReminders = (p: Partial<ReminderPrefs>) => void action(() => app.updatePrefs({ reminders: { ...reminders, ...p } }));
+  const reminderToggle = (key: "streak" | "onThisDay" | "discarded", title: string) => (
+    <Switch
+      accessibilityLabel={title}
+      value={reminders[key]}
+      trackColor={{ true: theme.colors.grass, false: theme.colors.tint }}
+      ios_backgroundColor={theme.colors.tint}
+      onValueChange={(v) => setReminders({ [key]: v })}
+    />
+  );
   const close = () => (router.canGoBack() ? router.back() : router.replace("/(tabs)/home"));
   const toggle = (key: "haptics" | "autoplay", title: string) => (
     <Switch
@@ -135,6 +159,36 @@ export default function Settings() {
             })}
           </View>
         </View>
+
+        <Group title="Reminders">
+          {notify === "granted" ? (
+            <>
+              <Row title="Streak reminders">{reminderToggle("streak", "Streak reminders")}</Row>
+              <Row title="On This Day">{reminderToggle("onThisDay", "On This Day reminders")}</Row>
+              <Row title="Photos waiting in Discarded">{reminderToggle("discarded", "Discarded reminders")}</Row>
+              <View className="gap-2.5 px-4 py-3.5">
+                <Text className="text-body text-foreground">Time</Text>
+                <View accessibilityRole="radiogroup" accessibilityLabel="Reminder time" className="flex-row flex-wrap gap-2">
+                  {REMINDER_TIMES.map(hour => {
+                    const on = reminders.hour === hour && reminders.minute === 0;
+                    return (
+                      <Pressable key={hour} accessibilityRole="radio" accessibilityState={{ checked: on }} onPress={() => setReminders({ hour, minute: 0 })} className={`min-h-10 justify-center rounded-full px-3.5 ${on ? "bg-primary" : "bg-secondary"} active:opacity-80`}>
+                        <Text className={`text-h6 ${on ? "text-primary-foreground" : "text-foreground"}`}>{reminderTimeLabel(hour)}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <Text className="text-caption leading-5 text-muted-foreground">At most one a day, and only when there’s a reason: a streak at risk, photos from this date in past years, or photos waiting to delete.</Text>
+              </View>
+            </>
+          ) : notify === "unsupported" ? (
+            <View className="px-4 py-3.5"><Text className="text-body leading-6 text-muted-foreground">Reminders work in the Pictopia app on your phone.</Text></View>
+          ) : notify === "denied" ? (
+            <Row title="Notifications are off for Pictopia" value="Open Settings" last onPress={() => void action(() => Linking.openSettings())} />
+          ) : (
+            <Row title="Turn on reminders" last onPress={() => void action(async () => { const result = await notificationService.request(); setNotify(result); if (result === "granted") await syncReminders(reminders); })} />
+          )}
+        </Group>
 
         <Group title="Photos & feel">
           <Row title="Photo access" value={app.permission?.label ?? "Checking…"} onPress={() => void action(() => (Platform.OS === "web" ? app.connect() : mediaService.manageAccess()))} />

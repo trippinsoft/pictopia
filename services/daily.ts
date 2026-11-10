@@ -41,7 +41,7 @@ export const dailyStore = {
 };
 
 export const allowanceStore = {
-  /** The approved business rule is fixed at 150 distinct displayed items per local day. */
+  /** The approved business rule is fixed at 100 distinct displayed items per local day. */
   async limit() { return DEFAULT_FREE_SWIPES; },
   async refreshLimit(_fetcher?: typeof fetch) { return DEFAULT_FREE_SWIPES; },
   async state(now = Date.now()) {

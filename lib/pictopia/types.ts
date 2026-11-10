@@ -96,7 +96,20 @@ export interface Preferences {
   showReviewed: boolean;
   reverseSwipe: boolean;
   onboarded: boolean;
+  /** Local reminders (see lib/pictopia/reminders.ts). Only sent once the OS allows them. */
+  reminders: ReminderPrefs;
 }
+export interface ReminderPrefs {
+  /** "Don't lose your streak" on days the streak is at risk. */
+  streak: boolean;
+  /** Days whose calendar date has photos from earlier years. */
+  onThisDay: boolean;
+  /** One nudge when photos wait in Discarded. */
+  discarded: boolean;
+  hour: number;
+  minute: number;
+}
+export const DEFAULT_REMINDERS: ReminderPrefs = { streak: true, onThisDay: true, discarded: true, hour: 19, minute: 0 };
 export const defaultPreferences: Preferences = {
   appearance: "system",
   theme: "sky",
@@ -106,6 +119,7 @@ export const defaultPreferences: Preferences = {
   showReviewed: false,
   reverseSwipe: false,
   onboarded: false,
+  reminders: DEFAULT_REMINDERS,
 };
 export interface Stats {
   total: number;

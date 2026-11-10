@@ -35,20 +35,20 @@ test('a stale final-discard finish token cannot end a review after a backward pa
   assert.equal(x.reduceExplore(s,finish),s); assert.notEqual(s.finished,true);
 });
 
-test('149 to 150, seven-photo interruption, restart, new local day and Pro keep separate allowance facts', async () => {
+test('99 to 100, seven-photo interruption, restart, new local day and Pro keep separate allowance facts', async () => {
   const db = new DatabaseSync(':memory:'), app = await boot(db,platform());
   const p = platform();
   const load = () => makeLoader({...p.mocks,'./repository':app})('services/daily.ts').allowanceStore;
   let store = load(); const now = new Date(2026,10,5,12).getTime();
-  for(let i=0;i<147;i++) await store.present(`earlier-${i}`,false,now);
+  for(let i=0;i<97;i++) await store.present(`earlier-${i}`,false,now);
   const ids = Array.from({length:7},(_,i)=>`otd-${i}`);
   for(let i=0;i<3;i++) assert.equal((await store.present(ids[i],false,now)).allowed,true);
   assert.equal((await store.present(ids[3],false,now)).allowed,false);
-  assert.equal((await store.present(ids[2],false,now)).left,0,'revisiting at 150 is free');
-  store = load(); assert.equal((await store.state(now)).counted.length,150);
+  assert.equal((await store.present(ids[2],false,now)).left,0,'revisiting at 100 is free');
+  store = load(); assert.equal((await store.state(now)).counted.length,100);
   assert.equal((await store.present(ids[3],true,now)).allowed,true,'Pro resumes without changing allowance records');
-  assert.equal((await store.state(now)).counted.length,150);
-  assert.equal((await store.present(ids[3],false,now+86400000)).left,149);
+  assert.equal((await store.state(now)).counted.length,100);
+  assert.equal((await store.present(ids[3],false,now+86400000)).left,99);
   db.close();
 });
 

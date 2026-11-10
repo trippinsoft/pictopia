@@ -82,10 +82,10 @@ test("swipe allowance: each newly shown asset counts once per day, including the
   assert.equal(d.swipesLeft(s, 3, at("2026-11-03")), 0, "moving the clock back never resets");
 });
 
-test("the remote limit is validated with a 150 fallback", () => {
+test("the remote limit is validated with a 100 fallback", () => {
   assert.equal(d.validLimit({ freeDailySwipes: 200 }), 200);
   for (const bad of [undefined, null, "150", { freeDailySwipes: 0 }, { freeDailySwipes: 9.5 }, { freeDailySwipes: 1e6 }, {}])
-    assert.equal(d.validLimit(bad), 150);
+    assert.equal(d.validLimit(bad), 100);
 });
 
 const { DatabaseSync, media, platform, boot } = require("./native-harness.cjs");
@@ -115,9 +115,9 @@ test("encounters record daily activity in the same save, and survive a restart",
 test("the allowance store persists counted assets and never double-counts", async () => {
   const { db, p, daily } = await services();
   const now = at("2026-11-04");
-  assert.equal((await daily.allowanceStore.limit()), 150, "no remote value yet: 150");
-  assert.equal((await daily.allowanceStore.present("a", false, now)).left, 149);
-  assert.equal((await daily.allowanceStore.present("a", false, now)).left, 149, "revisit is free");
+  assert.equal((await daily.allowanceStore.limit()), 100, "no remote value yet: 100");
+  assert.equal((await daily.allowanceStore.present("a", false, now)).left, 99);
+  assert.equal((await daily.allowanceStore.present("a", false, now)).left, 99, "revisit is free");
   const app2 = await boot(db, p);
   const daily2 = makeLoader({ ...p.mocks, "./repository": app2 })("services/daily.ts");
   assert.deepEqual((await daily2.allowanceStore.state(now)).counted, ["a"], "counted ids survive a restart");
@@ -125,15 +125,15 @@ test("the allowance store persists counted assets and never double-counts", asyn
   assert.deepEqual((await daily2.allowanceStore.state(now)).counted, ["a"], "Pro views aren't counted");
 });
 
-test("the approved 150 limit cannot be changed by cached or remote configuration", async () => {
+test("the approved 100 limit cannot be changed by cached or remote configuration", async () => {
   process.env.EXPO_PUBLIC_SWIPE_CONFIG_URL = "https://example.test/pictopia-config.json";
   const { app, p } = await services();
   const daily = makeLoader({ ...p.mocks, "./repository": app })("services/daily.ts");
   const reply = (body, ok = true) => async () => ({ ok, json: async () => body });
-  assert.equal(await daily.allowanceStore.refreshLimit(reply({ freeDailySwipes: 200 })), 150);
-  assert.equal(await daily.allowanceStore.refreshLimit(reply({ freeDailySwipes: "lots" })), 150, "invalid value keeps the cache");
-  assert.equal(await daily.allowanceStore.refreshLimit(async () => { throw Error("offline"); }), 150);
-  assert.equal(await daily.allowanceStore.refreshLimit(reply({}, false)), 150);
+  assert.equal(await daily.allowanceStore.refreshLimit(reply({ freeDailySwipes: 200 })), 100);
+  assert.equal(await daily.allowanceStore.refreshLimit(reply({ freeDailySwipes: "lots" })), 100, "invalid value keeps the cache");
+  assert.equal(await daily.allowanceStore.refreshLimit(async () => { throw Error("offline"); }), 100);
+  assert.equal(await daily.allowanceStore.refreshLimit(reply({}, false)), 100);
   delete process.env.EXPO_PUBLIC_SWIPE_CONFIG_URL;
 });
 

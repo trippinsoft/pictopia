@@ -42,6 +42,11 @@ module.exports = {
 
   "expo-sqlite",
   "expo-iap",
+  // Local reminders only: no push server, so no remote-notification capability.
+  [
+  "expo-notifications",
+  { icon: "./assets/images/notification-icon.png", color: "#1C2457", enableBackgroundRemoteNotifications: false }],
+
   "expo-system-ui",
   ["expo-navigation-bar", { enforceContrast: false }],
   [
@@ -68,7 +73,7 @@ module.exports = {
   scheme: "pictopia",
   slug: "pictopia",
   userInterfaceStyle: "automatic",
-  version: "1.0.29",
+  version: "1.0.30",
   web: { bundler: "metro", output: "single", favicon: "./assets/images/favicon.png" },
   platforms: ["ios", "android", "web"]
 };
