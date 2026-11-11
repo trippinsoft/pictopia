@@ -26,7 +26,8 @@ import { StatusBar } from "expo-status-bar";
  * without, the original 200-photo prototype. Same feed and gestures either way. */
 export default function VerticalExplore() {
   const { adventure } = useLocalSearchParams<{ adventure?: string }>();
-  return typeof adventure === "string" ? <AdventureReview key={adventure} id={adventure} /> : <PrototypeExplore />;
+  const [segment, setSegment] = useState(0);
+  return typeof adventure === "string" ? <AdventureReview key={`${adventure}:${segment}`} id={adventure} onContinue={() => setSegment(value => value + 1)} /> : <PrototypeExplore />;
 }
 function PrototypeExplore() {
   const params = useLocalSearchParams<{ adventure?: string }>();

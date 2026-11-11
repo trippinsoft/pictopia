@@ -1,9 +1,9 @@
 import { exploreCounts, exploreFeed, type ExploreSession } from "./explore";
 
 /** Target photos per Adventure: short enough to finish in a few minutes. Configurable;
- * anything up to the explorer's snapshot limit works. */
+ * production snapshots retain all selected references. */
 export const ADVENTURE_SIZE = 20;
-/** How many photos an adventure holds. Natural sets run whole (every photo from that date);
+/** Curation scoring targets, not snapshot limits. On This Day ignores the target and runs whole;
  * big piles come in bite-sized sweeps. The curated kinds hold 20. */
 export function adventureSize(kind: AdventureKind) {
   return kind === "day" ? 500 : kind === "screenshots" ? 50 : ADVENTURE_SIZE;

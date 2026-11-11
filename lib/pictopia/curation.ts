@@ -1,4 +1,4 @@
-import { eligibleStills, eligiblePhotographs } from "./photo-eligibility";
+import { eligibleStills, adventurePool, selectMixedMedia } from "./photo-eligibility";
 import type { Media } from "./types";
 import { bestScore, shuffle, similar } from "./logic";
 import { plural } from "./text";
@@ -125,10 +125,11 @@ interface Selection {
 
 /** Shared preparation: eligible photos, bursts collapsed to a lead, unexplored first. */
 function prepare(candidate: Candidate, ctx: CurationContext) {
-  const all = eligible(candidate.pool, ctx.exclude);
+  const all = adventurePool(candidate.pool, candidate.kind, ctx.exclude);
   // A browser file's modified time is not a capture time. Equal timestamps must not
   // collapse unrelated selected files into one photograph.
-  const groups = ctx.modifiedDates ? all.map((m) => [m]) : bursts(all);
+  const groups = ctx.modifiedDates ? all.map((m) => [m])
+    : [...bursts(all.filter(m => m.type === "photo" && !m.screenshot)), ...all.filter(m => m.screenshot || m.type === "video").map(m => [m])].sort((a, b) => chronological(a[0], b[0]));
   const fresh = (m: Media) => !(m.firstSeenAt || ctx.explored.has(m.id)) && !m.decision;
   const allowed = (m: Media) => ctx.chosen || !(m.firstSeenAt || ctx.explored.has(m.id));
   const lead = (group: Media[]) => {
@@ -191,15 +192,16 @@ function selectTime(candidate: Candidate, ctx: CurationContext, size: number): S
 
 /** On This Day never widens dates; February 29 matches only February 29. */
 export const DAY_WINDOWS = [0] as const;
-function selectDay(candidate: Candidate, ctx: CurationContext, size: number, _minimum: number): Selection {
+function selectDay(candidate: Candidate, ctx: CurationContext, _size: number, _minimum: number): Selection {
   const today = candidate.source.slice(4, 9);
   // The whole date: every photo, oldest first, so the count matches what you scroll through.
-  const leads = eligible(candidate.pool.filter(m => m.day === today), ctx.exclude);
-  const picks = [...leads].sort(chronological).slice(0, size);
+  // `curate` already applied the On This Day rule (discarded-but-not-deleted photos stay).
+  const leads = [...new Map(candidate.pool.filter(m => m.day === today).map(m => [m.id, m])).values()];
+  const picks = [...leads].sort(chronological);
   const years = new Set(picks.map(yearOf)).size;
   return {
     picks,
-    notes: [`Photos from exactly ${dayLabel(today)}. Adjacent dates are never included.`, `${ctx.modifiedDates ? "File-modified dates in the browser" : "Capture dates from your library"}.`],
+    notes: [`Photos and videos from exactly ${dayLabel(today)}. Adjacent dates are never included.`, `${ctx.modifiedDates ? "File-modified dates in the browser" : "Capture dates from your library"}.`],
     sequencing: "Oldest year first, walking forward to the most recent.",
     coherence: { value: 1, reason: `The same calendar date across ${plural(years, "year")}.` },
     why: `${dayLabel(today)} has ${plural(leads.length, "moment")}.`,
@@ -261,10 +263,10 @@ function selectDetour(candidate: Candidate, ctx: CurationContext, size: number):
   const { all, leads, fresh } = prepare(candidate, ctx);
   const recent = ctx.recentIds ?? new Set<string>();
   const base = [...leads.filter((m) => !recent.has(m.id)), ...leads.filter((m) => recent.has(m.id))];
-  const freshBase = base.filter(fresh);
-  const source = freshBase.length >= size ? freshBase : base;
+  const source = [...base.filter(fresh), ...base.filter(m => !fresh(m))];
   const yearKeys = (keys: string[]) => shuffle(keys.sort(), ctx.seed);
-  const picks = spread(source, [yearOf, (m) => m.month, dayOf], yearKeys).slice(0, size);
+  const keys = [yearOf, (m: Media) => m.month, dayOf];
+  const picks = selectMixedMedia([...spread(source.filter(m => !recent.has(m.id)), keys, yearKeys), ...spread(source.filter(m => recent.has(m.id)), keys, yearKeys)], size);
   const years = new Set(picks.map(yearOf)).size;
   const sequenced = twist(picks, ctx.seed);
   const repeats = sequenced.filter((m, i) => i && yearOf(sequenced[i - 1]) === yearOf(m)).length;
@@ -309,15 +311,15 @@ function selectCorners(candidate: Candidate, ctx: CurationContext, size: number)
   const context = spread(
     leads.filter((m) => !taken.has(m.id) && !inRun.has(m.id) && (ctx.chosen || fresh(m))),
     [(m) => m.month, dayOf],
-  ).slice(0, Math.max(0, size - signal.length));
-  const picks = [...signal, ...context].slice(0, size).sort(chronological);
+  );
+  const picks = selectMixedMedia([...signal, ...context, ...all.filter(m => ctx.chosen || fresh(m))], size).sort(chronological);
   const months = new Set(picks.map((m) => m.month)).size;
   return {
     picks,
     notes: [
       `From ${plural(new Set(all.map((m) => m.month)).size, "quiet month")} with the least Pictopia activity.`,
       `${plural(chosenRuns.length, "quick series", "quick series")} kept together (up to three shots each) so you can keep the best; ${plural(signal.length - used, "possibly blurry photo")}.`,
-      `The rest are unexplored moments from the same months (${plural(context.length, "photo")}). Favorites are never offered as cleanup.`,
+      `The rest are unexplored moments from the same months (${plural(picks.filter(m => !taken.has(m.id)).length, "memory", "memories")}). Favorites are never offered as cleanup.`,
     ],
     sequencing: "Chronological, with each quick series kept side by side for easy comparison.",
     coherence: {
@@ -423,9 +425,7 @@ function cleanupSignals(picks: Media[], pool: Media[], modifiedDates = false) {
 
 /** Composes and scores one candidate. Returns nothing when it can't make an Adventure. */
 export function curate(candidate: Candidate, ctx: CurationContext): CuratedAdventure | undefined {
-  candidate = { ...candidate, pool: candidate.kind === "screenshots"
-    ? eligibleStills(candidate.pool, ctx.exclude, "screenshots")
-    : eligiblePhotographs(candidate.pool, ctx.exclude) };
+  candidate = { ...candidate, pool: adventurePool(candidate.pool, candidate.kind, ctx.exclude) };
   const size = ctx.size ?? adventureSize(candidate.kind);
   const minimum = ctx.chosen || candidate.kind === "day" ? 1 : Math.min(OFFER_MIN, size);
   const { kind } = candidate;
@@ -441,7 +441,7 @@ export function curate(candidate: Candidate, ctx: CurationContext): CuratedAdven
             : selectTime(candidate, ctx, size);
   const picks = sel.picks;
   if (picks.length < minimum) return undefined;
-  const pool = eligible(candidate.pool, ctx.exclude);
+  const pool = kind === "day" ? candidate.pool.filter(m => m.day === candidate.source.slice(4, 9)) : candidate.pool;
   const fresh = picks.filter((m) => !(m.firstSeenAt || ctx.explored.has(m.id)) && !m.decision).length;
   const poolFresh = pool.filter((m) => !(m.firstSeenAt || ctx.explored.has(m.id))).length / Math.max(1, pool.length);
   const recentIds = ctx.recentIds ?? new Set<string>();
@@ -593,7 +593,7 @@ export function daysAround(now: number, span: number) {
 /** Cheap first pass from the month index: which candidates are worth reading. */
 export function planCandidates(
   months: MonthProfile[],
-  { now, seed, screenshots, recentSources = [] }: { now: number; seed: number; screenshots: boolean; recentSources?: readonly string[] },
+  { now, seed, screenshots, recentSources = [], mixedMonths = months }: { now: number; seed: number; screenshots: boolean; recentSources?: readonly string[]; mixedMonths?: MonthProfile[] },
 ): Plan[] {
   const recent = new Set(recentSources.slice(-6));
   const current = new Date(now);
@@ -640,13 +640,15 @@ export function planCandidates(
     reason: "Today’s calendar date in earlier years.",
   });
   if (screenshots) plans.push({ kind: "screenshots", source: "screenshots", screenshots: true, reason: "The library has screenshots." });
-  if (years.size >= 2) {
+  const mixedYears = new Map<string, MonthProfile[]>();
+  for (const m of mixedMonths) mixedYears.set(m.key.slice(0, 4), [...(mixedYears.get(m.key.slice(0, 4)) ?? []), m]);
+  if (mixedYears.size >= 2) {
     // One or two quiet months per year, so every year has a voice.
-    const sampled = [...years.values()].flatMap((list) =>
+    const sampled = [...mixedYears.values()].flatMap((list) =>
       shuffle(
         [...list].sort((a, b) => quiet(b) - quiet(a)).slice(0, 4),
         seed,
-      ).slice(0, years.size > 6 ? 1 : 2),
+      ).slice(0, mixedYears.size > 6 ? 1 : 2),
     );
     plans.push({
       kind: "detour",
@@ -655,7 +657,7 @@ export function planCandidates(
       reason: `Samples quiet months across ${plural(years.size, "year")}.`,
     });
   }
-  const corners = months
+  const corners = mixedMonths
     .filter((m) => m.count >= 4 && !fresh(m.key))
     .sort((a, b) => quiet(b) - quiet(a) || b.count - a.count)
     .slice(0, 6);

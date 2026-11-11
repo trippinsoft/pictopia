@@ -3,6 +3,7 @@ import { Media, Query, Session, Decision, Analysis, Entitlement } from "./types"
 export const SCAN_VERSION = "sha256-dhash-laplacian-v1";
 export function dateKeys(timestamp: number) {
   const d = new Date(timestamp);
+  if (!Number.isFinite(d.getTime()) || timestamp === 0) return { month: "unknown", day: "unknown" };
   return {
     month: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
     day: `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
@@ -13,7 +14,7 @@ export function identity(m: Media) {
 }
 export function matches(m: Media, q: Query) {
   return (
-    m.active &&
+    (!!q.includeInactive || m.active) &&
     (!q.month || calendarMonth(m) === q.month) &&
     (!q.year || calendarMonth(m).startsWith(`${q.year}-`)) &&
     (!q.unseen || !m.firstSeenAt) &&

@@ -1,5 +1,5 @@
 import { adventureName } from "@/lib/pictopia/catalog";
-import { eligiblePhotographs, photographQuery } from "@/lib/pictopia/photo-eligibility";
+import { eligiblePhotographs, onThisDayPool, adventureMediaQuery, adventureScreenshotPolicy } from "@/lib/pictopia/photo-eligibility";
 import { Platform } from "react-native";
 import { storage, serialize } from "./repository";
 import { deletionBlocked, EXPLORE_KEY, exploreStoreFor, visibleIds } from "./explore";
@@ -109,10 +109,10 @@ async function chunks<T>(ids: string[], read: (ids: string[]) => Promise<T[]>) {
 const readMedia = (ids: string[]) =>
   chunks(ids, (part) => storage.query({ ids: part, limit: part.length }));
 
-/** A legacy frozen photo adventure may include screenshots. Retire the whole offer;
- * its original session remains intact for Journey and set-aside recovery. */
+/** New memory offers exclude screenshots. Started snapshots remain resumable as saved,
+ * including when later metadata identifies an original item as a screenshot. */
 async function validPhotoOffer(adventure: Adventure, session: ExploreSession) {
-  if (adventure.kind === "screenshots") return true;
+  if (adventure.startedAt || session.history.length || Object.keys(session.records).length || adventureScreenshotPolicy(adventure.kind) !== "exclude") return true;
   return !(await readMedia(session.ids)).some(m => m.screenshot);
 }
 /** Select a single existing journey per year without modifying any snapshot or media.
@@ -210,11 +210,11 @@ async function curationContext(index: AdventureIndex, seed: number) {
   };
   return ctx;
 }
-async function monthProfiles(explored: ReadonlySet<string>): Promise<MonthProfile[]> {
-  const months = await storage.months(true);
+async function monthProfiles(explored: ReadonlySet<string>, photographsOnly = true): Promise<MonthProfile[]> {
+  const months = await storage.months(photographsOnly);
   const byMonth = new Map<string, number>();
   for (const m of await readMedia([...explored]))
-    if (m.type === "photo" && !m.screenshot) byMonth.set(m.month, (byMonth.get(m.month) ?? 0) + 1);
+    if (!photographsOnly || (m.type === "photo" && !m.screenshot)) byMonth.set(m.month, (byMonth.get(m.month) ?? 0) + 1);
   return months.map((m) => ({
     key: m.key,
     count: m.count,
@@ -228,10 +228,9 @@ const hasScreenshots = async () =>
 /** Metadata-only scope pages; never reads image bytes or hundreds of originals. */
 async function scopeRows(kind: AdventureKind, source: string) {
   const rows: Media[] = [];
-  const query = kind === "screenshots" ? { type: "photo" as const, screenshot: true }
-    : { ...photographQuery, ...(source.startsWith("year:") ? { year: source.slice(5) }
-      : source.startsWith("month:") ? { month: source.slice(6) }
-      : source.startsWith("day:") ? { day: source.slice(4, 9) } : {}) };
+  const query = { ...adventureMediaQuery(kind), ...(source.startsWith("year:") ? { year: source.slice(5) }
+    : source.startsWith("month:") ? { month: source.slice(6) }
+    : source.startsWith("day:") ? { day: source.slice(4, 9) } : {}) };
   // Query supports month/day but not year; filter metadata after paging.
   for (let offset = 0; ; offset += 200) {
     const page = await storage.query({ ...query, order: "oldest", offset, limit: 200 });
@@ -239,6 +238,26 @@ async function scopeRows(kind: AdventureKind, source: string) {
     if (page.length < 200) break;
   }
   return rows;
+}
+/** The photos an On This Day review of `day` (MM-DD) holds: the same rule `curate` applies, so
+ * the date list, Explore and reminders count exactly what the review shows. */
+async function onThisDayRows(day: string) {
+  const blocked = await deletionBlocked();
+  return onThisDayPool(await scopeRows("day", `day:${day}`), blocked);
+}
+/** Repair older capped/photo-only date snapshots without replacing their history or cursor. */
+async function refreshDaySnapshot(a: Adventure, session: ExploreSession) {
+  if (a.kind !== "day") return a;
+  const rows = (await onThisDayRows(a.source.slice(4, 9))).sort((x, y) => x.created - y.created || x.id.localeCompare(y.id));
+  const saved = new Set(session.ids);
+  const additions = rows.filter(m => !saved.has(m.id)).map(m => m.id);
+  if (!additions.length) return a;
+  const ids = [...session.ids, ...additions];
+  const updated = { ...a, count: ids.length, finishedAt: undefined, completionProof: undefined };
+  const next = { ...session, ids, finished: false, completionVerifiedAt: undefined,
+    activeId: session.activeId ?? additions[0], revision: session.revision + 1 };
+  await storage.put([], { [metaKey(a.id)]: updated, [adventureSessionKey(a.id)]: next });
+  return updated;
 }
 async function loadCandidate(plan: Plan, _ctx: CurationContext): Promise<Candidate> {
   const rows = await scopeRows(plan.kind, plan.source);
@@ -294,7 +313,7 @@ async function persist(
   write = true,
 ) {
   let result = curated;
-  let ids = await visibleIds(curated.ids);
+  let ids = candidate.kind === "day" ? curated.ids : await visibleIds(curated.ids);
   if (ids.length < curated.ids.length) {
     const missing = new Set(curated.ids.filter((id) => !ids.includes(id)));
     const again = curate(candidate, { ...ctx, exclude: new Set([...(ctx.exclude ?? []), ...missing]) });
@@ -348,7 +367,7 @@ async function homeSlots(seed: number, refresh: boolean) {
   const shown: AdventureSlot[] = [];
   for (const id of index.slots.slice(0, 2)) {
     const [adventure, session] = await Promise.all([loadMeta(id), loadSession(id)]);
-    const dayAvailable = adventure?.kind !== "day" || (adventure.source === `day:${daysAround(Date.now(), 0)[0]}` && (await scopeRows("day", adventure.source)).length > 0);
+    const dayAvailable = adventure?.kind !== "day" || (adventure.source === `day:${daysAround(Date.now(), 0)[0]}` && (await onThisDayRows(adventure.source.slice(4, 9))).length > 0);
     // Once the user has finished the on-screen adventure, the slot is spent and makes way for
     // a fresh one — even for extendable kinds (a 20-photo Yearbook never exhausts the whole
     // year, so finishedAt stays unset; completionEvidence is what actually says "done here").
@@ -380,6 +399,7 @@ async function homeSlots(seed: number, refresh: boolean) {
     const plans = planCandidates(profiles, {
       now: ctx.now!,
       seed,
+      mixedMonths: await monthProfiles(ctx.explored, false),
       screenshots: await hasScreenshots(),
       recentSources: index.recent,
     });
@@ -520,6 +540,8 @@ export const adventureStore = {
       const status = await scopeStatus(a);
       const session = await loadSession(id);
       const attempted = new Set(session?.ids ?? []);
+      const priorSessions = await Promise.all((a.segmentKeys ?? []).map(key => exploreStoreFor(key).load()));
+      for (const prior of priorSessions) prior?.ids.forEach(photo => attempted.add(photo));
       const pool = status.remaining.filter(m => !attempted.has(m.id));
       const nextCount = curate({ kind: a.kind, source: a.source, pool }, { seed: 0, chosen: true, size: adventureSize(a.kind), explored: new Set(), modifiedDates: Platform.OS === "web" })?.ids.length ?? 0;
       const milestone = journeyMilestone(status.explored, status.total, a.milestones ?? []);
@@ -530,7 +552,9 @@ export const adventureStore = {
     return serialize(async () => {
       const a = await loadMeta(id), s = await loadSession(id);
       if (!a || !s) throw Error("Adventure not found.");
-      return nextSegment(a, s);
+      const next = await nextSegment(a, s);
+      if (next === a) throw Error("There are no new photos available in this adventure right now.");
+      return next;
     });
   },
   async history(now = Date.now()) {
@@ -538,7 +562,7 @@ export const adventureStore = {
     return Promise.all(Array.from({ length: 8 }, async (_, i) => {
       const date = addDays(today, -i);
       const day = date.slice(5);
-      return { date, count: (await scopeRows("day", `day:${day}`)).length };
+      return { date, count: (await onThisDayRows(day)).length };
     }));
   },
   /** Photos from earlier years on each of the next `days` calendar dates, for reminders. */
@@ -548,7 +572,7 @@ export const adventureStore = {
     const out: Record<string, { count: number; years: number[] }> = {};
     for (let i = 0; i < days; i++) {
       const date = addDays(today, i);
-      const years = (await scopeRows("day", `day:${date.slice(5)}`)).map(m => Number(m.month.slice(0, 4))).filter(y => y < year);
+      const years = (await onThisDayRows(date.slice(5))).map(m => Number(m.month.slice(0, 4))).filter(y => y < year);
       out[date] = { count: years.length, years: [...new Set(years)] };
     }
     return out;
@@ -570,6 +594,7 @@ export const adventureStore = {
       if (!adventure) throw Error("This adventure couldn’t be found.");
       if (adventure.historyPro && !pro) throw Error("Past-date Adventures require Pictopia+.");
       const session = await loadSession(id);
+      if (session) adventure = await refreshDaySnapshot(adventure, session);
       if (session && !await validPhotoOffer(adventure, session)) throw Error("This older adventure contains screenshots. Choose a fresh photo adventure in Explore.");
       const now = Date.now();
       await storage.setValue(metaKey(id), {
@@ -606,9 +631,9 @@ export const adventureStore = {
         const existing = mapping[date] ? await loadMeta(mapping[date]) : undefined;
         const session = existing ? await loadSession(existing.id) : undefined;
         // One On This Day per date: reopening it, finished or not, shows the same whole set.
-        if (existing && session) return existing;
+        if (existing && session) return refreshDaySnapshot(existing, session);
       }
-      const plan: Plan | undefined =
+      let plan: Plan | undefined =
         choice.kind === "year"
           ? {
               kind: "year",
@@ -630,9 +655,11 @@ export const adventureStore = {
                 : planCandidates(await monthProfiles(ctx.explored), {
                     now,
                     seed,
+                    mixedMonths: await monthProfiles(ctx.explored, false),
                     screenshots: false,
                     recentSources: index.recent,
                   }).find((p) => p.kind === (choice.kind === "capsule" ? "capsule" : "detour"));
+      if (!plan && choice.kind === "detour") plan = { kind: "detour", source: "detour", reason: "A mix of your accessible memories." };
       if (!plan) return undefined;
       const candidate = await loadCandidate(plan, ctx);
       const curated = curate(candidate, ctx);
@@ -650,9 +677,9 @@ export const adventureStore = {
       return made.adventure;
     });
   },
-  /** What Explore can offer. Videos aren't: the explorer shows still photos only. */
+  /** Memory year/month choices use photographs; mixed/date reviews also support videos. */
   async choices(now = Date.now()) {
-    // Still photos only: videos aren't explored.
+    // Yearbook and Time Capsule remain photographic experiences.
     const months = (await storage.months(true)).filter((m) => (m.photos ?? m.count) > 0 && /^\d{4}-(0[1-9]|1[0-2])$/.test(m.key));
     const years = [...new Set(months.map((m) => m.key.slice(0, 4)))].sort().reverse();
     const photos = Object.fromEntries(months.map((m) => [m.key, m.photos ?? m.count]));
@@ -662,7 +689,7 @@ export const adventureStore = {
     const monthsByYear = Object.fromEntries(
       years.map((y) => [y, months.filter((m) => m.key.startsWith(y)).map((m) => m.key).sort()]),
     );
-    const dayCount = (await scopeRows("day", `day:${daysAround(now, 0)[0]}`)).length;
+    const dayCount = (await onThisDayRows(daysAround(now, 0)[0])).length;
     return {
       years,
       monthsByYear,
@@ -670,7 +697,7 @@ export const adventureStore = {
       yearPhotos,
       day: dayCount > 0,
       dayCount,
-      detour: years.length >= 2,
+      detour: (await storage.months()).some(m => m.count > 0),
       // Time Capsule: Pictopia picks a month with at least 20 photos.
       capsule: months.some((m) => (m.photos ?? m.count) >= 20),
       screenshots: await hasScreenshots(),
@@ -817,6 +844,7 @@ export const adventureStore = {
       const plans = planCandidates(await monthProfiles(ctx.explored), {
         now: ctx.now!,
         seed,
+        mixedMonths: await monthProfiles(ctx.explored, false),
         screenshots: false,
         recentSources: [],
       }).filter((p) => p.kind === experiment);

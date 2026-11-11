@@ -129,3 +129,11 @@ The review interaction uses the original 1.0.21 live feed: marked photos leave s
 - Finishing a Home adventure always retires it and offers a fresh one (completing the on-screen set, not exhausting a whole year); 'Keep going' lives only on the completion screen. Restore in the reviewer flies the photo back out of the trash.
 - Free daily limit lowered from 150 to 100 items; onboarding doesn't announce the number (Picnic's didn't either).
 - Reminders are local notifications: at most one a day with a real reason (streak at risk, On This Day, Discarded waiting), default 7 pm.
+- Onboarding follows Picnic: welcome with "The fast, fun way to sort your photos", 3-step story, access primer, own-library reveal, planning, store-driven trial offer, then a 'Your first adventure is ready' screen (Start or Look around first).
+- On This Day keeps discarded-but-not-deleted photos in the set (faded, with Restore) and counts the same set everywhere; a developer On This Day audit in the Adventure Lab traces one date from PhotoKit to the review. Videos and screenshots remain out of On This Day pending an owner decision.
+
+- On This Day includes supported videos, excludes screenshots, and retains complete date sets without a total snapshot cap; onboarding counts photos and videos together with explicit index reconciliation.
+
+- Screenshots participate by Adventure: all eligible items in On This Day, a soft 20% preference in Surprise Me/Hidden Corners, photographic memory defaults and unchanged cleanup/game rules; saved review evidence remains intact.
+
+- New badge awards persist with an acknowledgment-based medal celebration; Progress refreshes avoid layout shifts, and Yearbook continuation excludes all prior batches and remounts its feed.

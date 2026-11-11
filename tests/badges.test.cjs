@@ -42,3 +42,39 @@ test("next-tier progress", () => {
   assert.equal(v.next, 1000);
   assert.equal(v.progress, 0.5);
 });
+
+test('new awards persist atomically, survive restart, and dismiss individually without re-awarding', async () => {
+  const { DatabaseSync, platform, boot } = require('./native-harness.cjs');
+  const db = new DatabaseSync(':memory:'), p = platform(), fault = {}, app = await boot(db,p,fault);
+  const load = () => makeLoader({...p.mocks,'./repository':app})('services/badges.ts');
+  const source = explored => ({progress:{explored,deleted:0},months:[]});
+  try {
+    let badges = load();
+    await badges.evaluateSavedBadges(1,source(0));
+    assert.deepEqual(await badges.badgeStore.pendingCelebrations(),[],'baseline is silent');
+    let notifications=0;
+    const unsubscribe=badges.badgeStore.subscribeCelebrations(()=>notifications++);
+    fault.key='badges:v1';
+    await assert.rejects(badges.evaluateSavedBadges(2,source(100)));
+    assert.deepEqual(await badges.badgeStore.pendingCelebrations(),[],'failed badge write cannot celebrate');
+    assert.equal(notifications,0);
+    delete fault.key;
+    await badges.evaluateSavedBadges(2,source(100));
+    assert.equal(notifications,1);
+    const [first]=await badges.badgeStore.pendingCelebrations();
+    assert.deepEqual(first,{family:'explorer',tier:1,earnedAt:2,value:100});
+    await badges.evaluateSavedBadges(3,source(500));
+    assert.equal((await badges.badgeStore.pendingCelebrations()).length,2);
+    unsubscribe(); badges=load();
+    assert.equal((await badges.badgeStore.pendingCelebrations()).length,2,'restart retains unseen celebrations');
+    fault.key='badgeCelebrations:v1';
+    await assert.rejects(badges.badgeStore.dismissCelebration(first));
+    assert.equal((await badges.badgeStore.pendingCelebrations()).length,2);
+    delete fault.key;
+    await badges.badgeStore.dismissCelebration(first);
+    assert.deepEqual((await badges.badgeStore.pendingCelebrations()).map(a=>a.tier),[2]);
+    await badges.evaluateSavedBadges(4,source(500));
+    assert.equal((await badges.badgeStore.pendingCelebrations()).length,1,'refresh never re-enqueues an earned tier');
+    assert.equal((await badges.badgeStore.state()).earned.explorer.tier,2);
+  } finally {db.close();}
+});

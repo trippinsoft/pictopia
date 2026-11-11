@@ -123,6 +123,7 @@ export default function AdventureLab() {
           </Text>
           <View className="mt-4 gap-3">
             <Button secondary onPress={() => router.push("/device-checks")}>Device checks</Button>
+            <Button secondary onPress={() => router.push("/on-this-day-audit")}>On This Day audit</Button>
             <Button secondary onPress={() => void developerFlags.set("duplicateHunt", !flags.duplicateHunt).then(setFlags).catch(() => setMessage("That setting couldn’t be saved."))}>{flags.duplicateHunt ? "Duplicate Hunt: open on this device (tap to close)" : "Duplicate Hunt: closed (tap to open for testing)"}</Button>
             <Button secondary onPress={() => void resetData("cache")}>{confirmReset === "cache" ? "Tap again to clear analysis cache" : "Clear local analysis cache"}</Button>
             <Button secondary onPress={() => void resetData("reset")}>{confirmReset === "reset" ? "Tap again: clears decisions, never photos" : "Reset cleanup decisions"}</Button>

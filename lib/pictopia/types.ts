@@ -67,6 +67,8 @@ export interface Query {
   scanMissing?: boolean;
   hash?: string;
   ids?: string[];
+  /** Diagnostics only: rows the last complete sync no longer saw are normally hidden. */
+  includeInactive?: boolean;
 }
 export type SessionMinutes = 2 | 5 | 10;
 export interface Session {
@@ -153,10 +155,12 @@ export interface ScanState {
 }
 export interface Offer {
   id: string;
-  kind: "monthly" | "annual" | "lifetime";
+  kind: "weekly" | "monthly" | "annual" | "lifetime";
   price: string;
   amount: number;
   currency: string;
+  /** A free trial the store says this person can start now; absent when none is offered. */
+  trialDays?: number;
 }
 export interface Entitlement {
   active: boolean;

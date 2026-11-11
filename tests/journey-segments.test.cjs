@@ -25,6 +25,34 @@ async function completeSegment(store) {
   return store.change({type:'finish',expectedRevision:s.revision,endId:s.ids.at(-1)});
 }
 
+test('three Yearbook batches exclude every prior ID, even without encounter evidence, and stop offering more', async () => {
+  const f = await fixture(45);
+  try {
+    const a = await f.adventureStore.choose({kind:'year',year:'2020'},11);
+    const store = f.explore.exploreStoreFor(f.adventureSessionKey(a.id));
+    const attempted = new Set();
+    for (const count of [20,20,5]) {
+      let session = await store.load();
+      assert.equal(session.ids.length,count);
+      for (const id of session.ids) {
+        assert.equal(attempted.has(id),false,'a prior batch must never reappear');
+        attempted.add(id);
+      }
+      // Photos that failed to load do not earn encounter evidence, but still belong to
+      // the archived batch and must not inflate Keep going's next-photo count.
+      await store.change({type:'seen',id:session.ids.at(-1),displayedAt:Date.now()});
+      session = await store.load();
+      await store.change({type:'finish',expectedRevision:session.revision,endId:session.ids.at(-1)});
+      assert.equal((await f.adventureStore.segmentStatus(a.id)).nextCount,Math.min(20,45-attempted.size));
+      if (attempted.size < 45) await f.adventureStore.continue(a.id);
+    }
+    const before = await store.load();
+    await assert.rejects(f.adventureStore.continue(a.id), /no new photos/);
+    assert.deepEqual((await store.load()).ids,before.ids,'no new photos leaves the finished batch intact');
+    assert.equal(attempted.size,45);
+  } finally { f.db.close(); }
+});
+
 test('25-photo Yearbook continues as 20 + 5 without repeats, retains its ID, and awards milestones once', async () => {
   const f = await fixture();
   try {

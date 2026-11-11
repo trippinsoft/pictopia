@@ -5,7 +5,7 @@ import { Query, Stats, Month } from "@/lib/pictopia/types";
 let db: SQLite.SQLiteDatabase;
 const calendarKey = "CASE WHEN created>0 AND length(month)=7 AND month GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]' AND substr(month,6,2) BETWEEN '01' AND '12' THEN month ELSE 'unknown' END";
 function conditions(q: Query) {
-  let sql = "active=1";
+  let sql = q.includeInactive ? "1=1" : "active=1";
   const args: (string | number)[] = [];
   const add = (s: string, v?: string | number) => {
     sql += ` AND ${s}`;

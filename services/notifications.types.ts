@@ -7,6 +7,8 @@ export interface NotificationService {
   request(): Promise<ReminderPermission>;
   /** Replaces every scheduled Pictopia reminder with `plan`. */
   schedule(plan: PlannedReminder[]): Promise<void>;
+  /** One reminder outside the weekly plan (the free-trial reminder); replaced by id. */
+  scheduleOnce(reminder: { id: string; at: number; title: string; body: string; url: string }): Promise<void>;
   /** Opens a tapped reminder's route, including the one that launched the app. */
   onOpen(open: (url: string) => void): () => void;
 }

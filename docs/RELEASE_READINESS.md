@@ -13,7 +13,7 @@
 | Real video-library access | Native paginated MediaLibrary | Physical-device tests required |
 | Browser file selection | Real local files, persisted in IndexedDB | Imported real image fixtures in browser tests |
 | Monthly collections | Local calendar grouping, stable native date/id ordering | Logic and browser tests passed |
-| Recent / On This Day | Real date-filtered queries; prior years for On This Day | Logic exercised; calendar-date device tests required |
+| Recent / On This Day | Real date-filtered queries; prior years for On This Day; whole date incl. discarded-not-deleted photos | Logic exercised (`tests/on-this-day.test.cjs`); run the Lab's On This Day audit on a real iPhone against SwipeWipe/Picnic counts |
 | Random Shuffle | Stable session order, reviewed items excluded by preference | Seeded shuffle tested; device library scenarios pending |
 | Screenshots | iOS subtype; Android platform path/album metadata | Device/OEM verification required; not inferred from dimensions |
 | Videos / Favorites | Videos collection (oldest first, largest first) in the shared review | Browser tested; native playback, iCloud and deletion pending device checks |
@@ -54,7 +54,7 @@
 | Purchases / restore | Real SDK calls; cancellation/pending/error handling | SDK adapter tests passed; genuine store sandbox tests NOT run |
 | Expiry / revocation / offline | Current CustomerInfo listener, foreground refresh, unexpired entitlement cache | Expiration and revocation test doubles exercised; real store tests pending |
 | Paywall | Localized store prices, mathematically checked annual savings, disclosures | Browser unavailable-checkout and links checked |
-| Onboarding | Welcome / swiping / deletion safety / permission explanation | Browser navigable; native permissions pending |
+| Onboarding | Welcome, three-step story, photo/reminder access, library reveal, planning, store-driven trial offer, first adventure | Browser welcome/story/trial checked; library reveal, permissions, trial purchase and reminders need a device build; weekly product + trial must exist in both stores |
 | Appearance / preferences | System, light, dark; haptics, autoplay, favorites, reviewed, reverse directions | Browser Light/Dark/System, persistence, dialog variables, core/secondary flows and contrast verified; native chrome/device appearance and haptics pending |
 | Reset / analysis-cache clearing | Explicit confirmation; original media untouched | Repository paths present; device interruption QA pending |
 | Statistics | Basic counts; Pro storage coverage and recent sessions | Host database aggregates tested; no actual free-space measurement |

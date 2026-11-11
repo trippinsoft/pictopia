@@ -46,7 +46,7 @@ export function AdventureFinish({ adventure, title, photoIds, explored, marked, 
       const status = await adventureStore.segmentStatus(adventure.id);
       await adventureStore.finish(adventure.id);
       if (live) { setFacts(status); setReady(true); }
-      // Preserve badge evaluation, without injecting extra celebrations or controls.
+      // New awards are saved and presented by the app-wide celebration host.
       void badgeStore.evaluate().catch(() => {});
     })().catch(() => { if (live) setError("Couldn’t load your progress. Your discarded photos are safe."); });
     return () => { live = false; };
@@ -60,7 +60,7 @@ export function AdventureFinish({ adventure, title, photoIds, explored, marked, 
         const next = await adventureStore.continue(adventure.id);
         if (alive.current) onContinueSegment(next);
       }
-    } catch { if (alive.current) setError("The next photos couldn’t open. Please try again."); }
+    } catch (error) { if (alive.current) setError(error instanceof Error ? error.message : "The next photos couldn’t open. Please try again."); }
     finally { locked.current = false; if (alive.current) setBusy(false); }
   };
   const name = title ?? (adventure ? adventureLabel(adventure) : "Adventure");

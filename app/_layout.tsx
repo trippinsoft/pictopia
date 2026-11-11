@@ -15,6 +15,7 @@ import { useColorScheme } from "@/lib/useColorScheme";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { PictopiaProvider, usePictopia } from "@/components/pictopia/provider";
 import { ReminderHost } from "@/components/pictopia/use-reminders";
+import { BadgeCelebrationHost } from "@/components/pictopia/badge-celebration";
 import { systemAppearanceService } from "@/services/system-appearance";
 import { ThemeProvider, useTheme } from "@/theming/ThemeProvider";
 import darkTheme from "@/theming/themes/dark";
@@ -182,6 +183,7 @@ function RootContent() {
           />
         </Stack>
         <ReminderHost />
+        <BadgeCelebrationHost />
         {
           // View used as a portal container on web
           <View

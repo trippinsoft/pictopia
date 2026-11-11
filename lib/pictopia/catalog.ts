@@ -21,7 +21,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     name: "On This Day",
     blurb: "Today’s date in earlier years",
     details:
-      "Photos taken on today’s date in earlier years. If there aren’t enough, it looks within 3 days, then within 7 days, then the whole month, and always tells you when it has widened. Up to 18 photos, oldest year first. Shots taken seconds apart show once.",
+      "Every eligible photo, Live Photo, supported video and screenshot from this exact calendar date across your years, oldest first. Nearby dates are never added. Memories you’ve already seen or marked for deletion stay in until actually deleted; marked items show faded, with Restore.",
     art: "onThisDay",
   },
   {
@@ -45,7 +45,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     name: "Surprise Me",
     blurb: "A mix from across your years",
     details:
-      "20 photos from the months you’ve explored least, drawn from across all your years and arranged so no two in a row come from the same year.",
+      "Up to 20 photos and supported videos from across your years, arranged to vary the years. Screenshots may join the mix, usually no more than one in five when enough other media is available.",
     art: "detour",
   },
   {

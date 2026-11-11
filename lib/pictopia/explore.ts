@@ -94,7 +94,7 @@ export function selectExploreIds(items: Media[]) {
     .map((m) => m.id);
 }
 export function createExplore(ids: string[], now = Date.now()): ExploreSession {
-  const unique = [...new Set(ids)].slice(0, EXPLORE_LIMIT);
+  const unique = [...new Set(ids)];
   return {
     version: 2,
     ids: unique,

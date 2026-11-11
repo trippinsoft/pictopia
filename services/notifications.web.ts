@@ -5,5 +5,6 @@ export const notificationService: NotificationService = {
   async permission() { return "unsupported"; },
   async request() { return "unsupported"; },
   async schedule() {},
+  async scheduleOnce() {},
   onOpen() { return () => {}; },
 };

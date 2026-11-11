@@ -15,7 +15,7 @@ const pool = [...Array.from({length:90}, (_, i) => photo(`shot${i}`, i, true)), 
 
 test("all photo adventure kinds filter before curation; Screenshot Sweep retains screenshots", () => {
   const ctx = { seed: 9, now, explored: new Set() };
-  for (const kind of ["year", "month", "capsule", "day", "detour", "random", "corners"]) {
+  for (const kind of ["year", "month", "capsule"]) {
     const result = curate({ kind, source: kind === "day" ? "day:10-01" : `${kind}:2019`, pool }, ctx);
     assert.ok(result, kind);
     assert.ok(result.ids.length >= (kind === "day" ? 1 : 3), kind);
@@ -53,7 +53,10 @@ for (const os of ["ios", "android"]) test(`${os} SQLite queries filter before LI
   const capacity = await pitstops.library(); assert.equal(capacity.photos, 72);
   const home = await store.home(9);
   assert.equal(home.slots.length, 2);
-  for (const slot of home.slots) assert.ok(slot.session.ids.every(id => slot.adventure.kind === "screenshots" ? id.startsWith("s") : id.startsWith("p")));
+  for (const slot of home.slots) {
+    if (["year", "month", "capsule"].includes(slot.adventure.kind)) assert.ok(slot.session.ids.every(id => id.startsWith("p")));
+    assert.equal(slot.adventure.count, slot.session.ids.length);
+  }
   const historical = await store.choose({ kind: "year", year: "2019" }, 1);
   assert.ok(historical.count >= 10);
   const session = await app.storage.getValue(`adventure:${historical.id}:explore`);
@@ -67,13 +70,13 @@ for (const os of ["ios", "android"]) test(`${os} SQLite queries filter before LI
   assert.ok(sweep.count >= 10);
   const sweepSession = await app.storage.getValue(`adventure:${sweep.id}:explore`);
   assert.ok(sweepSession.ids.every(id => id.startsWith("s")));
-  // Already-generated mixed sessions are retired intact, including their saved decisions.
+  // Started memory reviews retain their snapshot even if later metadata identifies a screenshot.
   await store.open(historical.id);
   const poisoned = { ...session, ids: [...session.ids, "s0"] };
   await app.storage.setValue(`adventure:${historical.id}:explore`, poisoned);
-  assert.equal(await store.validPhotoOffer(historical.id), false);
-  await assert.rejects(store.open(historical.id), /screenshots/);
-  assert.ok(!(await store.unfinished()).some(slot => slot.adventure.id === historical.id));
+  assert.equal(await store.validPhotoOffer(historical.id), true);
+  await store.open(historical.id);
+  assert.ok((await store.unfinished()).some(slot => slot.adventure.id === historical.id));
   assert.deepEqual(await app.storage.getValue(`adventure:${historical.id}:explore`), poisoned);
   for (const m of rows) assert.deepEqual(await app.storage.get(m.id), m);
   assert.deepEqual(p.requests, []);
@@ -140,9 +143,63 @@ test("screenshot-only libraries keep Screenshot Sweep and expose no photo-game c
   assert.deepEqual(await games.sample("memoryMatch", 1), []);
   const home = await adventures.home(1);
   assert.ok(home.slots.length > 0);
-  assert.ok(home.slots.every(slot => slot.adventure.kind === "screenshots"));
+  assert.ok(home.slots.every(slot => ["screenshots", "day", "detour", "random", "corners"].includes(slot.adventure.kind)));
   assert.equal(await adventures.choose({ kind: "year", year: "2019" }, 1), undefined);
   assert.ok(await adventures.choose({ kind: "screenshots" }, 1));
   assert.deepEqual(p.requests, []);
+  db.close();
+});
+
+test('mixed Adventures prefer ordinary media, fill screenshot-heavy sets, and remain deterministic and unique', () => {
+  const mixed = [...pool, ...Array.from({length:15},(_,i)=>({...photo(`video${i}`,i+200),type:'video'}))];
+  const byId = new Map(mixed.map(m=>[m.id,m]));
+  const ctx={seed:9,now,explored:new Set(),chosen:true,size:20};
+  for(const kind of ['detour','random','corners']) {
+    const candidate={kind,source:kind,pool:[...mixed,...mixed.slice(0,12)]};
+    const a=curate(candidate,ctx);
+    assert.equal(a.ids.length,20,kind);
+    assert.equal(new Set(a.ids).size,20,kind);
+    assert.ok(a.ids.filter(id=>byId.get(id).screenshot).length<=4,kind);
+    assert.deepEqual(curate(candidate,ctx).ids,a.ids,'same inputs and seed retain ordering');
+    const videoMix=curate({kind,source:kind,pool:mixed.filter(m=>m.screenshot||m.type==='video')},ctx);
+    assert.equal(videoMix.ids.filter(id=>byId.get(id).type==='video').length,15,`${kind} supports videos`);
+    const heavy=[...pool.filter(m=>m.screenshot),...mixed.filter(m=>!m.screenshot).slice(0,2)];
+    const b=curate({kind,source:kind,pool:heavy},ctx);
+    assert.equal(b.ids.length,20,'screenshot preference never forces a tiny set');
+    assert.equal(b.ids.filter(id=>id.startsWith('photo')).length,2);
+    const shots=curate({kind,source:kind,pool:heavy.filter(m=>m.screenshot)},ctx);
+    assert.equal(shots.ids.length,20,'screenshot-only libraries remain usable');
+    const fresh=curate(candidate,{...ctx,exclude:new Set(a.ids)});
+    assert.ok(fresh.ids.every(id=>!a.ids.includes(id)),'excluded prior items are never repeated to fill the preference');
+  }
+});
+
+test('Surprise Me does not repeat recently used screenshots when enough other candidates exist',()=>{
+  const candidate={kind:'detour',source:'detour',pool};
+  const ctx={seed:9,now,explored:new Set(),chosen:true};
+  const a=curate(candidate,ctx);
+  const b=curate(candidate,{...ctx,recentIds:new Set(a.ids)});
+  assert.ok(b.ids.every(id=>!a.ids.includes(id)));
+});
+
+test('cleanup collections include screenshots and duplicate scan still requires real hash evidence',async()=>{
+  const rows=[photo('exact1',0,true),photo('exact2',1,true),photo('unscanned1',2,true),photo('unscanned2',3,true),photo('regular',4)];
+  const {SCAN_VERSION}=load('lib/pictopia/logic.ts');
+  for(const m of rows.slice(0,2)) m.scan={version:`${SCAN_VERSION}:${m.modified}`,hash:'same-original-hash'};
+  const db=new DatabaseSync(':memory:'),p=platform({library:rows.map(m=>m.id)}),app=await boot(db,p);
+  await app.storage.put(rows);
+  const service=makeLoader({...p.mocks,'./repository':app,'./media':{mediaService:app.mediaService}});
+  const {collectionStore,currentBatch}=service('services/collections.ts');
+  const recent=await collectionStore.open('recent');
+  const snapshot=await app.storage.getValue(currentBatch(recent).sessionKey);
+  assert.equal(snapshot.ids.length,rows.length);
+  assert.equal((await collectionStore.summary('recent')).total,rows.length);
+  assert.ok(snapshot.ids.includes('unscanned1'));
+  const groups=await app.repository.groups();
+  assert.equal(groups.length,1);
+  assert.equal(groups[0].kind,'exact');
+  assert.deepEqual(groups[0].ids.sort(),['exact1','exact2']);
+  assert.ok(groups.every(g=>!g.ids.includes('unscanned1')&&!g.ids.includes('unscanned2')),'screenshot classification alone never proves duplication');
+  assert.deepEqual(p.requests,[]);
   db.close();
 });

@@ -5,13 +5,13 @@ const {DatabaseSync,platform,boot}=require('./native-harness.cjs');
 const {HOME_TIPS,nextHomeTip}=makeLoader()('lib/pictopia/home-tips.ts');
 const at=(day,hour=12)=>new Date(2026,10,day,hour).getTime();
 
-test('one hundred daily facts wrap, keep the same local day, and resist clock rollback',()=>{
-  assert.equal(HOME_TIPS.length,100);assert.equal(new Set(HOME_TIPS).size,100);
+test('two hundred daily facts wrap, keep the same local day, and resist clock rollback',()=>{
+  assert.equal(HOME_TIPS.length,200);assert.equal(new Set(HOME_TIPS).size,200);
   let saved=nextHomeTip(undefined,at(6));assert.equal(saved.index,0);
   assert.equal(nextHomeTip(saved,at(6,23)),saved);
   assert.equal(nextHomeTip(saved,at(5)),saved);
   saved=nextHomeTip(saved,at(9));assert.equal(saved.index,1,'days away advance once');
-  for(let i=0;i<99;i++) saved=nextHomeTip(saved,at(10+i));
+  for(let i=0;i<HOME_TIPS.length-1;i++) saved=nextHomeTip(saved,at(10+i));
   assert.equal(saved.index,0);
   assert.equal(nextHomeTip({version:1,day:'bad',index:999},at(6)).index,0);
 });

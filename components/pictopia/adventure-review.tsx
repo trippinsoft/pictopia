@@ -39,12 +39,12 @@ export interface FinishActions {
   explored: number; marked: number; unavailable: number; libraryBefore?: number;
   photoIds: string[]; discarded: Media[];
 }
-export function AdventureReview({ id, collection, finishContent, onContinue: _onContinue }: {
+export function AdventureReview({ id, collection, finishContent, onContinue }: {
   id: string;
   /** Collections: their session, title and, for the header, explored progress when opened. */
   collection?: { sessionKey: string; title: string; progress?: { explored: number; total: number } };
   finishContent?: (actions: FinishActions) => ReactNode;
-  /** Collections keep going past a batch: the end card offers the next photos. */
+  /** Remount the review after a persisted segment change to discard the prior feed state. */
   onContinue?: () => void;
 }) {
   const sessionKey = collection?.sessionKey ?? adventureSessionKey(id);
@@ -245,7 +245,7 @@ export function AdventureReview({ id, collection, finishContent, onContinue: _on
     return <>
       <Stack.Screen options={{ title, headerShown: false }} />
       {finishContent?.({ onUndo: () => { setSelected(undefined); undo(); }, onPreviousPhoto: () => { setSelected(undefined); apply({ type: "back" }); }, onReview: reviewMarked, onDone: exit, onBackToPhotos: backToPhotos, onDeleteNow: deleteNow, canUndo, canReview: sequence.length > 0, pending, explored: counts.explored, marked: marked.length, unavailable: counts.unavailable, libraryBefore: opened.current?.finished ? undefined : libraryBefore.current, photoIds: sequence, discarded: discardedMedia }) ??
-        <AdventureFinish onContinueSegment={next => { setSelected(undefined); setAtEnd(false); opened.current = undefined; void reload().then(() => setAdventure(next)); }} adventure={adventure} photoIds={sequence} explored={counts.explored} marked={marked.length} unavailable={counts.unavailable} libraryBefore={opened.current?.finished ? undefined : libraryBefore.current} canUndo={canUndo} pending={pending}
+        <AdventureFinish onContinueSegment={next => { if (onContinue) { onContinue(); return; } setSelected(undefined); setAtEnd(false); opened.current = undefined; void reload().then(() => setAdventure(next)); }} adventure={adventure} photoIds={sequence} explored={counts.explored} marked={marked.length} unavailable={counts.unavailable} libraryBefore={opened.current?.finished ? undefined : libraryBefore.current} canUndo={canUndo} pending={pending}
           discarded={discardedMedia} onBackToPhotos={backToPhotos} onDeleteNow={deleteNow}
           onReview={reviewMarked} onDone={exit} onUndo={() => { setSelected(undefined); void change({ type: "undo" }).catch(() => {}); }} onPrevious={() => { setSelected(undefined); void change({ type: "back" }).catch(() => {}); }} />}
     </>;

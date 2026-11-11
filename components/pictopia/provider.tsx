@@ -145,12 +145,23 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
       if (!p.granted)
         throw Error("Photo access is off. Allow access in Settings to start cleaning.");
       const epoch = Date.now();
-      await mediaService.sync(
-        (page) => repository.ingest(page, epoch),
-        (n, total) => setSyncProgress(`${n.toLocaleString()} of ${total.toLocaleString()} items`),
+      const indexedIds = new Set<string>();
+      let discovered = 0;
+      await storage.setValue("libraryIndex:v1", { status: "indexing", startedAt: epoch });
+      const syncReport = await mediaService.sync(
+        async (page) => {
+          await repository.ingest(page, epoch);
+          for (const m of page) indexedIds.add(m.id);
+        },
+        (n, total) => { discovered = total; setSyncProgress(`${n.toLocaleString()} of ${total.toLocaleString()} photos & videos`); },
         controller.signal,
       );
       if (Platform.OS !== "web" && !controller.signal.aborted) await repository.reconcile(epoch);
+      if (!controller.signal.aborted) {
+        const indexed = await storage.stats();
+        if (Platform.OS !== "web" && (indexedIds.size !== discovered || indexed.total !== indexedIds.size)) throw Error("Your library index is incomplete. Please try again.");
+        await storage.setValue("libraryIndex:v1", { status: "complete", startedAt: epoch, completedAt: Date.now(), discovered, uniqueIndexed: indexedIds.size, metadataFailures: syncReport?.metadataFailures ?? [], indexed });
+      }
       await refresh();
       if (!controller.signal.aborted) {
         syncedRef.current = true;
@@ -159,7 +170,7 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
       } else if (firstSync) {
         setLibraryReliable(false);
       }
-      return true;
+      return !controller.signal.aborted;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Your library could not be loaded. Try again.");
       if (firstSync) setLibraryReliable(false);

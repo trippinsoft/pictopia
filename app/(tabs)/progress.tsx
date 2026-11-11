@@ -8,7 +8,6 @@ import { BadgeArt } from "@/components/pictopia/badge-art";
 import { PitStopMenu } from "@/components/pictopia/pit-stop-menu";
 import { SectionTitle, Sticker, TabHeader, WaitingPill, useLift } from "@/components/pictopia/playful";
 import { useLibraryProgress } from "@/components/pictopia/use-library-progress";
-import { usePictopia } from "@/components/pictopia/provider";
 import { progressResource } from "@/services/progress";
 import { dailyStore } from "@/services/daily";
 import { BADGES, ROMAN, badgeView, type BadgeDefinition } from "@/lib/pictopia/badges";
@@ -20,25 +19,26 @@ const dayOfMonth = (date: string) => Number(date.slice(8, 10));
 const monthName = (date: string, style: "short" | "long" = "long") => new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { month: style });
 const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"];
 
-/** One calendar day: its streak dot over its real date. The 1st of a month names the month. */
+/** One calendar day: the date inside its circle, replaced by a flame on streak days. */
 function DayCell({ date, state, size, today }: { date: string; state: "done" | "restored" | "missed" | "today" | "future"; size: number; today?: boolean }) {
   const label = new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
   const status = state === "done" ? "streak day" : state === "restored" ? "restored" : state === "future" ? "upcoming" : today ? "today, not yet" : "missed";
   return (
-    <View accessible accessibilityLabel={`${label}, ${status}`} className="w-[40px] items-center gap-1">
-      <Dot state={state} size={size} />
-      <Text numberOfLines={1} className={`text-[11px] ${today ? "font-semibold text-foreground" : state === "future" ? "text-muted-foreground/60" : "text-muted-foreground"}`}>
-        {dayOfMonth(date) === 1 ? `${monthName(date, "short")} 1` : dayOfMonth(date)}
-      </Text>
+    <View accessible accessibilityLabel={`${label}, ${status}`} className="w-[40px] items-center">
+      <Dot state={state} size={size} date={date} today={today} />
     </View>
   );
 }
 
-function Dot({ state, size = 22 }: { state: "done" | "restored" | "missed" | "today" | "future"; size?: number }) {
+function Dot({ state, size = 22, date, today }: { state: "done" | "restored" | "missed" | "today" | "future"; size?: number; date?: string; today?: boolean }) {
   const cls = state === "done" ? "bg-sun" : state === "restored" ? "border-2 border-dashed border-sun bg-sun-soft" : state === "today" ? "border-2 border-foreground bg-card" : state === "future" ? "border border-dashed border-foreground/20" : "bg-foreground/5";
   return (
     <View style={{ width: size, height: size }} className={`items-center justify-center rounded-full ${cls}`}>
-      {(state === "done" || state === "restored") && <Icon name="Flame" size={size / 2} className="text-foreground" />}
+      {state === "done" || state === "restored" ? <Icon name="Flame" size={size / 2} className="text-foreground" /> : date ? (
+        <Text numberOfLines={1} className={`text-[11px] ${today ? "font-semibold text-foreground" : state === "future" ? "text-muted-foreground/60" : "text-muted-foreground"}`}>
+          {dayOfMonth(date)}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -55,9 +55,8 @@ function HeadlineTile({ icon, value, caption, onPress, label }: { icon: "Flame" 
 
 /** Progress: three headlines, Discarded link, streak calendar w/ restore, badges, Take a break. */
 export default function Progress() {
-  const app = usePictopia();
   const lift = useLift();
-  const { progress, percent, error, snapshot, refreshing } = useLibraryProgress();
+  const { progress, percent, error, snapshot } = useLibraryProgress();
   const streak = snapshot?.streak;
   const activity = snapshot?.activity;
   const restoredDays = new Set(snapshot?.restores.map(x => x.date) ?? []);
@@ -107,7 +106,6 @@ export default function Progress() {
         <TabHeader title="Progress" />
         {error && <View className="mt-3 gap-2"><Text accessibilityRole="alert" className="text-body text-destructive">{snapshot ? "Couldn’t refresh progress. Showing your last saved statistics." : "Couldn’t load progress."}</Text><Button secondary onPress={() => void progressResource.refresh()}>Retry progress</Button></View>}
         {!!message && <Text accessibilityRole="alert" className="mt-3 text-body text-destructive">{message}</Text>}
-        {snapshot && (refreshing || !app.libraryReliable) && <Text className="mt-2 text-caption text-muted-foreground">Showing saved progress while your library updates.</Text>}
 
         {/* Three headline numbers */}
         <View className="mt-4 flex-row items-stretch gap-2.5">

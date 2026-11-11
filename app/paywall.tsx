@@ -83,7 +83,7 @@ export default function Paywall() {
           <Loading />
         ) : (
           <View className="gap-3">
-            {(["monthly", "annual", "lifetime"] as const).map((kind) => {
+            {(offers.length ? (["weekly", "monthly", "annual", "lifetime"] as const).filter((k) => offers.some((o) => o.kind === k)) : (["monthly", "annual"] as const)).map((kind) => {
               const o = offers.find((x) => x.kind === kind);
               return (
                 <Pressable
@@ -99,12 +99,12 @@ export default function Paywall() {
                   <View className="w-full gap-1">
                     <View className="flex-row items-start justify-between gap-3">
                       <Text className="min-w-0 flex-1 text-h5 text-foreground">
-                        {kind === "monthly" ? "Pictopia+ Monthly" : kind === "annual" ? "Pictopia+ Yearly" : "Pictopia+ Lifetime"}
+                        {kind === "weekly" ? "Pictopia+ Weekly" : kind === "monthly" ? "Pictopia+ Monthly" : kind === "annual" ? "Pictopia+ Yearly" : "Pictopia+ Lifetime"}
                       </Text>
                       <Text className="max-w-[50%] text-right text-h5 text-primary">{o?.price ?? "Unavailable"}</Text>
                     </View>
                     <Text className="text-caption text-muted-foreground">
-                      {kind === "lifetime" ? "One payment. Ongoing Pictopia+ access." : kind === "annual" && savings > 0 ? `Save ${savings}% compared with monthly` : "Renews automatically. Cancel anytime."}
+                      {o?.trialDays ? `${o.trialDays}-day free trial, then renews automatically. Cancel anytime.` : kind === "lifetime" ? "One payment. Ongoing Pictopia+ access." : kind === "annual" && savings > 0 ? `Save ${savings}% compared with monthly` : "Renews automatically. Cancel anytime."}
                     </Text>
                   </View>
                 </Pressable>

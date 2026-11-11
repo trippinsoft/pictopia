@@ -42,6 +42,54 @@ public class PictopiaAnalysisModule: Module {
       }
       return result
     }
+    // Developer diagnostics: every asset on one MM-DD calendar day (phone time zone), read with
+    // the widest fetch options PhotoKit offers, so what the app's enumeration leaves out can be
+    // named. Metadata only: no image bytes, no downloads, no changes.
+    AsyncFunction("libraryCensus") { (monthDay: String, promise: Promise) in
+      self.queue.async {
+        let options = PHFetchOptions()
+        options.includeHiddenAssets = true
+        options.includeAllBurstAssets = true
+        options.includeAssetSourceTypes = [.typeUserLibrary, .typeCloudShared, .typeiTunesSynced]
+        let assets = PHAsset.fetchAssets(with: options)
+        // Mirror Expo SDK 55's production fetch exactly, alongside the wider census.
+        let indexedOptions = PHFetchOptions()
+        indexedOptions.includeAssetSourceTypes = [.typeUserLibrary]
+        indexedOptions.includeHiddenAssets = false
+        indexedOptions.includeAllBurstAssets = false
+        indexedOptions.predicate = NSPredicate(format: "mediaType == %d OR mediaType == %d", PHAssetMediaType.image.rawValue, PHAssetMediaType.video.rawValue)
+        var enumerable = Set<String>()
+        PHAsset.fetchAssets(with: indexedOptions).enumerateObjects { asset, _, _ in enumerable.insert(asset.localIdentifier) }
+        let calendar = Calendar.current
+        var onDate: [[String: Any]] = []
+        var inventory: [[String: Any]] = []
+        var undated = 0
+        assets.enumerateObjects { asset, _, _ in
+          let date = asset.creationDate
+          if date == nil { undated += 1 }
+          let source: String = asset.sourceType.contains(.typeCloudShared) ? "shared" : asset.sourceType.contains(.typeiTunesSynced) ? "synced" : "library"
+          let type: String = asset.mediaType == .image ? "photo" : asset.mediaType == .video ? "video" : "other"
+          let row: [String: Any] = [
+            "id": asset.localIdentifier,
+            "created": (date?.timeIntervalSince1970 ?? 0) * 1000,
+            "type": type,
+            "hidden": asset.isHidden,
+            "burstFrame": asset.burstIdentifier != nil && !asset.representsBurst,
+            "source": source,
+            "screenshot": asset.mediaSubtypes.contains(.photoScreenshot),
+            "livePhoto": asset.mediaSubtypes.contains(.photoLive),
+            "enumerable": enumerable.contains(asset.localIdentifier)
+          ]
+          inventory.append(row)
+          if let date = date {
+            let parts = calendar.dateComponents([.month, .day], from: date)
+            let key = String(format: "%02d-%02d", parts.month ?? 0, parts.day ?? 0)
+            if key == monthDay { onDate.append(row) }
+          }
+        }
+        promise.resolve(["total": assets.count, "undated": undated, "onDate": onDate, "inventory": inventory])
+      }
+    }
     AsyncFunction("analyze") { (id: String, uri: String, isVideo: Bool, promise: Promise) in
       self.queue.async {
         do {

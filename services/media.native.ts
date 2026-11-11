@@ -8,9 +8,11 @@ import { knownMediaSize } from "@/lib/pictopia/storage-size";
 import { dateKeys } from "@/lib/pictopia/logic";
 import { accessScope, classifyDeletion, deletionErrorKind } from "@/lib/pictopia/deletion";
 import { OsDeletion, Presence } from "@/lib/pictopia/types";
+import type { CensusAsset, LibraryCensus } from "@/lib/pictopia/on-this-day-audit";
 const nativeMetadata = requireOptionalNativeModule<{
   localAssetSize?(id: string): Promise<number | null>;
   getMetadata(ids: string[]): Promise<{ id: string; favorite: boolean; screenshot: boolean }[]>;
+  libraryCensus?(day: string): Promise<Omit<LibraryCensus, "scope">>;
 }>("PictopiaAnalysis");
 async function currentScope() {
   return accessScope(await MediaLibrary.getPermissionsAsync(false, ["photo", "video"]));
@@ -75,6 +77,9 @@ export const mediaService: MediaService = {
         /* Album metadata is optional. */
       }
     }
+    const seen = new Set<string>();
+    const metadataFailures: string[] = [];
+    let expected: number | undefined;
     while (more && !signal.aborted) {
       const r = await MediaLibrary.getAssetsAsync({
         first: 200,
@@ -83,6 +88,13 @@ export const mediaService: MediaService = {
         sortBy: [["creationTime", false]],
         resolveWithFullInfo: Platform.OS === "android",
       });
+      if (expected !== undefined && expected !== r.totalCount) throw Error("Your library changed while indexing. Please try again.");
+      expected = r.totalCount;
+      for (const asset of r.assets) {
+        if (seen.has(asset.id)) throw Error("Library indexing returned a repeated item. Please try again.");
+        seen.add(asset.id);
+      }
+      if (r.hasNextPage && (!r.endCursor || r.endCursor === after || !r.assets.length)) throw Error("Library indexing stopped before it was complete. Please try again.");
       const metadata = new Map<string, { favorite: boolean; screenshot: boolean }>();
       if (nativeMetadata) {
         try {
@@ -113,6 +125,7 @@ export const mediaService: MediaService = {
           );
         }
       }
+      if (Platform.OS === "ios") metadataFailures.push(...r.assets.filter(a => !metadata.has(a.id)).map(a => a.id));
       await onPage(
         r.assets.map((a) => ({
           id: a.id,
@@ -141,6 +154,8 @@ export const mediaService: MediaService = {
       more = r.hasNextPage;
       await new Promise((r) => setTimeout(r, 0));
     }
+    if (!signal.aborted && seen.size !== expected) throw Error("Library indexing did not match the discovered total. Please try again.");
+    return { metadataFailures };
   },
   async size(m) {
     const known = knownMediaSize(m);
@@ -237,6 +252,52 @@ export const mediaService: MediaService = {
   listen(callback) {
     const s = MediaLibrary.addListener(callback);
     return () => s.remove();
+  },
+  async census(day, years): Promise<LibraryCensus | undefined> {
+    const scope = await currentScope();
+    if (scope === "none") return undefined;
+    // iOS builds with the native module read every source, hidden assets and burst frames.
+    if (typeof nativeMetadata?.libraryCensus === "function") {
+      const r = await nativeMetadata.libraryCensus(day);
+      if (await currentScope() !== scope) throw Error("Photo access changed during the census. Run it again.");
+      return { ...r, scope: "full" };
+    }
+    // Otherwise ask the same enumeration sync uses for each year's local calendar day. It can
+    // confirm the index, not reveal what that enumeration leaves out.
+    const [mm, dd] = day.split("-").map(Number);
+    const onDate: CensusAsset[] = [];
+    for (const year of years) {
+      const start = new Date(year, mm - 1, dd, 0, 0, 0, 0);
+      if (start.getMonth() !== mm - 1 || start.getDate() !== dd) continue; // February 29 in a non-leap year
+      const end = new Date(year, mm - 1, dd + 1, 0, 0, 0, 0);
+      let after: string | undefined;
+      for (;;) {
+        const r = await MediaLibrary.getAssetsAsync({
+          first: 500,
+          after,
+          mediaType: ["photo", "video"],
+          sortBy: [["creationTime", false]],
+          createdAfter: start.getTime() - 1,
+          createdBefore: end.getTime(),
+        });
+        for (const a of r.assets)
+          if (dateKeys(a.creationTime).day === day)
+            onDate.push({
+              id: a.id,
+              created: a.creationTime,
+              type: a.mediaType === "video" ? "video" : a.mediaType === "photo" ? "photo" : "other",
+              hidden: false,
+              burstFrame: false,
+              source: "library",
+              screenshot: a.mediaSubtypes?.includes("screenshot") ?? false,
+              livePhoto: a.mediaSubtypes?.includes("livePhoto") ?? false,
+            });
+        if (!r.hasNextPage || !r.endCursor || r.endCursor === after) break;
+        after = r.endCursor;
+      }
+    }
+    const all = await MediaLibrary.getAssetsAsync({ first: 1, mediaType: ["photo", "video"] });
+    return { scope: "expo", total: all.totalCount, undated: 0, onDate };
   },
   async manageAccess() {
     const p = await this.permission();

@@ -23,10 +23,13 @@ export function useLift(depth = 3) {
   return { boxShadow: `0px ${depth}px 0px ${tint}` } as ViewStyle;
 }
 
-export function Wordmark() {
+export function Wordmark({ large = false }: { large?: boolean }) {
+  // The large Home wordmark sizes itself in `style`; `text-h1` would override it.
+  const type = large ? "" : "text-h1 ";
+  const size = large ? styles.wordmarkLarge : undefined;
   return (
-    <Text accessibilityRole="header" accessibilityLabel="Pictopia" className="text-h1 text-foreground">
-      pictopia<Text className="text-h1 text-tomato">.</Text>
+    <Text accessibilityRole="header" accessibilityLabel="Pictopia" className={`${type}text-foreground`} style={size}>
+      pictopia<Text className={`${type}text-tomato`} style={size}>.</Text>
     </Text>
   );
 }
@@ -46,12 +49,16 @@ export function GearButton() {
   );
 }
 
-/** Wordmark (Home) or a tab title, with the one Settings entry point on the right. */
+/** Wordmark (Home) or a tab title with the red dot, with the one Settings entry point on the right. */
 export function TabHeader({ title }: { title?: string }) {
   return (
-    <View>
+    <View className={title ? undefined : "mb-3"}>
       <View className="flex-row items-center justify-between">
-        {title ? <Text accessibilityRole="header" className="text-h1 text-foreground">{title}</Text> : <Wordmark />}
+        {title ? (
+          <Text accessibilityRole="header" accessibilityLabel={title} className="text-h1 text-foreground">
+            {title.toLowerCase()}<Text className="text-h1 text-tomato">.</Text>
+          </Text>
+        ) : <Wordmark large />}
         <GearButton />
       </View>
 
@@ -297,6 +304,7 @@ export function InfoSheet({ entry, note, onClose }: { entry?: CatalogEntry; note
 
 const styles = StyleSheet.create({
   postcard: { boxShadow: "0px 10px 24px rgba(27,35,80,0.16)" } as ViewStyle,
+  wordmarkLarge: { fontFamily: "Fredoka_700Bold", fontSize: 44, lineHeight: 52, letterSpacing: -0.5 },
   // Pick sits on top of alt with a tiny overlap so the two read as a stack of postcards
   // tossed on a table, not two separate tiles. The overlap only shaves the alt's rounded
   // corner — it never covers the alt's text, so the title and hint stay fully readable.

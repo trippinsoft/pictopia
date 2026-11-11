@@ -1,11 +1,15 @@
 import { storage, serialize } from "./repository";
 import { dailyStore } from "./daily";
-import { BADGES, calendarValues, evaluateBadges, type BadgeState, type BadgeValues } from "@/lib/pictopia/badges";
+import { BADGES, calendarValues, evaluateBadges, type BadgeFamily, type BadgeState, type BadgeValues } from "@/lib/pictopia/badges";
 import { completionEvidence, completionProof, savedCompletion, type Adventure, type AdventureIndex } from "@/lib/pictopia/adventures";
 import type { ExploreSession } from "@/lib/pictopia/explore";
 import type { LibraryProgress, CalendarProgress } from "./storage.types";
 
 export const BADGES_KEY = "badges:v1";
+const CELEBRATIONS_KEY = "badgeCelebrations:v1";
+export interface BadgeCelebration { family: BadgeFamily; tier: number; earnedAt: number; value: number }
+const celebrationListeners = new Set<() => void>();
+const notifyCelebrations = () => celebrationListeners.forEach(listener => listener());
 
 /** Never infer achievement credit from the legacy feedback-pacing counter. Keep the
  * original records and awards intact; expose unsupported history for inspection. */
@@ -49,11 +53,28 @@ export async function badgeValues(now = Date.now()): Promise<BadgeValues> {
 export async function evaluateSavedBadges(now = Date.now(), source?: { progress: LibraryProgress; months: CalendarProgress[] }) {
   const { values, audit } = await badgeFacts(now, source);
   const result = evaluateBadges(await storage.getValue<BadgeState>(BADGES_KEY), values, now);
-  await storage.put([], { ...audit.backfills, [BADGES_KEY]: result.state });
+  const pending = await storage.getValue<BadgeCelebration[]>(CELEBRATIONS_KEY) ?? [];
+  const awards = result.newlyEarned.map(badge => ({ ...badge, earnedAt: now, value: values[badge.family] }));
+  await storage.put([], { ...audit.backfills, [BADGES_KEY]: result.state,
+    ...(awards.length ? { [CELEBRATIONS_KEY]: [...pending, ...awards] } : {}),
+  });
+  if (awards.length) notifyCelebrations();
   return { ...result, values, audit };
 }
 
 export const badgeStore = {
+  pendingCelebrations: () => storage.getValue<BadgeCelebration[]>(CELEBRATIONS_KEY).then(value => value ?? []),
+  subscribeCelebrations(listener: () => void) {
+    celebrationListeners.add(listener);
+    return () => { celebrationListeners.delete(listener); };
+  },
+  async dismissCelebration(award: BadgeCelebration) {
+    await serialize(async () => {
+      const pending = await storage.getValue<BadgeCelebration[]>(CELEBRATIONS_KEY) ?? [];
+      await storage.setValue(CELEBRATIONS_KEY, pending.filter(item => item.family !== award.family || item.tier !== award.tier || item.earnedAt !== award.earnedAt));
+    });
+    notifyCelebrations();
+  },
   /** Checked at natural breaks (review close, completion, deletion result, foreground), never
    * per photo. Returns what was newly earned for an inline celebration. */
   async evaluate(now = Date.now()) {

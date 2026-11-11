@@ -4,6 +4,8 @@ import type { NotificationService, ReminderPermission } from "./notifications.ty
 
 const CHANNEL = "reminders";
 const PREFIX = "pictopia-reminder-";
+/** Every Pictopia notification id starts with this; only `PREFIX` ones are re-planned. */
+const OWN = "pictopia-";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: false, shouldSetBadge: false }),
@@ -43,10 +45,20 @@ export const notificationService: NotificationService = {
       });
     }
   },
+  async scheduleOnce(r) {
+    if (r.at <= Date.now() || (await this.permission()) !== "granted") return;
+    await ensureChannel();
+    await Notifications.cancelScheduledNotificationAsync(r.id).catch(() => {});
+    await Notifications.scheduleNotificationAsync({
+      identifier: r.id,
+      content: { title: r.title, body: r.body, data: { url: r.url } },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: new Date(r.at), ...(Platform.OS === "android" ? { channelId: CHANNEL } : {}) },
+    });
+  },
   onOpen(open) {
     const handle = (response: Notifications.NotificationResponse | null | undefined) => {
       const url = response?.notification.request.content.data?.url;
-      if (typeof url !== "string" || !response?.notification.request.identifier.startsWith(PREFIX)) return;
+      if (typeof url !== "string" || !response?.notification.request.identifier.startsWith(OWN)) return;
       Notifications.clearLastNotificationResponse();
       open(url);
     };

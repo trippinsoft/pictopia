@@ -24,10 +24,10 @@ export default function OnThisDay() {
     opening.current = true; setBusy(date); setError(undefined);
     try {
       const adventure = await adventureStore.choose({ kind: "day", date }, Date.now(), app.pro);
-      if (!adventure) { setError("No photos on this exact date. Choose another day."); return; }
+      if (!adventure) { setError("No photos or videos on this exact date. Choose another day."); return; }
       await adventureStore.open(adventure.id, app.pro);
       router.push({ pathname: "/vertical-explore", params: { adventure: adventure.id } });
-    } catch { setError("These photos couldn’t open. Please try again."); }
+    } catch { setError("These memories couldn’t open. Please try again."); }
     finally { opening.current = false; setBusy(undefined); }
   };
   return <SafeAreaView className="flex-1 bg-background">
@@ -39,7 +39,7 @@ export default function OnThisDay() {
       {!dates && !error ? <Loading /> : <FlatList data={dates} keyExtractor={row => row.date} renderItem={({ item, index }) => <Pressable accessibilityRole="button" disabled={!!busy || item.count === 0} onPress={() => void open(item.date, index > 0)} className="mb-2 min-h-16 flex-row items-center gap-3 rounded-2xl bg-card px-4 py-3 active:opacity-70">
         <View className="flex-1">
           <Text className="text-h4 text-foreground">{index === 0 ? "Today" : new Date(`${item.date}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</Text>
-          <Text className="mt-1 text-caption text-muted-foreground">{busy === item.date ? "Opening…" : item.count ? plural(item.count, "photo") : "No photos on this date"}</Text>
+          <Text className="mt-1 text-caption text-muted-foreground">{busy === item.date ? "Opening…" : item.count ? plural(item.count, "memory", "memories") : "No photos or videos on this date"}</Text>
         </View>
         {index > 0 && !app.pro && <View className="rounded-full bg-secondary px-2 py-1"><Text className="text-caption text-muted-foreground">Pictopia+</Text></View>}
         {item.count > 0 && <Icon name="ChevronRight" size={18} className="text-muted-foreground" />}

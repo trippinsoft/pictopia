@@ -10,6 +10,7 @@ import {
   purchaseUpdatedListener,
   purchaseErrorListener,
   isUserCancelledError,
+  isEligibleForIntroOfferIOS,
   type Purchase,
   type ProductSubscription,
 } from "expo-iap";
@@ -18,6 +19,7 @@ import type { Entitlement, Offer } from "@/lib/pictopia/types";
 import {
   PRO_PRODUCT_IDS,
   entitlementFrom,
+  freeTrialDays,
   managementURL,
   offerKind,
 } from "@/lib/pictopia/store-entitlement";
@@ -116,8 +118,16 @@ export const purchaseService: PurchaseService = {
     products = (result ?? []).filter(
       (p): p is ProductSubscription => PRO_PRODUCT_IDS.includes(p.id) && p.type === "subs",
     );
+    // Google Play lists only the offers this person is eligible for; StoreKit lists the
+    // introductory offer to everyone, so iOS also asks whether this Apple ID can still use it.
+    const eligible = new Map<string, boolean>();
+    if (os === "ios")
+      for (const group of new Set(products.map((p) => ("subscriptionGroupIdIOS" in p ? p.subscriptionGroupIdIOS : null)).filter((g): g is string => !!g)))
+        eligible.set(group, await isEligibleForIntroOfferIOS(group).catch(() => false));
     return products.flatMap((p) => {
       const kind = offerKind(p.id);
+      const group = "subscriptionGroupIdIOS" in p ? p.subscriptionGroupIdIOS : null;
+      const trial = os === "ios" && (!group || !eligible.get(group)) ? undefined : freeTrialDays(p.subscriptionOffers);
       return kind
         ? [
             {
@@ -126,6 +136,7 @@ export const purchaseService: PurchaseService = {
               price: p.displayPrice,
               amount: p.price ?? 0,
               currency: p.currency,
+              ...(trial ? { trialDays: trial } : {}),
             } satisfies Offer,
           ]
         : [];
@@ -141,11 +152,10 @@ export const purchaseService: PurchaseService = {
     try {
       if (os === "ios") await requestPurchase({ request: { apple: { sku: id } }, type: "subs" });
       else {
-        // Play requires an offer token; with no trials configured this is the base plan's token.
-        const offer =
-          "subscriptionOffers" in product
-            ? product.subscriptionOffers?.find((o) => o.offerTokenAndroid)
-            : undefined;
+        // Play requires an offer token: the free-trial offer when this person is eligible for
+        // one, otherwise the base plan's token.
+        const tokens = "subscriptionOffers" in product ? (product.subscriptionOffers ?? []).filter((o) => o.offerTokenAndroid) : [];
+        const offer = tokens.find((o) => o.paymentMode === "free-trial") ?? tokens[0];
         if (!offer?.offerTokenAndroid) {
           waiting.delete(id);
           throw Error("This plan isn’t available from Google Play yet.");
