@@ -3,6 +3,7 @@ import { type StyleProp, type ViewStyle } from "react-native";
 import Svg, { Circle, Ellipse, G, Line, Path, Polygon, Rect } from "react-native-svg";
 import { useTheme } from "@/theming/ThemeProvider";
 import { darkArt, lightArt, type ArtPalette } from "@/theming/illustration";
+import { CardStackMark } from "./card-stack-mark";
 import type { AdventureKind } from "@/lib/pictopia/adventures";
 
 /** One illustration system for the whole app. Each picture is a metaphor for an Adventure's
@@ -362,77 +363,48 @@ const SCENES: Record<ArtName, Scene> = {
     </G>
   ),
 
-  // Two tilted photo prints with a calendar page between them and a big question mark —
-  // "which came first?". No landscape, so it reads clearly against the Memory Match one.
+  // Two tilted photo prints lying on the table with soft contact shadows (like Memory Match's
+  // cards) and a dashed arrow sweeping from the older print to the newer one: which came first?
   whichFirst: (c) => (
     <G>
       {sky(c.canvasBlush)}
-      {sparkle(16, 22, 3.2, c.sun)}
-      {sparkle(104, 128, 3, c.terracotta)}
-      <G transform="rotate(-10 34 76)">
-        <Rect x="14" y="52" width="40" height="48" rx="4" fill={c.paper} />
-        <Rect x="18" y="56" width="32" height="30" fill={c.sky} />
-        <Circle cx="44" cy="64" r="4" fill={c.sun} />
-        <Path d="M18 86 Q30 72 50 86Z" fill={c.moss} />
-        <Rect x="20" y="90" width="12" height="2.5" rx="1" fill={c.sandDeep} opacity={0.6} />
-        <Rect x="20" y="94" width="20" height="2.5" rx="1" fill={c.sandDeep} opacity={0.35} />
+      <Ellipse cx="60" cy="116" rx="44" ry="5" fill={c.ink} opacity="0.07" />
+      {sparkle(16, 30, 3.2, c.sun)}
+      {sparkle(106, 124, 3, c.sun)}
+      <G transform="rotate(-9 36 82)">
+        <Rect x="17.5" y="61" width="40" height="48" rx="4" fill={c.ink} opacity="0.13" />
+        <Rect x="16" y="58" width="40" height="48" rx="4" fill={c.paper} />
+        <Rect x="20" y="62" width="32" height="30" rx="1.5" fill={c.sky} />
+        <Circle cx="45" cy="70" r="4" fill={c.sun} />
+        <Path d="M20 92 Q32 78 52 92Z" fill={c.moss} />
+        <Rect x="22" y="96" width="12" height="2.5" rx="1" fill={c.sandDeep} opacity={0.6} />
+        <Rect x="22" y="100" width="20" height="2.5" rx="1" fill={c.sandDeep} opacity={0.35} />
       </G>
-      <G transform="rotate(11 88 84)">
-        <Rect x="66" y="56" width="40" height="48" rx="4" fill={c.paper} />
-        <Rect x="70" y="60" width="32" height="30" fill={c.rose} />
-        <Circle cx="92" cy="68" r="4" fill={c.terracotta} />
-        <Path d="M70 90 Q82 76 102 90Z" fill={c.terracotta} opacity={0.75} />
-        <Rect x="72" y="94" width="12" height="2.5" rx="1" fill={c.sandDeep} opacity={0.6} />
-        <Rect x="72" y="98" width="20" height="2.5" rx="1" fill={c.sandDeep} opacity={0.35} />
+      <G transform="rotate(10 86 88)">
+        <Rect x="67.5" y="67" width="40" height="48" rx="4" fill={c.ink} opacity="0.13" />
+        <Rect x="66" y="64" width="40" height="48" rx="4" fill={c.paper} />
+        <Rect x="70" y="68" width="32" height="30" rx="1.5" fill={c.rose} />
+        <Circle cx="92" cy="76" r="4" fill={c.terracotta} />
+        <Path d="M70 98 Q82 84 102 98Z" fill={c.terracotta} opacity={0.75} />
+        <Rect x="72" y="102" width="12" height="2.5" rx="1" fill={c.sandDeep} opacity={0.6} />
+        <Rect x="72" y="106" width="20" height="2.5" rx="1" fill={c.sandDeep} opacity={0.35} />
       </G>
-      {/* Big "?" between the two prints — the question. */}
-      <G transform="translate(54 24)">
-        <Circle cx="6" cy="6" r="14" fill={c.teal} />
-        <Path d="M0 2 Q0 -6 6 -6 Q12 -6 12 1 Q12 6 6 9 L6 12" fill="none" stroke={c.paper} strokeWidth="2.6" strokeLinecap="round" />
-        <Circle cx="6" cy="16" r="1.8" fill={c.paper} />
-      </G>
+      {/* Older → newer: a dashed arc over the prints, ending in an arrowhead. */}
+      <Path d="M32 48 Q58 22 84 50" stroke={c.terracotta} strokeWidth="2.4" strokeDasharray="4 3.5" strokeLinecap="round" fill="none" />
+      <Path d="M78 47 L85 52 L86.5 43.5" stroke={c.terracotta} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
     </G>
   ),
 
-  // A tidy 3×4 card grid: two pairs flipped up showing the same sun scene, the rest still
-  // face-down in warm paper + purple. No landscape — this is a flat table-top of cards.
+  // Memory Match's emblem, big and centered: the app icon's three fanned cards on a fresh
+  // mint table, the same mark printed on every face-down card in the game.
   memoryMatch: (c) => (
     <G>
-      {sky(c.canvasBlue)}
-      {sparkle(14, 18, 3, c.sun)}
-      {sparkle(106, 134, 3, c.terracotta)}
-      {[
-        [10, 16, "down"], [44, 16, "up"], [78, 16, "down"],
-        [10, 52, "up"], [44, 52, "down"], [78, 52, "match"],
-        [10, 88, "down"], [44, 88, "match"], [78, 88, "down"],
-        [10, 124, "match"], [44, 124, "down"], [78, 124, "down"],
-      ].map(([x, y, kind], i) => {
-        const X = x as number, Y = y as number;
-        if (kind === "up") return (
-          <G key={i}>
-            <Rect x={X} y={Y} width="30" height="30" rx="4" fill={c.paper} />
-            <Rect x={X + 3} y={Y + 3} width="24" height="20" fill={c.sky} />
-            <Circle cx={X + 22} cy={Y + 9} r="2.4" fill={c.sun} />
-            <Path d={`M${X + 3} ${Y + 23} Q${X + 15} ${Y + 12} ${X + 27} ${Y + 23}Z`} fill={c.moss} />
-          </G>
-        );
-        if (kind === "match") return (
-          <G key={i}>
-            <Rect x={X} y={Y} width="30" height="30" rx="4" fill={c.paper} />
-            <Rect x={X + 3} y={Y + 3} width="24" height="20" fill={c.rose} />
-            <Circle cx={X + 22} cy={Y + 9} r="2.4" fill={c.terracotta} />
-            <Path d={`M${X + 3} ${Y + 23} Q${X + 15} ${Y + 12} ${X + 27} ${Y + 23}Z`} fill={c.terracotta} opacity="0.7" />
-          </G>
-        );
-        return (
-          <G key={i}>
-            <Rect x={X} y={Y} width="30" height="30" rx="4" fill={c.teal} />
-            {/* The pictopia "dot" on the back: a little sun among curves, like a stamp. */}
-            <Circle cx={X + 15} cy={Y + 11} r="3.4" fill={c.sun} opacity="0.9" />
-            <Path d={`M${X + 4} ${Y + 22} Q${X + 15} ${Y + 15} ${X + 26} ${Y + 22}`} fill="none" stroke={c.tealLight} strokeWidth="1.4" strokeLinecap="round" />
-          </G>
-        );
-      })}
+      {sky(c.canvasMint)}
+      <Ellipse cx="60" cy="104" rx="36" ry="5" fill={c.ink} opacity="0.07" />
+      <CardStackMark c={c} cx={60} cy={74} s={0.92} />
+      {sparkle(24, 38, 4, c.sun)}
+      {sparkle(98, 44, 3, c.terracotta)}
+      {sparkle(96, 112, 2.6, c.sun)}
     </G>
   ),
 

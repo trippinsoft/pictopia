@@ -61,6 +61,8 @@ export interface Candidate {
   capped?: boolean;
   /** Why the planner thought this was worth loading. */
   reason?: string;
+  /** The whole scope before narrowing, so near-copies of photos already shown are recognized. */
+  context?: Media[];
 }
 export interface CuratedAdventure {
   kind: AdventureKind;
@@ -123,22 +125,65 @@ interface Selection {
   facts: Record<string, number | string>;
 }
 
+/** Exact-copy keys: the original's SHA-256 and (when not a flat, featureless image) its difference hash. */
+function fingerprints(m: Media) {
+  const keys: string[] = [];
+  if (m.scan?.hash) keys.push(`h:${m.scan.hash}`);
+  const p = m.scan?.perceptual;
+  if (p && new Set(p).size > 1) keys.push(`p:${p}`);
+  return keys;
+}
+/** Photos that would look like a repeat: siblings of an already seen, decided or excluded shot in
+ * the same quick series, and copies of one. Their own ids are never seen, so without this the next
+ * set of a series keeps offering "new" near-identical shots of moments you already went through. */
+function echoes(pool: Media[], groups: Media[][], ctx: CurationContext) {
+  const touched = pool.filter((m) => m.firstSeenAt || ctx.explored.has(m.id) || m.decision || ctx.exclude?.has(m.id));
+  const out = new Set<string>();
+  if (!touched.length) return out;
+  const keys = new Set(touched.flatMap(fingerprints));
+  const times = ctx.modifiedDates ? [] : touched.map((m) => m.created).sort((a, b) => a - b);
+  const near = (t: number) => {
+    let lo = 0, hi = times.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (Math.abs(times[mid] - t) <= BURST_GAP_MS) return true;
+      if (times[mid] < t) lo = mid + 1;
+      else hi = mid - 1;
+    }
+    return false;
+  };
+  const touchedIds = new Set(touched.map((m) => m.id));
+  for (const group of groups) {
+    const hit = group.some((m) => touchedIds.has(m.id) || (m.type === "photo" && !m.screenshot && near(m.created)) || fingerprints(m).some((k) => keys.has(k)));
+    if (hit) group.forEach((m) => { if (!touchedIds.has(m.id)) out.add(m.id); });
+  }
+  return out;
+}
+
 /** Shared preparation: eligible photos, bursts collapsed to a lead, unexplored first. */
 function prepare(candidate: Candidate, ctx: CurationContext) {
-  const all = adventurePool(candidate.pool, candidate.kind, ctx.exclude);
+  const all = adventurePool(candidate.pool, candidate.kind, ctx.exclude, ctx.now);
   // A browser file's modified time is not a capture time. Equal timestamps must not
   // collapse unrelated selected files into one photograph.
   const groups = ctx.modifiedDates ? all.map((m) => [m])
     : [...bursts(all.filter(m => m.type === "photo" && !m.screenshot)), ...all.filter(m => m.screenshot || m.type === "video").map(m => [m])].sort((a, b) => chronological(a[0], b[0]));
-  const fresh = (m: Media) => !(m.firstSeenAt || ctx.explored.has(m.id)) && !m.decision;
-  const allowed = (m: Media) => ctx.chosen || !(m.firstSeenAt || ctx.explored.has(m.id));
+  const echo = echoes(candidate.context ?? candidate.pool, groups, ctx);
+  const fresh = (m: Media) => !(m.firstSeenAt || ctx.explored.has(m.id)) && !m.decision && !echo.has(m.id);
+  const allowed = (m: Media) => ctx.chosen || !(m.firstSeenAt || ctx.explored.has(m.id) || echo.has(m.id));
   const lead = (group: Media[]) => {
     const usable = group.filter(allowed);
     if (!usable.length) return undefined;
     const pool = usable.some(fresh) ? usable.filter(fresh) : usable;
     return [...pool].sort((a, b) => bestScore(b) - bestScore(a) || chronological(a, b))[0];
   };
-  const leads = groups.map(lead).filter((m): m is Media => !!m);
+  // Byte-identical or visually identical copies collapse to one, so a set never shows a photo twice.
+  const printed = new Set<string>();
+  const leads = groups.map(lead).filter((m): m is Media => !!m).filter((m) => {
+    const keys = fingerprints(m);
+    if (keys.some((k) => printed.has(k))) return false;
+    keys.forEach((k) => printed.add(k));
+    return true;
+  });
   // Unexplored, undecided photos first; then the rest, if the Adventure still has room.
   const preferred = [...leads.filter(fresh), ...leads.filter((m) => !fresh(m))];
   return { all, groups, leads: preferred, fresh };
@@ -425,7 +470,7 @@ function cleanupSignals(picks: Media[], pool: Media[], modifiedDates = false) {
 
 /** Composes and scores one candidate. Returns nothing when it can't make an Adventure. */
 export function curate(candidate: Candidate, ctx: CurationContext): CuratedAdventure | undefined {
-  candidate = { ...candidate, pool: adventurePool(candidate.pool, candidate.kind, ctx.exclude) };
+  candidate = { ...candidate, context: candidate.context ?? candidate.pool, pool: adventurePool(candidate.pool, candidate.kind, ctx.exclude, ctx.now) };
   const size = ctx.size ?? adventureSize(candidate.kind);
   const minimum = ctx.chosen || candidate.kind === "day" ? 1 : Math.min(OFFER_MIN, size);
   const { kind } = candidate;

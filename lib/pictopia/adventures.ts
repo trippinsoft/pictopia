@@ -102,6 +102,8 @@ export interface AdventureIndex {
   finished?: number;
   /** `finished` count when "More like this?" was last asked. */
   askedAt?: number;
+  /** When Home last offered a Screenshot Sweep (Pictopia+ only), to keep it occasional. */
+  screenshotsOfferedAt?: number;
 }
 export const emptyIndex = (): AdventureIndex => ({
   version: 1,

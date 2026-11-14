@@ -42,6 +42,8 @@ export interface ExploreFeedHandle {
   action(action: ExploreAction): void;
   flush(): void;
   isAtEnd(): boolean;
+  /** Photographs scrolled through whose review credit isn't saved yet; Finish saves them. */
+  traversal(): string[];
 }
 interface Props {
   session: ExploreSession;
@@ -79,6 +81,10 @@ interface Props {
 }
 // Long enough for an animated page scroll to leave the departed photo offscreen.
 const RESET_DELAY = 450;
+// Longest a discarded slot waits for its flight before drawing its photo again, faded.
+const SLOT_RETURN_MAX = 1500;
+// Longest an arriving photo waits for its picture before sliding in regardless.
+const ARRIVAL_WAIT = 600;
 // A tap this soon after a vertical drag is the drag's own release, not an undo.
 const TAP_AFTER_DRAG = 250;
 export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function ExploreFeed(props, ref) {
@@ -120,6 +126,7 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
   // What the pager has actually rendered. Updated with the commit, before paint.
   const pages = useRef(data);
   const list = useRef<FlatList<string>>(null);
+  const glide = useRef<((offset: number) => void) | null>(null);
   const cards = useRef(new Map<string, ExploreCardHandle>());
   const cardRefs = useRef(new Map<string, (handle: ExploreCardHandle | null) => void>());
   const scrollActive = useRef<string | undefined>(undefined);
@@ -134,9 +141,17 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
   const dragging = useRef(false),
     momentum = useRef(false),
     lastDrag = useRef(0);
-  const prepared = useRef<(() => void)[]>([]);
+  const prepared = useRef<{ id: string; done: () => void }[]>([]);
+  // Arrivals waiting for their photo to be drawn, so it slides in with its picture.
+  const awaiting = useRef(new Map<string, () => void>());
   const lastHidden = useRef<ReadonlySet<string>>(new Set());
   const returnTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // A review's just-discarded slots stay blank (no faded photo, no Discarded/Restore panel)
+  // until their flight has landed and the slot is fully out of view with the pager at rest,
+  // so nothing appears in it while the next photo glides up. Value: flight landed.
+  const concealed = useRef(new Map<string, boolean>());
+  const [concealedIds, setConcealedIds] = useState<ReadonlySet<string>>(() => new Set());
+  const revealTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // A programmatic page move in flight. Settling elsewhere mid-animation is ignored.
   const seeking = useRef<{ target: number; until: number } | undefined>(undefined);
   const nativeOffset = useSharedValue(0);
@@ -148,15 +163,17 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
     .onEnd((e, success) => { runOnJS(reviewTrace)("native.end", { handler: e.handlerTag, state: e.state, oldState: e.oldState, success }); })
     .onFinalize((e, success) => { runOnJS(reviewTrace)("native.finalize", { handler: e.handlerTag, state: e.state, oldState: e.oldState, success }); }), []);
   const reducedMotion = useReducedMotion();
-  const latest = useRef({ props, reducedMotion });
-  latest.current = { props, reducedMotion };
+  const latest = useRef({ props, reducedMotion, entering });
+  latest.current = { props, reducedMotion, entering };
 
   /** Discarded slots return to the feed only while nothing moves, so re-anchoring the shown
    * photograph happens before paint and is never seen. */
   const returnParked = useCallback(() => {
     clearTimeout(returnTimer.current);
     if (!alive.current) return;
-    if (dragging.current || momentum.current || seeking.current || controller.busy) {
+    // Nor while the next photograph is still sliding up into its slot: re-anchoring mid-slide
+    // would make it jump into place instead of arriving.
+    if (dragging.current || momentum.current || seeking.current || controller.busy || latest.current.entering) {
       returnTimer.current = setTimeout(returnParked, 200);
       return;
     }
@@ -198,6 +215,11 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
             reviewTrace("feed.scrollTo", { target, animated, offset: offset.current, height: pageHeight.current, horizontal: horizontal.value });
             seeking.current = animated ? { target, until: Date.now() + 1500 } : undefined;
             if (!animated) offset.current = target * pageHeight.current;
+            // Animated moves (a discard moving on, Next) glide at a pace that is clearly seen.
+            if (animated && !latest.current.reducedMotion && glide.current) {
+              glide.current(target * pageHeight.current);
+              return;
+            }
             list.current?.scrollToOffset({
               offset: target * pageHeight.current,
               animated: animated && !latest.current.reducedMotion,
@@ -214,6 +236,7 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
           },
           onEnd: () => latest.current.props.onEnd?.(),
           limited: () => !!latest.current.props.stopBefore && pages.current.indexOf(latest.current.props.stopBefore) < 0,
+          creditable: (id) => latest.current.props.canReview?.(id) ?? true,
           onBusy: (busy) => {
             if (!alive.current) return;
             setDiscarding(busy);
@@ -236,10 +259,11 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
             }));
             if (released.length) scheduleReturn();
           },
+          ready: (id) => new Promise<void>((resolve) => whenDrawn(id, resolve)),
           prepare: (entry) =>
             new Promise<void>((resolve) => {
               if (!alive.current) return resolve();
-              prepared.current.push(resolve);
+              prepared.current.push({ id: entry.id, done: resolve });
               setEntering(entry);
             }),
         },
@@ -249,6 +273,9 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
     [],
   );
   const [activeId, setActiveId] = useState(controller.activeId);
+  // The photos around the shown one prefetch their display copy, so whichever comes next
+  // (scrolling, or sliding into a discarded slot) is ready before it moves in.
+  const shownIndex = activeId ? data.indexOf(activeId) : -1;
   // A zoomed photo owns one-finger movement, so the pager holds still until it is back at 1×.
   const [zoomedId, setZoomedId] = useState<string>();
   const zoomChange = useCallback((id: string, zoomed: boolean) => {
@@ -262,6 +289,7 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
   const ready = useCallback(
     (id: string, loaded: boolean) => {
       available.current.set(id, loaded);
+      if (loaded) awaiting.current.get(id)?.();
       if (id === controller.activeId) latest.current.props.onAvailability(loaded);
     },
     [controller],
@@ -281,9 +309,23 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
     const waiting = prepared.current;
     prepared.current = [];
     globalThis.requestAnimationFrame(() =>
-      globalThis.requestAnimationFrame(() => waiting.forEach((done) => done())),
+      globalThis.requestAnimationFrame(() => waiting.forEach(({ id, done }) => whenDrawn(id, done))),
     );
   }, [entering]);
+  /** Runs `done` once the photo is drawn (usually already, as neighbours prefetch), or after a
+   * short cap so a slow iCloud fetch never holds the review. */
+  const whenDrawn = useCallback((id: string, done: () => void) => {
+    if (!alive.current || available.current.get(id) === true) return done();
+    awaiting.current.get(id)?.();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const finish = () => {
+      clearTimeout(timer);
+      if (awaiting.current.get(id) === finish) awaiting.current.delete(id);
+      done();
+    };
+    awaiting.current.set(id, finish);
+    timer = setTimeout(finish, ARRIVAL_WAIT);
+  }, []);
   /** The horizontal recognizer has already won before it calls this. Native scroll drag
    * callbacks may still describe the previous touch, so claim the page at the live offset
    * instead of rejecting a valid sideways swipe on a stale vertical-drag flag. */
@@ -317,14 +359,58 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
     },
     [claim, controller],
   );
+  const conceal = useCallback((id: string) => {
+    concealed.current.set(id, false);
+    setConcealedIds(new Set(concealed.current.keys()));
+  }, []);
+  /** Reveals concealed slots that are entirely off screen while nothing moves; checks again
+   * shortly for any that are still in view or in the air. */
+  const reveal = useCallback((touching = false) => {
+    clearTimeout(revealTimer.current);
+    if (!alive.current || !concealed.current.size) return;
+    const h = pageHeight.current;
+    const still = !seeking.current && !momentum.current;
+    const at = readOffset();
+    let changed = false;
+    for (const [id, landed] of [...concealed.current]) {
+      if (controller.departing.has(id)) continue;
+      const queued = !!latest.current.props.getSession().records[id]?.queued;
+      const index = pages.current.indexOf(id);
+      const offscreen = index < 0 || !h || Math.abs(index * h - at) >= h - 0.5;
+      // Restored or undone: nothing to draw faded; the restore path shows the card itself.
+      // A finger about to scroll back reveals off-screen slots at once, even mid-flight.
+      if (!queued || ((landed || touching) && still && offscreen)) {
+        if (queued) cards.current.get(id)?.reset();
+        concealed.current.delete(id);
+        changed = true;
+      }
+    }
+    if (changed) setConcealedIds(new Set(concealed.current.keys()));
+    if (concealed.current.size) revealTimer.current = setTimeout(() => reveal(), 200);
+  }, [controller, readOffset]);
   const discard = useCallback(
     async (id: string, direction: DiscardDirection, animation: Promise<void>, landed?: Promise<void>) => {
       reviewTrace("feed.discard", { photo: tracePhoto(id), active: tracePhoto(controller.activeId), stored: tracePhoto(latest.current.props.getSession().activeId), busy: controller.busy, canDiscard: controller.canDiscard(id), direction });
-      if (latest.current.props.session.review) void animation.then(() => { if (alive.current) latest.current.props.onDiscard?.(); });
+      if (latest.current.props.session.review) {
+        void animation.then(() => { if (alive.current) latest.current.props.onDiscard?.(); });
+        // The pager scrolls on and leaves the emptied slot above, blank. Once the flight has
+        // landed and that slot is out of view with the pager at rest, its card draws the
+        // photograph again, faded with Restore, ready for whenever the user scrolls back.
+        conceal(id);
+        const settled = new Promise<void>((resolve) => setTimeout(resolve, SLOT_RETURN_MAX));
+        void Promise.all([
+          Promise.race([(landed ?? animation).catch(() => {}), settled]),
+          new Promise<void>((resolve) => setTimeout(resolve, RESET_DELAY)),
+        ]).then(() => {
+          if (!alive.current || !concealed.current.has(id)) return;
+          concealed.current.set(id, true);
+          reveal();
+        });
+      }
       await controller.discard(id, direction, animation, landed);
       if (alive.current && !latest.current.props.session.review) latest.current.props.onDiscard?.();
     },
-    [controller],
+    [controller, conceal, reveal],
   );
   // A still tap on the photo on screen undoes the latest discard. Drags never get here: the
   // card only reports short, unmoving touches. The tap is accepted exactly like a sideways
@@ -422,7 +508,9 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
       clearTimeout(quietTimer.current);
       clearTimeout(resetTimer.current);
       clearTimeout(returnTimer.current);
-      for (const done of prepared.current) done();
+      clearTimeout(revealTimer.current);
+      for (const { done } of prepared.current) done();
+      for (const finish of [...awaiting.current.values()]) finish();
       latest.current.props.onBusy(false);
     };
   }, [controller, report]);
@@ -430,9 +518,10 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
     ref,
     () => ({
       isAtEnd: () => controller.activeId === null,
+      traversal: () => controller.traversal(),
       flush: () => { if (pageHeight.current) controller.flushPosition(Math.round(readOffset() / pageHeight.current), availableIds()); },
       next: () => controller.next(availableIds()),
-      jump: (id) => { cards.current.get(id)?.reset(); setZoomedId(undefined); controller.jump(id, availableIds()); },
+      jump: (id) => { if (concealed.current.delete(id)) setConcealedIds(new Set(concealed.current.keys())); cards.current.get(id)?.reset(); setZoomedId(undefined); controller.jump(id, availableIds()); },
       discard: (direction) =>
         controller.activeId !== null && cards.current.get(controller.activeId)?.discard(direction),
       undo: async () => {
@@ -475,6 +564,7 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
         <ExplorePager
           key={height}
           ref={list}
+          glide={glide}
           nativeScroll={nativeScroll}
           motion={motion}
           onPointerDragChange={(active) => {
@@ -484,6 +574,7 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
             // The drag took over any programmatic move (it continues from that page).
             if (active) seeking.current = undefined;
             clearTimeout(quietTimer.current);
+            if (active) reveal(true);
             if (!active) scheduleSettle();
           }}
           pendingPage={() => seeking.current?.target}
@@ -514,6 +605,7 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
             momentum.current = false;
             seeking.current = undefined;
             clearTimeout(quietTimer.current);
+            reveal(true);
           }}
           onScrollEndDrag={(event) => {
             reviewTrace("scroll.drag.end", { offset: event.nativeEvent.contentOffset.y, nativeOffset: nativeOffset.value });
@@ -532,7 +624,7 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
             offset.current = event.nativeEvent.contentOffset.y;
             settle();
           }}
-          renderItem={({ item: id }) => (
+          renderItem={({ item: id, index }) => (
             <View style={[styles.page, { height }]}>
               {id !== endId && props.canReview && !props.canReview(id) ? props.limitPage : id === endId && limited ? (
                 props.limitPage
@@ -548,9 +640,10 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
                   id={id}
                   ref={refFor(id)}
                   media={media[id]}
-                  marked={!!session.review && !!session.records[id]?.queued && !feed.departing.has(id)}
+                  marked={!!session.review && !!session.records[id]?.queued && !feed.departing.has(id) && !concealedIds.has(id)}
                   onRestore={props.onRestore}
                   active={id === activeId}
+                  nearby={shownIndex >= 0 && index >= shownIndex - 1 && index <= shownIndex + 2}
                   entrance={entering?.id === id ? entering.from : undefined}
                   pageHeight={height}
                   nativeScroll={nativeScroll}

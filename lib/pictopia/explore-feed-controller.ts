@@ -1,4 +1,4 @@
-import { lastExploreDiscard } from "./explore";
+import { exploreFeed, lastExploreDiscard } from "./explore";
 import type { DiscardDirection, ExploreAction, ExploreSession } from "./explore";
 
 /** How a photo arrives in the shown slot: from a side (undo) or sliding in vertically. */
@@ -22,6 +22,8 @@ interface FeedDependencies {
   onEnd?(): void;
   /** The final page is the daily-limit page, not completion: reaching it never finishes. */
   limited?(): boolean;
+  /** Whether a page shows its photograph (not the daily-limit page in its place). */
+  creditable?(id: string): boolean;
   onBusy(busy: boolean): void;
   onError(message: string): void;
   /** `departing` stays rendered even once saved as discarded; `hidden` is removed even
@@ -29,13 +31,17 @@ interface FeedDependencies {
   onFeed(departing: ReadonlySet<string>, hidden: ReadonlySet<string>): void;
   /** Positions the arriving card (still off-screen) and resolves once that is painted. */
   prepare(entry: FeedEntrance): Promise<void>;
+  /** Resolves once the photograph is drawn (or after a short cap), so a review scrolls on
+   * to a picture rather than an empty page. */
+  ready?(id: string): Promise<void>;
 }
 /** Vertical paging works like a social feed: the user's scroll owns which page is shown
  * and is never locked or pulled back by persistence. Each settled page is queued as a save
  * in order, built from the stored session at write time. Only a sideways discard holds input,
  * and only until its photo has flown out. The discarded card is then removed in place and the
  * next photo slides into its slot, so the pager never scrolls or shifts while a finger could
- * be on it. Discarding the last photo moves straight to the completion page.
+ * be on it. A review keeps every slot instead and scrolls the pager on to the next photo.
+ * Discarding the last photo moves straight to the completion page.
  *
  * Identity is the stable photo ID. Pages are indexes into the rendered feed, which shrinks
  * and grows as photos are discarded and restored; `relayout` re-anchors on the active ID.
@@ -49,6 +55,9 @@ export class ExploreFeedController {
   readonly departing = new Set<string>();
   readonly hidden = new Set<string>();
   private readonly restoredInFlight = new Set<string>();
+  /** Review photographs the user's own scroll passed through, held until a save confirms their
+   * credit. Kept apart from the cursor: a superseded or failed place never loses them. */
+  private readonly traversed = new Set<string>();
   constructor(
     private readonly deps: FeedDependencies,
     activeId: string | null,
@@ -61,10 +70,12 @@ export class ExploreFeedController {
     const last = this.deps.pages().length - 1;
     if (this.busy || page === this.page || !Number.isInteger(page) || page < 0 || page > last)
       return;
+    this.travel(page);
     this.show(page, false);
-    if (this.deps.read().review && this.activeId === null) { if (!this.deps.limited?.()) this.deps.onEnd?.(); }
+    if (this.deps.read().review && this.activeId === null) this.reachEnd();
     else void this.persist(availableIds);
   }
+  /** A programmatic move: photographs it skips over were never scrolled through. */
   jump(id: string, availableIds: string[]) {
     const page = this.deps.pages().indexOf(id);
     if (this.busy || page < 0) return;
@@ -75,8 +86,9 @@ export class ExploreFeedController {
     if (this.busy) return;
     const target = Math.min(this.page + 1, this.deps.pages().length - 1);
     if (target === this.page) return;
+    this.travel(target);
     this.show(target, true);
-    if (this.deps.read().review && this.activeId === null) { if (!this.deps.limited?.()) this.deps.onEnd?.(); }
+    if (this.deps.read().review && this.activeId === null) this.reachEnd();
     else void this.persist(availableIds);
   }
   /** A sideways gesture or tap began on `page`, the photo the user can see, possibly before
@@ -89,15 +101,63 @@ export class ExploreFeedController {
     if (page !== this.page || this.activeId !== this.idAt(page)) {
       // Stop residual momentum immediately; an animated snap here competes with the
       // horizontal gesture that is already active.
+      this.travel(page);
       this.show(page, false);
       void this.persist(availableIds);
     } else if (snap) this.deps.scrollTo(page, false);
     return true;
   }
+  /** Leaving or backgrounding: save the page under the finger. On a review's end card there is
+   * no place to save, but what was scrolled through still is. */
   flushPosition(page: number, availableIds: string[]) {
-    if (this.busy || page < 0 || page >= this.deps.pages().length - 1) return;
+    const last = this.deps.pages().length - 1;
+    if (this.busy || page < 0 || page > last) return;
+    this.travel(page);
+    if (page === last) {
+      if (this.deps.read().review) void this.flushTraversal();
+      return;
+    }
     this.show(page, false);
     void this.persist(availableIds);
+  }
+  /** Traversal not yet confirmed saved; a review's Finish carries it in the same write. */
+  traversal() {
+    return [...this.traversed];
+  }
+  /** Saves pending traversal credit on its own. Resolves false if that save failed. */
+  async flushTraversal() {
+    if (!this.traversed.size || !this.deps.read().review) return true;
+    let passed: string[] = [];
+    try {
+      const saved = await this.deps.save(() => ({ type: "traverse", ids: (passed = this.traversal()) }));
+      this.confirm(saved, passed);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  /** The pager rests past the last photograph: the end card, or the daily-limit page, which
+   * never finishes. Finish saves the traversal itself; the limit page saves it on its own. */
+  private reachEnd() {
+    if (this.deps.limited?.()) void this.flushTraversal();
+    else this.deps.onEnd?.();
+  }
+  /** The user's own scroll moved from the shown page to `to`. Every photograph from the shown
+   * one up to `to` was scrolled through, even if the pager never came to rest on it, so each
+   * earns review credit (a failed load is refused by the reducer). Programmatic moves (jump,
+   * Undo, re-layout) never call this, so photographs they skip earn nothing. */
+  private travel(to: number) {
+    if (!this.deps.read().review) return;
+    for (let page = this.page; page < to; page++) {
+      const id = this.idAt(page);
+      if (id !== null && id !== undefined && (this.deps.creditable?.(id) ?? true)) this.traversed.add(id);
+    }
+  }
+  /** Drops traversal the saved session now accounts for. */
+  private confirm(saved: ExploreSession, passed: readonly string[]) {
+    const feed = new Set(exploreFeed(saved));
+    for (const id of passed)
+      if (saved.records[id]?.encountered || saved.records[id]?.unavailable || !feed.has(id)) this.traversed.delete(id);
   }
   /** A sideways gesture may start only on the photo that is shown. */
   canDiscard(id: string) {
@@ -165,26 +225,21 @@ export class ExploreFeedController {
         this.publish();
         return;
       }
-      const pages = this.deps.pages();
+      // Every slot stays in the feed: the pager itself scrolls on to the next photograph,
+      // exactly like scrolling by hand, and the emptied slot is left above, where the feed
+      // draws it faded once it is out of view. Nothing is removed or re-anchored.
       const target = finalPhoto ? null : this.reviewTarget(id);
-      if (target !== null) {
-        const page = pages.indexOf(target);
-        await this.deps.prepare({ id: target, from: page > this.page ? "below" : "above" });
-        // The last photograph left: show the earlier slot first, while its photo is still out
-        // of view, so removing the empty slot below never moves what is on screen.
-        if (page < this.page) this.show(page, false);
-      }
-      this.activeId = target;
+      if (target !== null) await this.deps.ready?.(target);
+      const page = this.indexOf(target);
+      if (page >= 0) this.show(page, true);
+      else this.activeId = target;
       this.departing.delete(id);
-      this.hidden.add(id);
       this.publish();
     } finally {
       this.departing.delete(id);
       if (!finalPhoto) this.setDiscarding(false);
     }
     const result = await saved;
-    this.hidden.delete(id);
-    this.publish();
     if (!result?.records[id]?.queued) {
       // It comes back in from the side it left by, and the flight is called off.
       if (finalPhoto) this.setDiscarding(false);
@@ -317,11 +372,15 @@ export class ExploreFeedController {
     // A review's end card and daily-limit page are never saved places.
     if (toId === null && this.deps.read().review) return;
     let saved: ExploreSession | undefined;
+    let passed: string[] = [];
     try {
-      saved = await this.deps.save((s) => ({ type: "page", id: s.activeId, revision: s.revision, toId, availableIds }));
+      // A review always sends its traversal, even empty, so the reducer never infers credit
+      // from the distance between saved places (that would credit a programmatic jump).
+      saved = await this.deps.save((s) => ({ type: "page", id: s.activeId, revision: s.revision, toId, availableIds, ...(s.review ? { passed: (passed = this.traversal()) } : {}) }));
     } catch {
       saved = undefined;
     }
+    if (saved) this.confirm(saved, passed);
     if (saved?.activeId === toId) return;
     // The user has moved on: their newer page save is already queued and supersedes this.
     if (this.activeId !== toId) return;

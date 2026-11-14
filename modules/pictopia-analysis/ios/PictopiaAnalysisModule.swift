@@ -5,6 +5,7 @@ import CryptoKit
 
 public class PictopiaAnalysisModule: Module {
   private let review = PictopiaReview()
+  private let picks = PictopiaPicks()
   private let lock = NSLock()
   private var currentRequest: PHAssetResourceDataRequestID?
   private let queue = DispatchQueue(label: "pictopia.analysis", qos: .utility)
@@ -18,6 +19,7 @@ public class PictopiaAnalysisModule: Module {
       self.lock.lock(); let request = self.currentRequest; self.lock.unlock()
       if let request = request { PHAssetResourceManager.default().cancelDataRequest(request) }
     }
+    AsyncFunction("assessPhotos") { (ids: [String], promise: Promise) in self.picks.assess(ids, promise: promise) }
     AsyncFunction("localAssetSize") { (id: String, promise: Promise) in self.review.localSize(id, promise: promise) }
     AsyncFunction("reviewFavorite") { (id: String) -> Bool in try PictopiaReview.asset(id).isFavorite }
     AsyncFunction("setReviewFavorite") { (id: String, value: Bool, promise: Promise) in self.review.favorite(id, value: value, promise: promise) }
@@ -25,6 +27,7 @@ public class PictopiaAnalysisModule: Module {
       self.review.display(id, version: version, token: token, network: network, promise: promise)
     }.runOnQueue(.main)
     AsyncFunction("reviewVideoSource") { (id: String, token: String, promise: Promise) in self.review.videoSource(id, token: token, promise: promise) }.runOnQueue(.main)
+    AsyncFunction("reviewVideoPlayback") { (id: String, token: String, network: Bool, promise: Promise) in self.review.videoPlayback(id, token: token, network: network, promise: promise) }.runOnQueue(.main)
     AsyncFunction("cancelReviewDisplay") { (token: String) in self.review.cancelDisplay(token) }.runOnQueue(.main)
     AsyncFunction("reviewThumbnail") { (id: String, version: String, promise: Promise) in self.review.thumbnail(id, version: version, promise: promise) }
     AsyncFunction("shareReviewAsset") { (id: String, promise: Promise) in

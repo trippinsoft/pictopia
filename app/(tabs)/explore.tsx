@@ -60,15 +60,15 @@ export default function Explore() {
         ]);
         if (!alive) return;
         setChoices(c); setParked(waiting); setRecent(latest); setMessage(undefined);
-        void storage.query({ type: "photo", order: "newest" }).then(list => { if (alive) setRecentCount(list.length); }).catch(() => {});
-        void storage.query({ type: "photo", screenshot: true }).then(list => {
-          if (!alive) return;
-          const total = list.length;
-          const bytes = list.reduce((sum, m) => sum + (m.size ?? m.scan?.size ?? 0), 0);
-          setScreenshots({ total, bytes });
+        void storage.count({ type: "photo" }).then(({ total }) => { if (alive) setRecentCount(total); }).catch(() => {});
+        void storage.count({ type: "photo", screenshot: true }).then(totals => {
+          if (alive) setScreenshots(totals);
         }).catch(() => {});
-        void storage.query({ type: "photo", order: "newest", favorite: true }).then(list => {
-          if (alive) setFavorites({ total: list.length, cover: list[0] });
+        void Promise.all([
+          storage.count({ type: "photo", favorite: true }),
+          storage.query({ type: "photo", order: "newest", favorite: true, limit: 1 }),
+        ]).then(([{ total }, [cover]]) => {
+          if (alive) setFavorites({ total, cover });
         }).catch(() => {});
         const [progress, [firstVideo]] = await Promise.all([storage.videoProgress(), storage.query({ type: "video", order: "newest", limit: 1 })]);
         if (alive) setVideos({ total: progress.total, explored: progress.explored, cover: firstVideo });
@@ -102,7 +102,7 @@ export default function Explore() {
       let adventureId = slot?.adventure.id;
       if (!adventureId) {
         const choice: ExploreChoice = id === "surprise-me" ? { kind: "detour" } : { kind: "screenshots" };
-        const made = await adventureStore.choose(choice);
+        const made = await adventureStore.choose(choice, Date.now(), app.pro);
         if (!made) { setMessage("No eligible photos for that one right now. Try another adventure."); return; }
         adventureId = made.id;
       }
@@ -199,9 +199,9 @@ export default function Explore() {
                   hint={screenshots ? `${screenshots.total.toLocaleString()} screenshots${screenshots.bytes > 0 ? ` · ${bytes(screenshots.bytes)}` : ""}` : "Oldest first"}
                   art={{ illustration: "screenshots" }}
                   plus={!app.pro}
-                  badge={busy === "screenshot-sweep" ? "Preparing…" : place(screenshotSlot)}
+                  badge={busy === "screenshot-sweep" ? "Preparing…" : app.pro ? place(screenshotSlot) : undefined}
                   onInfo={() => setInfo(catalogEntry("screenshot-sweep"))}
-                  onPress={() => void begin("screenshot-sweep")}
+                  onPress={() => openPlus(() => void begin("screenshot-sweep"))}
                 />
               ) : (
                 <ExploreTile square lift={lift} title="Screenshot Sweep" hint={screenshots ? "Nothing to sweep" : "Looking…"} art={{ illustration: "screenshots" }} plus={!app.pro} disabled />

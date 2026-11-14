@@ -16,6 +16,9 @@ import { REMINDER_TIMES, reminderTimeLabel } from "@/lib/pictopia/reminders";
 import type { ReminderPrefs } from "@/lib/pictopia/types";
 import { notificationService } from "@/services/notifications";
 import { syncReminders } from "@/services/reminders";
+import { allowanceStore } from "@/services/daily";
+import { DEV_REVIEW_LIMITS, type DevSubscriptionMode } from "@/lib/pictopia/entitlement";
+import { DEFAULT_FREE_SWIPES } from "@/lib/pictopia/daily";
 import type { ReminderPermission } from "@/services/notifications.types";
 
 const SUPPORT = process.env.EXPO_PUBLIC_SUPPORT_EMAIL;
@@ -44,6 +47,76 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
       <Text accessibilityRole="header" className="mb-2.5 mt-6 text-h3 text-foreground">{title}</Text>
       <View style={lift} className="overflow-hidden rounded-[20px] bg-card">{children}</View>
     </>
+  );
+}
+
+function Chips<T extends string | number | undefined>({ label, options, value, onChange }: { label: string; options: { value: T; label: string }[]; value: T; onChange: (v: T) => void }) {
+  return (
+    <View accessibilityRole="radiogroup" accessibilityLabel={label} className="flex-row flex-wrap gap-2">
+      {options.map(o => {
+        const on = o.value === value;
+        return (
+          <Pressable key={String(o.value)} accessibilityRole="radio" accessibilityState={{ checked: on }} aria-checked={on} onPress={() => onChange(o.value)} className={`min-h-10 justify-center rounded-full px-3.5 ${on ? "bg-primary" : "bg-background"} active:opacity-80`}>
+            <Text className={`text-h6 ${on ? "text-primary-foreground" : "text-foreground"}`}>{o.label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+const MODES: { value: DevSubscriptionMode; label: string }[] = [
+  { value: "auto", label: "Automatic" },
+  { value: "free", label: "Free" },
+  { value: "plus", label: "Pictopia+" },
+];
+
+/** Authorized test builds only (`app.devTools`; the entitlement layer refuses overrides
+ * elsewhere). Switches Free / Pictopia+ without a purchase, and controls the daily allowance. */
+function DeveloperTools({ action }: { action: (work: () => Promise<unknown>) => Promise<void> }) {
+  const app = usePictopia();
+  const [usage, setUsage] = useState<{ used: number; limit: number }>();
+  useEffect(() => {
+    let alive = true;
+    void Promise.all([allowanceStore.state(), allowanceStore.limit()])
+      .then(([state, limit]) => { if (alive) setUsage({ used: state.counted.length, limit }); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [app.revision, app.devOverride]);
+  const effective = app.pro ? "Pictopia+" : "Free";
+  const why = app.entitlementSource === "developer"
+    ? "Developer override · not a purchase"
+    : app.pro ? "Active store purchase" : "No active purchase";
+  return (
+    <Group title="Developer tools">
+      <View className="gap-1 border-b border-border px-4 py-3.5">
+        <View className="flex-row items-center gap-2">
+          <Text className="flex-1 text-body text-foreground">Effective access</Text>
+          <View className={`rounded-full px-2.5 py-1 ${app.pro ? "bg-sun" : "bg-background"}`}><Text className="text-h6 text-foreground">{effective}</Text></View>
+        </View>
+        <Text className="text-caption text-muted-foreground">{why}</Text>
+      </View>
+      <View className="gap-2.5 border-b border-border px-4 py-3.5">
+        <Text className="text-body text-foreground">Subscription mode</Text>
+        <Chips label="Subscription mode" options={MODES} value={app.devOverride.mode} onChange={mode => void action(() => app.setDevOverride({ mode }))} />
+        <Text className="text-caption leading-5 text-muted-foreground">Automatic uses the real App Store or Google Play purchase. Free and Pictopia+ ignore it until you switch back.</Text>
+      </View>
+      <View className="gap-2.5 border-b border-border px-4 py-3.5">
+        <Text className="text-body text-foreground">Free daily review limit</Text>
+        <Chips
+          label="Free daily review limit"
+          options={[{ value: undefined, label: `${DEFAULT_FREE_SWIPES} (real)` }, ...DEV_REVIEW_LIMITS.map(n => ({ value: n as number | undefined, label: String(n) }))]}
+          value={app.devOverride.reviewLimit}
+          onChange={reviewLimit => void action(() => app.setDevOverride({ reviewLimit }))}
+        />
+        <Text className="text-caption leading-5 text-muted-foreground">A lower limit reaches the daily-limit page quickly. Only applies in Free.</Text>
+      </View>
+      <Row title="Today’s free reviews" value={usage ? `${Math.min(usage.used, usage.limit)} of ${usage.limit} used` : "…"} />
+      <Pressable accessibilityRole="button" onPress={() => void action(app.resetDailyUsage)} className="min-h-14 justify-center gap-0.5 px-4 py-3 active:opacity-70">
+        <Text className="text-body text-primary">Reset today’s usage</Text>
+        <Text className="text-caption text-muted-foreground">Photos, discards and deletions are kept</Text>
+      </Pressable>
+    </Group>
   );
 }
 
@@ -99,7 +172,7 @@ export default function Settings() {
 
         <Pressable
           accessibilityRole="button"
-          onPress={() => (app.pro ? void action(() => manageSubscription(app.entitlement?.managementURL)) : router.push("/paywall"))}
+          onPress={() => (app.pro && app.entitlementSource === "store" ? void action(() => manageSubscription(app.entitlement?.managementURL)) : router.push("/paywall"))}
           style={lift}
           className="mt-4 flex-row items-center gap-3 rounded-[20px] bg-primary px-4 py-4 active:opacity-90"
         >
@@ -109,7 +182,9 @@ export default function Settings() {
           <View className="flex-1">
             <Text className="text-h3 text-primary-foreground">{app.pro ? "Pictopia+ · Active" : "Pictopia+"}</Text>
             <Text className="text-caption text-primary-foreground/80">
-              {app.pro
+              {app.pro && app.entitlementSource === "developer"
+                ? "Developer override · not a purchase"
+                : app.pro
                 ? app.entitlement?.expires
                   ? `Renews or ends ${new Date(app.entitlement.expires).toLocaleDateString()} · Manage`
                   : "Unlimited swipes · Manage"
@@ -202,6 +277,8 @@ export default function Settings() {
           <Row title="Privacy policy" onPress={() => void action(() => openLegal("privacy"))} />
           <Row title="Terms of use" last onPress={() => void action(() => openLegal("terms"))} />
         </Group>
+
+        {app.devTools ? <DeveloperTools action={action} /> : null}
 
         {/* Long-press the version line to open the developer-only Adventure Lab and Device checks. */}
         <Pressable accessibilityRole="text" onLongPress={() => router.push("/adventure-lab")} delayLongPress={800} className="mt-8">

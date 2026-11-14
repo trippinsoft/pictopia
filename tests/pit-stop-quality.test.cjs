@@ -2,7 +2,7 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const {makeLoader}=require('./loader.cjs');
 const {media}=require('./native-harness.cjs');
 const load=makeLoader(),G=load('lib/pictopia/pitstops.ts');
-const {orderRoundController,orderChoiceFrames}=load('lib/pictopia/order-round.ts');
+const {orderRoundController}=load('lib/pictopia/order-round.ts');
 const {memoryController,memoryGrid}=load('lib/pictopia/memory-match.ts');
 const photo=(id,time)=>media(id,{created:time,modified:time});
 const day=86400000;
@@ -55,7 +55,6 @@ test('Memory Match preserves four portrait rows and uses two rows on a normal la
     const portrait=memoryGrid(358,570,pairs);assert.equal(portrait.columns,pairs===4?2:3);assert.ok(portrait.height<=570);
     const landscape=memoryGrid(720,175,pairs);assert.equal(landscape.columns,pairs);assert.ok(landscape.height<=175);
   }
-  const frames=orderChoiceFrames({width:358,height:480});assert.equal(frames.length,2);assert.equal(frames[0].width,frames[1].width);assert.ok(frames[0].width*2+8<=358);assert.ok(frames[0].height<=480);
 });
 
 function preparation(sample,{failed=[],fallbackFailed=[]}={}){
@@ -82,4 +81,33 @@ test('cancelling obsolete photo preparation publishes no result and cleans up ow
   const controller=new AbortController(),released=[];let done;
   const h=makeLoader({'expo-image':{Image:{prefetch:async()=>true}},'./pitstops':{pitStopStore:{sample:async()=>[media('a')]}},'./review-media':{reviewMedia:{thumbnail:()=>new Promise(resolve=>done=resolve),releaseThumbnail:uri=>released.push(uri)}},'./photo-display':{photoDisplay:()=>assert.fail('no fallback after cancellation')}})('services/pit-stop-photos.ts');
   const running=h.preparePitStop('memoryMatch',1,controller.signal);await new Promise(resolve=>setImmediate(resolve));controller.abort();done('thumb:a');await assert.rejects(running,/cancelled/);assert.deepEqual(released,['thumb:a']);
+});
+
+test('game photos put people and places first and paperwork last, keeping order when asked',()=>{
+  const {rankForGame}=load('lib/pictopia/photo-picks.ts');
+  const items=['doc','beach','unknown','family','receipt'].map(id=>({id}));
+  const picks={doc:{utility:true,score:-1,faces:0},beach:{utility:false,score:0.6,faces:0},family:{utility:false,score:1.8,faces:2},receipt:{utility:true,score:-0.8,faces:0}};
+  assert.deepEqual(rankForGame(items,picks,true).map(m=>m.id),['family','beach','unknown','doc','receipt']);
+  assert.deepEqual(rankForGame(items,picks,false).map(m=>m.id),['beach','family','unknown','doc','receipt'],'date spread order kept');
+  assert.deepEqual(rankForGame(items,{},true).map(m=>m.id),items.map(m=>m.id),'no judgments leave the order unchanged');
+});
+
+test('Memory Match skips documents when enough real photos are available',async()=>{
+  const rows=['doc1','doc2',...Array.from({length:6},(_,i)=>`p${i}`)].map(id=>media(id));
+  const h=makeLoader({
+    'expo-image':{Image:{prefetch:async()=>true}},
+    './pitstops':{pitStopStore:{sample:async()=>rows}},
+    './photo-picks':{assessPhotos:async ids=>Object.fromEntries(ids.map(id=>[id,{utility:id.startsWith('doc'),score:id.startsWith('doc')?-1:1,faces:0}]))},
+    './review-media':{reviewMedia:{thumbnail:async m=>`thumb:${m.id}`,releaseThumbnail(){}}},
+    './photo-display':{photoDisplay:async m=>`display:${m.id}`},
+  })('services/pit-stop-photos.ts');
+  const result=await h.preparePitStop('memoryMatch',1,new AbortController().signal,4);
+  assert.equal(result.photos.length,4);assert.ok(!result.photos.some(m=>m.id.startsWith('doc')));
+});
+
+test('games never use screenshots or saved graphics, even without a screenshot flag',()=>{
+  const {cameraPhoto}=load('lib/pictopia/photo-picks.ts');
+  for(const name of ['IMG_0001.HEIC','IMG_0002.JPG','DSC_1.jpeg','PXL_2024.dng'])assert.equal(cameraPhoto({name,screenshot:false}),true,name);
+  for(const name of ['IMG_0003.PNG','Screenshot 2024-01-01.jpg','Screenshot_20240101.jpg','meme.gif','sticker.webp'])assert.equal(cameraPhoto({name,screenshot:false}),false,name);
+  assert.equal(cameraPhoto({name:'IMG_1.HEIC',screenshot:true}),false);
 });

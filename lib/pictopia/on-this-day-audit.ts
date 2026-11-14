@@ -1,7 +1,7 @@
 import type { ExploreSession } from "./explore";
 import { exploreFeed } from "./explore";
 import { dateKeys } from "./logic";
-import { onThisDayPool } from "./photo-eligibility";
+import { capturedThisYear, onThisDayPool } from "./photo-eligibility";
 import type { Media, Presence } from "./types";
 
 /**
@@ -40,7 +40,7 @@ export interface AuditItem {
   type: string;
   note?: string;
 }
-export type AuditStepKey = "inactive" | "verifiedDeleted" | "video" | "screenshot" | "inFlightDeletion" | "duplicateId" | "notVisible" | "invalidDate";
+export type AuditStepKey = "inactive" | "verifiedDeleted" | "video" | "screenshot" | "inFlightDeletion" | "duplicateId" | "notVisible" | "invalidDate" | "capturedThisYear";
 export interface AuditStep {
   key: AuditStepKey;
   label: string;
@@ -64,6 +64,8 @@ export interface AuditInput {
   presence?: Record<string, Presence>;
   /** The saved review for this date, if one exists. */
   session?: ExploreSession;
+  /** Clock for "captured this year"; defaults to now. */
+  now?: number;
   census?: LibraryCensus;
   library?: {
     sync?: { status: string; discovered?: number; uniqueIndexed?: number; completedAt?: number; metadataFailures?: string[] };
@@ -113,6 +115,7 @@ const validDay = (m: Media) => typeof m.created === "number" && Number.isFinite(
 
 export function auditOnThisDay(input: AuditInput): OnThisDayAudit {
   const { day, rows, blocked } = input;
+  const now = input.now ?? Date.now();
   const steps: AuditStep[] = [];
   const step = (key: AuditStepKey, label: string, purpose: string, items: AuditItem[]) => {
     steps.push({ key, label, purpose, count: items.length, items });
@@ -134,10 +137,11 @@ export function auditOnThisDay(input: AuditInput): OnThisDayAudit {
   take("verifiedDeleted", "Verified deleted", "Pictopia confirmed the OS removed this item after a Delete.", m => !!m.deletedAt, m => (m.deletedAt ? `deleted ${new Date(m.deletedAt).toISOString()}` : undefined));
 
   take("invalidDate", "Missing capture date", "Media without a capture date stays indexed but cannot match a calendar date.", m => !validDay(m));
+  take("capturedThisYear", "Captured this year", "On This Day looks back at earlier years: media from the current local calendar year joins on 1 January.", m => capturedThisYear(m, now));
 
   take("inFlightDeletion", "Deletion in progress", "In the deletion journal or awaiting verification; shown again once resolved.", m => blocked.has(m.id));
   step("duplicateId", "Duplicate identifier", "The same id listed twice in the input; counted once. Nothing collapses quick series on this date.", duplicates);
-  const eligibleRows = onThisDayPool(unique, blocked);
+  const eligibleRows = onThisDayPool(unique, blocked, now);
   const eligibleIds = new Set(eligibleRows.map(m => m.id));
   // The pure rule and the step-by-step accounting must agree.
   const unexplained = remaining.filter(m => !eligibleIds.has(m.id)).map(m => item(m, "left out by the eligibility rule for no listed reason"));

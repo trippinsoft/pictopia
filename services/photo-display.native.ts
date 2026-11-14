@@ -18,3 +18,9 @@ export async function photoDisplay(media: Media, network: boolean, signal: Abort
   try { return await native.reviewDisplay(media.id, String(media.modified), token, network); }
   finally { signal.removeEventListener("abort", cancel); }
 }
+/** A video's own poster frame at display size, in its real aspect ratio (PhotoKit returns the
+ * asset's still frame for a video). Null when this build can't produce one natively. */
+export async function videoPoster(media: Media, network: boolean, signal: AbortSignal): Promise<string | null> {
+  if (Platform.OS !== "ios" || !native?.reviewDisplay) return null;
+  return photoDisplay(media, network, signal);
+}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { allowanceStore } from "@/services/daily";
+import { devOverrideStore } from "@/services/entitlement";
 import { allowanceStop } from "@/lib/pictopia/daily";
 import type { ExploreSession } from "@/lib/pictopia/explore";
 
@@ -37,7 +38,9 @@ export function useAllowance(session: ExploreSession | undefined, sequence: stri
       timer = setTimeout(() => { void load().catch(() => {}).finally(() => { if (alive) schedule(); }); }, Math.min(midnight.getTime() - Date.now(), 2 ** 31 - 1));
     };
     schedule();
-    return () => { alive = false; sub.remove(); clearTimeout(timer); };
+    // Developer tools: a testing limit or a usage reset applies to an open review at once.
+    const stopDev = devOverrideStore.subscribe(() => { void load().catch(() => {}); });
+    return () => { alive = false; sub.remove(); clearTimeout(timer); stopDev(); };
   }, [load]);
   const free = useCallback((id: string) => pro || !!snap?.counted.has(id), [pro, snap]);
   useEffect(() => {

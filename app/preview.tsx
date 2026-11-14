@@ -72,14 +72,16 @@ export default function Preview() {
     [changing, setChanging] = useState(false),
     [downloading, setDownloading] = useState(false);
   useEffect(() => { setUri(undefined); setLoadedId(undefined); setM(undefined); setError(""); }, [id]);
-  async function change(decision: "keep" | "delete") {
+  async function restore() {
     if (!m) return;
     setChanging(true);
     try {
-      await app.changeDecision(m.id, decision);
-      setM({ ...m, decision });
-    } catch (e) {
-      app.setError((e as Error).message);
+      await repository.restore([m.id]);
+      await app.refresh();
+      if (router.canGoBack()) router.back();
+      else setM({ ...m, decision: undefined });
+    } catch {
+      app.setError("That photo couldn’t be restored. Please try again.");
     } finally {
       setChanging(false);
     }
@@ -204,36 +206,22 @@ export default function Preview() {
             </Text>
           </ScrollView>
         )}
-        {m?.decision && m.active ? (
-          <View className="gap-2 border-t border-border p-4">
+        {m?.decision === "delete" && m.active ? (
+          <View className="items-center gap-3 border-t border-border p-4">
             <Text className="text-caption text-center text-muted-foreground">
-              {m.decision === "keep"
-                ? "You kept this one."
-                : "Discarded. Nothing is deleted until you delete it from Discarded."}
+              Discarded. Nothing is deleted until you delete it from Discarded.
             </Text>
-            <View className="flex-row gap-3">
-              <View className="flex-1">
-                <Button
-                  danger={m.decision !== "delete"}
-                  secondary={m.decision === "delete"}
-                  icon="X"
-                  disabled={m.decision === "delete" || changing}
-                  onPress={() => void change("delete")}
-                >
-                  Set aside
-                </Button>
-              </View>
-              <View className="flex-1">
-                <Button
-                  secondary={m.decision === "keep"}
-                  icon="Check"
-                  disabled={m.decision === "keep" || changing}
-                  onPress={() => void change("keep")}
-                >
-                  Keep
-                </Button>
-              </View>
-            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={m.type === "video" ? "Restore this video" : "Restore this photograph"}
+              disabled={changing}
+              accessibilityState={{ disabled: changing }}
+              onPress={() => void restore()}
+              className={`h-12 flex-row items-center gap-1.5 rounded-full bg-card px-5 active:opacity-70 ${changing ? "opacity-50" : ""}`}
+            >
+              <Icon name="RotateCcw" size={18} className="text-foreground" />
+              <Text className="text-button text-foreground">Restore</Text>
+            </Pressable>
           </View>
         ) : (
           <Text className="p-4 text-caption text-center text-muted-foreground">

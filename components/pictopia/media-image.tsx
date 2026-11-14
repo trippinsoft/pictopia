@@ -5,7 +5,7 @@ import { Media } from "@/lib/pictopia/types";
 import { reviewMedia } from "@/services/review-media";
 import { mediaService } from "@/services/media";
 import { rememberDisplay } from "@/lib/pictopia/display-cache";
-import { photoDisplay } from "@/services/photo-display";
+import { photoDisplay, videoPoster } from "@/services/photo-display";
 import { CLOUD_ONLY } from "@/services/media-errors";
 import { Text, Icon } from "./ui";
 import { VideoPoster } from "./video-poster";
@@ -24,6 +24,8 @@ export function MediaImage({
   onResolved,
   failureContent,
   active = true,
+  network,
+  quietFailure = false,
   allowRetry = false,
 }: {
   media?: Media;
@@ -38,6 +40,12 @@ export function MediaImage({
   failureContent?: React.ReactNode;
   /** Only the visible review photo may offer an explicit iCloud download. */
   active?: boolean;
+  /** May fetch the display copy from iCloud (defaults to `active`). Review feeds turn this on
+   * for the photos next to the shown one, so they are ready before they scroll in. */
+  network?: boolean;
+  /** A photo that isn't on screen keeps its loading look instead of failure copy; it tries
+   * again once it becomes active. */
+  quietFailure?: boolean;
   /** Retry controls belong only to full review surfaces, never nested thumbnail buttons. */
   allowRetry?: boolean;
 }) {
@@ -45,6 +53,9 @@ export function MediaImage({
   const [foreground, setForeground] = useState(AppState.currentState === "active");
   useEffect(() => { const sub = AppState.addEventListener("change", state => setForeground(state === "active")); return () => sub.remove(); }, []);
   const nativeVideo = Platform.OS !== "web" && media?.type === "video";
+  const networkAllowed = (network ?? active) && foreground;
+  // Whether the latest load ended in failure, read when the photo becomes active.
+  const lastFailed = useRef(false);
   const [source, setSource] = useState<string>(), [failed, setFailed] = useState(false),
     [loaded, setLoaded] = useState(false), [cloud, setCloud] = useState(false),
     [download, setDownload] = useState(false), [attempt, setAttempt] = useState(0);
@@ -59,21 +70,33 @@ export function MediaImage({
     if (state === "loaded") { if (source) { successful.current = { key, uri: source }; if (media) rememberDisplay(media, source); } clearTimeout(timeout.current); setLoaded(true); setFailed(false); }
     report.current?.(state);
   }
-  function fail() { if (token === generation.current) { clearTimeout(timeout.current); setFailed(true); report.current?.("failed"); } }
+  function fail() { if (token === generation.current) { clearTimeout(timeout.current); lastFailed.current = true; setFailed(true); report.current?.("failed"); } }
   useEffect(() => {
     const ticket = ++generation.current;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     if (successful.current?.key === key) {
       sourceTicket.current = { uri: successful.current.uri, generation: ticket };
+      lastFailed.current = false;
       setSource(successful.current.uri); setLoaded(true); setFailed(false);
       return () => { controller.abort(); generation.current++; };
     }
+    lastFailed.current = false;
     setFailed(false); setLoaded(false); setCloud(false); setSource(undefined);
     // Resolution uses the complete asset ID and local metadata, never the ph:// host.
     // The latter is truncated by the SDK's PhotoKit image loader for /L0/... IDs.
     const resolve = async () => {
-      if (nativeVideo && media) return reviewMedia.thumbnail(media);
+      if (nativeVideo && media) {
+        // Full review surfaces show the video's own frame at display size and true shape, so
+        // the poster lines up with playback; small thumbnails keep the cheap cached version.
+        if (allowRetry) {
+          try {
+            const poster = await videoPoster(media, networkAllowed, controller.signal);
+            if (poster) return poster;
+          } catch (error) { if (controller.signal.aborted) throw error; }
+        }
+        return reviewMedia.thumbnail(media);
+      }
       if (media?.type === "photo") {
         const downloading = active && download && downloadFor.current === media.id;
         // A fresh display can hit a transient PhotoKit/iCloud hiccup. Retry a few times —
@@ -83,7 +106,7 @@ export function MediaImage({
         const passes = downloading ? 0 : RESOLVE_RETRIES;
         let lastError: unknown;
         for (let pass = 0; pass <= passes; pass++) {
-          try { return await photoDisplay(media, active && foreground && allowRetry, controller.signal); }
+          try { return await photoDisplay(media, networkAllowed && allowRetry, controller.signal); }
           catch (error) {
             lastError = error;
             if (downloading) return (await mediaService.resolve(media, { download: true })).uri;
@@ -105,7 +128,7 @@ export function MediaImage({
     };
     timer = timeout.current = setTimeout(() => {
       if (ticket !== generation.current) return;
-      controller.abort(); generation.current++; setFailed(true); report.current?.("failed");
+      controller.abort(); generation.current++; lastFailed.current = true; setFailed(true); report.current?.("failed");
     }, download ? 120000 : 30000);
     void resolve().then(value => {
       if (ticket !== generation.current) return;
@@ -116,14 +139,18 @@ export function MediaImage({
       if (ticket !== generation.current) return;
       clearTimeout(timer);
       setCloud(error instanceof Error && error.message === CLOUD_ONLY);
+      lastFailed.current = true;
       setFailed(true); report.current?.("failed");
     });
     return () => { controller.abort(); clearTimeout(timer); generation.current++; };
-  }, [key, download, active, foreground, allowRetry]);
+  }, [key, download, networkAllowed, allowRetry]);
   useEffect(() => { if (!active) setDownload(false); }, [active]);
+  // A photo that failed before it was shown (often one not yet fetched from iCloud) tries
+  // again the moment it is. A load that is still running, or already done, is left alone.
+  useEffect(() => { if (active && lastFailed.current) setAttempt(value => value + 1); }, [active]);
   return (
     <View pointerEvents={allowRetry ? "auto" : "none"} style={style} className={className}>
-      {failed ? (
+      {failed && !quietFailure ? (
         failureContent ?? <View className="flex-1 items-center justify-center bg-secondary p-3">
           <Icon name="CloudOff" className="text-muted-foreground" size={26} />
           <Text className="mt-2 text-caption text-center text-muted-foreground">
@@ -147,7 +174,7 @@ export function MediaImage({
           onDisplay={() => { if (source) settle("loaded"); }}
         />
       ) : <View className="flex-1" />}
-      {showLoading && !loaded && !failed && (
+      {showLoading && !loaded && (!failed || quietFailure) && (
         <View className="absolute inset-0 items-center justify-center">
           <ActivityIndicator color={theme.colors.primary} />
         </View>

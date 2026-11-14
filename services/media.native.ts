@@ -3,7 +3,7 @@ import { requireOptionalNativeModule } from "expo-modules-core";
 import { File } from "expo-file-system";
 import { Linking, Platform } from "react-native";
 import { MediaService } from "./media.types";
-import { CLOUD_ONLY } from "./media-errors";
+import { CLOUD_ONLY, LIBRARY_CHANGED } from "./media-errors";
 import { knownMediaSize } from "@/lib/pictopia/storage-size";
 import { dateKeys } from "@/lib/pictopia/logic";
 import { accessScope, classifyDeletion, deletionErrorKind } from "@/lib/pictopia/deletion";
@@ -88,7 +88,7 @@ export const mediaService: MediaService = {
         sortBy: [["creationTime", false]],
         resolveWithFullInfo: Platform.OS === "android",
       });
-      if (expected !== undefined && expected !== r.totalCount) throw Error("Your library changed while indexing. Please try again.");
+      if (expected !== undefined && expected !== r.totalCount) throw Error(LIBRARY_CHANGED);
       expected = r.totalCount;
       for (const asset of r.assets) {
         if (seen.has(asset.id)) throw Error("Library indexing returned a repeated item. Please try again.");

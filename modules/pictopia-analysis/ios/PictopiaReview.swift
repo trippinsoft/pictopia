@@ -72,6 +72,12 @@ final class PictopiaReview {
   private struct DisplayRequest { var id: PHImageRequestID; let promise: Promise }
   private var displays: [String: DisplayRequest] = [:]
   func cancelDisplay(_ token: String) {
+    if let video = videos.removeValue(forKey: token) {
+      if video.id != PHInvalidImageRequestID { PHImageManager.default().cancelImageRequest(video.id) }
+      video.export?.cancelExport()
+      video.promise.reject("VIDEO_CANCELLED", "Video loading cancelled.")
+      return
+    }
     guard let request = displays.removeValue(forKey: token) else { return }
     PHImageManager.default().cancelImageRequest(request.id)
     request.promise.reject("DISPLAY_CANCELLED", "Photo loading cancelled.")
@@ -129,27 +135,89 @@ final class PictopiaReview {
       displays[token]?.id = request
     } catch { promise.reject("DISPLAY_UNAVAILABLE", error.localizedDescription) }
   }
-  func videoSource(_ id: String, token: String, promise: Promise) {
+  // Earlier JS asked only for iCloud playback through this entry point.
+  func videoSource(_ id: String, token: String, promise: Promise) { videoPlayback(id, token: token, network: true, promise: promise) }
+  // Main-queue ownership, like displays. Local playback never touches the network; only an
+  // explicit tap (`network`) streams or downloads from iCloud. Slow-motion and other composed
+  // videos (AVComposition) have no single file, so they get one bounded 720p display export.
+  private struct VideoRequest { var id: PHImageRequestID; var export: AVAssetExportSession?; let promise: Promise }
+  private var videos: [String: VideoRequest] = [:]
+  private static let cloudOnly = "This item is in iCloud. Download it to review it." // services/media-errors.ts CLOUD_ONLY
+  private func finishVideo(_ token: String, _ settle: (Promise) -> Void) {
+    guard let request = videos.removeValue(forKey: token) else { return }
+    settle(request.promise)
+  }
+  func videoPlayback(_ id: String, token: String, network: Bool, promise: Promise) {
     do {
       let asset = try Self.asset(id)
       guard asset.mediaType == .video else { promise.reject("VIDEO_UNAVAILABLE", "This item is not a video."); return }
       let options = PHVideoRequestOptions()
-      options.isNetworkAccessAllowed = true
-      options.deliveryMode = .mediumQualityFormat
+      options.isNetworkAccessAllowed = network
+      options.deliveryMode = network ? .mediumQualityFormat : .automatic
       options.version = .current
-      displays[token] = DisplayRequest(id: PHInvalidImageRequestID, promise: promise)
+      videos[token] = VideoRequest(id: PHInvalidImageRequestID, export: nil, promise: promise)
       let request = PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { value, _, info in
         DispatchQueue.main.async {
-          guard self.displays.removeValue(forKey: token) != nil else { return }
-          guard info?[PHImageErrorKey] == nil, (info?[PHImageCancelledKey] as? Bool) != true,
-            let source = value as? AVURLAsset else {
-            promise.reject("VIDEO_UNAVAILABLE", "Video couldn’t open. Check your connection and photo access, then retry."); return
+          guard self.videos[token] != nil else { return }
+          if (info?[PHImageCancelledKey] as? Bool) == true {
+            self.finishVideo(token) { $0.reject("VIDEO_CANCELLED", "Video loading cancelled.") }; return
           }
-          promise.resolve(source.url.absoluteString)
+          if let source = value as? AVURLAsset { self.finishVideo(token) { $0.resolve(source.url.absoluteString) }; return }
+          if let composed = value { self.exportVideo(composed, asset: asset, token: token); return }
+          let inCloud = (info?[PHImageResultIsInCloudKey] as? Bool) == true
+          let detail = (info?[PHImageErrorKey] as? NSError).map { "\($0.domain) \($0.code)" } ?? "no asset"
+          self.finishVideo(token) { pending in
+            if !network && inCloud { pending.reject("VIDEO_CLOUD", Self.cloudOnly) }
+            else if network { pending.reject("VIDEO_DOWNLOAD_FAILED", "Video couldn’t download from iCloud. Check your connection, then try again. (\(detail))") }
+            else { pending.reject("VIDEO_UNREADABLE", "Video couldn’t be read from your library. (\(detail))") }
+          }
         }
       }
-      displays[token]?.id = request
+      videos[token]?.id = request
     } catch { promise.reject("VIDEO_UNAVAILABLE", error.localizedDescription) }
+  }
+  private func exportVideo(_ source: AVAsset, asset: PHAsset, token: String) {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("pictopia-video", isDirectory: true)
+    let version = "\(asset.localIdentifier):\(asset.modificationDate?.timeIntervalSince1970 ?? 0)"
+    let key = SHA256.hash(data: Data(version.utf8)).map { String(format: "%02x", $0) }.joined()
+    let file = directory.appendingPathComponent(key + ".mov")
+    if FileManager.default.fileExists(atPath: file.path) {
+      try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: file.path)
+      finishVideo(token) { $0.resolve(file.absoluteString) }; return
+    }
+    let partial = directory.appendingPathComponent("\(key)-\(UUID().uuidString).partial.mov")
+    guard (try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)) != nil,
+      let export = AVAssetExportSession(asset: source, presetName: AVAssetExportPreset1280x720)
+        ?? AVAssetExportSession(asset: source, presetName: AVAssetExportPresetMediumQuality) else {
+      finishVideo(token) { $0.reject("VIDEO_UNSUPPORTED", "This video couldn’t be prepared for playback.") }; return
+    }
+    export.outputURL = partial
+    export.outputFileType = .mov
+    videos[token]?.export = export
+    export.exportAsynchronously {
+      DispatchQueue.main.async {
+        guard export.status == .completed else {
+          try? FileManager.default.removeItem(at: partial)
+          let detail = (export.error as NSError?).map { "\($0.domain) \($0.code)" } ?? "status \(export.status.rawValue)"
+          self.finishVideo(token) { $0.reject("VIDEO_UNSUPPORTED", "This video couldn’t be prepared for playback. (\(detail))") }
+          return
+        }
+        do {
+          try? FileManager.default.removeItem(at: file)
+          try FileManager.default.moveItem(at: partial, to: file)
+          // Keep a few recent display copies; never the in-flight exports of other requests.
+          let active = Set(self.videos.values.compactMap { $0.export?.outputURL?.lastPathComponent })
+          let cached = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+          let stale = cached.filter { $0 != file && !active.contains($0.lastPathComponent) }
+            .sorted { ((try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast) < ((try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast) }
+          for old in stale.prefix(max(0, stale.count - 3)) { try? FileManager.default.removeItem(at: old) }
+          self.finishVideo(token) { $0.resolve(file.absoluteString) }
+        } catch {
+          try? FileManager.default.removeItem(at: partial)
+          self.finishVideo(token) { $0.reject("VIDEO_UNSUPPORTED", "This video couldn’t be prepared for playback.") }
+        }
+      }
+    }
   }
   func cancelShare() { shareGeneration += 1 }
   func share(_ id: String, presenter: UIViewController?, promise: Promise) {

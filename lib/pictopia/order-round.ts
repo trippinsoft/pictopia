@@ -36,9 +36,3 @@ export function orderPhotoFrames(area: { width: number; height: number }, photos
   }
   return heights.map((height, i) => ({ width: Math.min(width, height * ratios[i]), height }));
 }
-
-/** Two equal, stable answer targets; images letterbox inside and dates sit below. */
-export function orderChoiceFrames(area: { width: number; height: number }) {
-  const width = Math.max(1, (area.width - ORDER_GAP) / 2);
-  return [0, 1].map(() => ({ width, height: Math.max(96, Math.min(area.height, width * 1.5)) }));
-}

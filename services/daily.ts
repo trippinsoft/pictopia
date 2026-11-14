@@ -9,6 +9,8 @@ import {
   type Allowance,
   type StreakRestore,
 } from "@/lib/pictopia/daily";
+import { effectiveReviewLimit } from "@/lib/pictopia/entitlement";
+import { devOverrideStore } from "./entitlement";
 
 export { DAILY_ACTIVITY };
 export const STREAK_RESTORES = "streakRestores:v1";
@@ -41,9 +43,10 @@ export const dailyStore = {
 };
 
 export const allowanceStore = {
-  /** The approved business rule is fixed at 100 distinct displayed items per local day. */
-  async limit() { return DEFAULT_FREE_SWIPES; },
-  async refreshLimit(_fetcher?: typeof fetch) { return DEFAULT_FREE_SWIPES; },
+  /** The approved business rule is fixed at 100 distinct displayed items per local day. Only an
+   * authorized developer build can substitute a testing limit (see `effectiveReviewLimit`). */
+  async limit() { return effectiveReviewLimit(DEFAULT_FREE_SWIPES, await devOverrideStore.load(), devOverrideStore.authorized); },
+  async refreshLimit(_fetcher?: typeof fetch) { return this.limit(); },
   async state(now = Date.now()) {
     return currentAllowance(await storage.getValue<Allowance>(SWIPE_ALLOWANCE), now);
   },
@@ -55,6 +58,16 @@ export const allowanceStore = {
       if (result.changed) await storage.setValue(SWIPE_ALLOWANCE, result.state);
       return { allowed: result.allowed, left: Math.max(0, limit - result.state.counted.length), limit, counted: result.state.counted };
     });
+  },
+  /** Developer tools only: starts today's free allowance over. Touches nothing but the
+   * allowance record — no photos, decisions, streak activity or deletion records. */
+  async resetToday(now = Date.now()) {
+    if (!devOverrideStore.authorized) throw Error("Developer tools aren’t available in this build.");
+    await serialize(async () => {
+      const state = currentAllowance(await storage.getValue<Allowance>(SWIPE_ALLOWANCE), now);
+      await storage.setValue(SWIPE_ALLOWANCE, { ...state, counted: [] });
+    });
+    devOverrideStore.notify();
   },
 };
 

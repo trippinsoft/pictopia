@@ -3,7 +3,7 @@ import { Pressable, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Text } from "@/components/pictopia/ui";
 
-/** One onboarding screen: optional progress dots and Skip/Not now on top, scrolling content,
+/** One onboarding screen: optional progress dots and a top action (e.g. Back, or closing the trial offer), scrolling content,
  * and the actions pinned to the bottom so the main button never moves between steps. */
 export function OnboardingFrame({ children, footer, dots, onTopAction, topAction }: {
   children: ReactNode;

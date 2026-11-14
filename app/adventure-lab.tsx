@@ -68,7 +68,7 @@ export default function AdventureLab() {
   }
   const load = useCallback(async () => {
     try {
-      const [state, pair] = await Promise.all([adventureStore.lab(), adventureStore.home()]);
+      const [state, pair] = await Promise.all([adventureStore.lab(), adventureStore.home(Date.now(), pictopia.pro)]);
       setLab(state);
       setHome(pair.slots);
     } catch {
@@ -102,7 +102,7 @@ export default function AdventureLab() {
   }
   async function open(id: string) {
     try {
-      await adventureStore.open(id);
+      await adventureStore.open(id, pictopia.pro);
       router.push({ pathname: "/vertical-explore", params: { adventure: id } });
     } catch {
       setMessage("That experiment couldn’t be opened.");

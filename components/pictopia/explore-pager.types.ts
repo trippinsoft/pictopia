@@ -13,4 +13,6 @@ export interface ExplorePagerProps extends FlatListProps<string> {
   onPointerDragChange?: (active: boolean) => void;
   /** Page a programmatic scroll is still moving to, so a drag that catches it continues from there. */
   pendingPage?: () => number | undefined;
+  /** Filled in by the pager: scrolls to `offset` at the shared glide pace. A drag cancels it. */
+  glide?: { current: ((offset: number) => void) | null };
 }

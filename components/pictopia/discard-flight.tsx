@@ -3,10 +3,14 @@ import { StyleSheet, View } from "react-native";
 import Animated, {
   Easing,
   ReduceMotion,
+  cancelAnimation,
+  makeMutable,
   runOnJS,
+  useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
+  type SharedValue,
 } from "react-native-reanimated";
 import { MediaImage } from "./media-image";
 import {
@@ -32,10 +36,19 @@ export interface ReclaimRequest {
   id: string;
   media: Media;
 }
+export interface FlightLaunch {
+  /** Resolves once the flying photograph is on screen, so the card underneath can step aside
+   * without a gap. Always resolves, even if nothing can be shown. */
+  handoff: Promise<void>;
+  landed: Promise<void>;
+  /** The curve this flight follows, already running on the UI thread from the moment of
+   * release. The card follows the same curve until the handoff, so there is never a pause. */
+  path?: FlightPath;
+  reduced?: boolean;
+}
 export interface DiscardFlight {
-  /** Starts the flight and resolves once the flying photograph is on screen, so the card
-   * underneath can step aside without a gap. Always resolves, even if nothing can be shown. */
-  launch(request: FlightRequest): { handoff: Promise<void>; landed: Promise<void> };
+  /** Starts the flight at once, on the UI thread, from exactly where the finger let go. */
+  launch(request: FlightRequest): FlightLaunch;
   /** The discard did not stick: the photograph goes back to the feed, not the trash. */
   cancel(id: string): void;
   /** Restore: a miniature flies back out of the trash to the photograph's slot. `landed`
@@ -56,6 +69,8 @@ interface Flight {
   frame: Rect;
   path: FlightPath;
   reduced: boolean;
+  /** Started at launch, before React renders the flying photograph, so the motion never waits. */
+  progress?: SharedValue<number>;
   ready(): void;
   landed(): void;
 }
@@ -103,14 +118,17 @@ export function useDiscardFlights({
   const flight = useMemo<DiscardFlight>(
     () => ({
       launch(request) {
-        const { frame, target } = latest.current.geometry();
-        if (!alive.current || !frame || !target) return { handoff: Promise.resolve(), landed: Promise.resolve() };
+        const { frame, target: can } = latest.current.geometry();
+        if (!alive.current || !frame || !can) return { handoff: Promise.resolve(), landed: Promise.resolve() };
+        // The can is measured in the layer's coordinates; the path wants it from the frame's corner.
+        const target = { x: can.x - frame.x, y: can.y - frame.y };
         const low = latest.current.reduced;
         const path = low
           ? {
               ...flightPath(frame, request.offset, target, request.direction, 0),
               // A brief fade where the photograph already is, with no travel at all.
               control: request.offset,
+              approach: request.offset,
               to: request.offset,
               scale: 0.92,
               duration: FLIGHT_REDUCED,
@@ -120,27 +138,35 @@ export function useDiscardFlights({
         let ready!: () => void, landed!: () => void;
         const handoff = new Promise<void>((resolve) => { ready = resolve; });
         const arrival = new Promise<void>((resolve) => { landed = resolve; });
+        // The clock starts now, in the same frame as the release, not after React has
+        // rendered the flying copy: the card rides the same curve until the copy takes over.
+        const progress = makeMutable(0);
+        progress.value = withTiming(1, { duration: path.duration, easing: Easing.linear, reduceMotion: ReduceMotion.Never });
         setFlights((entries) => [
           ...entries,
-          { key, id: request.id, media: request.media, displayUri: rememberedDisplay(request.media), frame, path, reduced: low, ready, landed },
+          { key, id: request.id, media: request.media, displayUri: rememberedDisplay(request.media), frame, path, reduced: low, progress, ready, landed },
         ]);
         // The handoff never blocks the next swipe, however the image behaves.
-        setTimeout(ready, 80);
-        return { handoff, landed: arrival };
+        setTimeout(ready, 160);
+        return { handoff, landed: arrival, path, reduced: low };
       },
       cancel(id) {
-        for (const entry of current.current) if (entry.id === id) { entry.ready(); entry.landed(); }
+        for (const entry of current.current) if (entry.id === id) {
+          if (entry.progress) cancelAnimation(entry.progress);
+          entry.ready();
+          entry.landed();
+        }
         setFlights((entries) => entries.filter((entry) => entry.id !== id));
       },
       reclaim(request) {
-        const { frame, target } = latest.current.geometry();
+        const { frame, target: can } = latest.current.geometry();
         // No travel to animate, reduced motion, or one already on its way back: reveal at once.
-        if (!alive.current || !frame || !target || latest.current.reduced || currentReturns.current.some((entry) => entry.id === request.id)) {
+        if (!alive.current || !frame || !can || latest.current.reduced || currentReturns.current.some((entry) => entry.id === request.id)) {
           return { landed: Promise.resolve() };
         }
         // Reuse the forward curve, played in reverse: the miniature starts in the can (progress
         // 1) and grows into the resting slot (progress 0, offset {0,0}), so it mirrors the throw.
-        const path = flightPath(frame, { x: 0, y: 0 }, target, "right", 0);
+        const path = flightPath(frame, { x: 0, y: 0 }, { x: can.x - frame.x, y: can.y - frame.y }, "right", 0);
         const key = `return#${request.id}#${++sequence.current}`;
         let landed!: () => void;
         const arrival = new Promise<void>((resolve) => { landed = resolve; });
@@ -183,31 +209,37 @@ export function useDiscardFlights({
 /** Carries the curve on the UI thread: one timing value drives position, scale, tilt and the
  * moment it disappears into the can, so nothing re-renders while it travels. */
 function FlyingPhoto({ flight, onArrive }: { flight: Flight; onArrive(): void }) {
-  const progress = useSharedValue(0);
-  const started = useRef(false);
+  // Normally already running since the release; a fallback clock covers any older caller.
+  const fallback = useSharedValue(0);
+  const progress = flight.progress ?? fallback;
   const landed = useRef(false);
+  const shown = useRef(false);
   const land = useCallback(() => {
     if (landed.current) return;
     landed.current = true;
     onArrive();
   }, [onArrive]);
-  const begin = useCallback(() => {
-    if (started.current) return;
-    started.current = true;
-    flight.ready();
-    // Use the same linear clock for travel and scale; the curve comes from the path.
-    progress.value = withTiming(1, { duration: flight.path.duration, easing: Easing.linear, reduceMotion: ReduceMotion.Never }, () => runOnJS(land)());
+  // The copy is drawn: the next frame it is on screen, and the card can stop drawing itself.
+  const show = useCallback(() => {
+    if (shown.current) return;
+    shown.current = true;
+    globalThis.requestAnimationFrame(() => flight.ready());
+  }, [flight]);
+  useEffect(() => {
+    if (!flight.progress)
+      fallback.value = withTiming(1, { duration: flight.path.duration, easing: Easing.linear, reduceMotion: ReduceMotion.Never });
     // A stopped animation (backgrounding, for example) must never leave a photograph stuck
     // mid-air or the count out of step.
-  }, [flight, land, progress]);
-  useEffect(() => {
-    const settle = setTimeout(begin, 16);
     const watchdog = setTimeout(land, flight.path.duration + 900);
-    return () => {
-      clearTimeout(settle);
-      clearTimeout(watchdog);
-    };
-  }, [begin, land, flight.path.duration]);
+    return () => clearTimeout(watchdog);
+  }, [fallback, flight, land]);
+  // Lands when the shared clock reaches the can, even if this copy mounted late.
+  useAnimatedReaction(
+    () => progress.value >= 1,
+    (done, before) => {
+      if (done && !before) runOnJS(land)();
+    },
+  );
   const style = useAnimatedStyle(() => {
     const at = flightAt(flight.path, progress.value);
     return {
@@ -237,7 +269,7 @@ function FlyingPhoto({ flight, onArrive }: { flight: Flight; onArrive(): void })
         style,
       ]}
     >
-      <MediaImage media={flight.displayUri ? undefined : flight.media} uri={flight.displayUri} fit="contain" style={styles.fill} onSettled={begin} />
+      <MediaImage media={flight.displayUri ? undefined : flight.media} uri={flight.displayUri} fit="contain" style={styles.fill} onSettled={show} />
     </Animated.View>
   );
 }

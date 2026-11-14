@@ -38,10 +38,10 @@ function library() {
     photo("inFlight", TY - 11, TM, TD, 5, 0),
     photo("video", TY - 1, TM, TD, 15, 0, { type: "video", duration: 12 }),
     photo("shot", TY - 1, TM, TD, 16, 0, { screenshot: true }),
-    photo("thisYear", TY, TM, TD, 11, 0),                       // today itself counts too: the whole date
+    photo("thisYear", TY, TM, TD, 11, 0),                       // captured this year: never part of On This Day
   ];
 }
-const EXPECTED = ["inFlight", "queued", "seen", "plain2019", "cloud", "lateNight", "live", "thisYear", "video", "shot"].filter((id) => id !== "inFlight");
+const EXPECTED = ["inFlight", "queued", "seen", "plain2019", "cloud", "lateNight", "live", "video", "shot"].filter((id) => id !== "inFlight");
 
 async function fixture(rows = library()) {
   const db = new DatabaseSync(":memory:");
@@ -136,6 +136,7 @@ test("the audit accounts for every indexed row on the date, names each filter, a
   assert.ok(audit.eligible.some(i => i.id === "shot"));
   assert.deepEqual(counts.inFlightDeletion, ["inFlight"]);
   assert.deepEqual(counts.inactive, []);
+  assert.deepEqual(counts.capturedThisYear, ["thisYear"], "this year’s media is accounted for by its own step");
   assert.deepEqual(counts.notVisible, ["cloud"], "a failed lookup is reported, with the photo named");
   assert.equal(audit.eligible.length, EXPECTED.length);
   assert.equal(audit.displayable, EXPECTED.length - 1);
@@ -305,4 +306,128 @@ test('marked screenshots remain eligible on the exact date and retain their reve
   assert.equal(s.records.pendingShot.queued,true);
   assert.ok((await f.adventureStore.history())[0].count===s.ids.length);
   assert.deepEqual(f.p.requests,[]);
+});
+
+// ── Media captured this calendar year never joins On This Day ─────────────────────────────
+const { adventurePool, capturedThisYear } = load("lib/pictopia/photo-eligibility.ts");
+const { exploreFeed } = load("lib/pictopia/explore.ts");
+const at = (id, y, m, d, h, extra = {}) => { const created = new Date(y, m - 1, d, h, 0).getTime(); return media(id, { created, modified: created, ...dateKeys(created), ...extra }); };
+
+test("media captured this year (photo, screenshot, video, Live Photo, screen recording) is excluded on today's date and every previous date; earlier years stay", () => {
+  const now = new Date(2026, 10, 11, 18, 30).getTime(); // November 11, 2026, local
+  const rows = [
+    at("todayPhoto", 2026, 11, 11, 0), at("todayShot", 2026, 11, 11, 9, { screenshot: true }),
+    at("todayVideo", 2026, 11, 11, 10, { type: "video", duration: 8 }), at("todayLive", 2026, 11, 11, 11, { livePhoto: true }),
+    at("todayRecording", 2026, 11, 11, 18, { type: "video", duration: 30, screenshot: true }),
+    at("lastYear", 2025, 11, 11, 12), at("longAgo", 2019, 11, 11, 23), at("lastYearShot", 2024, 11, 11, 8, { screenshot: true }),
+    at("thisYearEarlier", 2026, 3, 11, 12), at("yesterday", 2026, 11, 10, 23),
+  ];
+  assert.deepEqual(onThisDayPool(rows, new Set(), now).map((m) => m.id).sort(), ["lastYear", "lastYearShot", "longAgo"]);
+  const a = curate({ kind: "day", source: "day:11-11", pool: rows.filter((m) => m.day === "11-11") }, ctx({ now }));
+  assert.deepEqual([...a.ids].sort(), ["lastYear", "lastYearShot", "longAgo"], "curate uses the same clock-injected rule");
+  // The seven previous dates Pictopia+ offers: November 10's 2026 screenshots never count, earlier years do.
+  for (let back = 1; back <= 7; back++) {
+    const d = 11 - back, day = `11-${String(d).padStart(2, "0")}`;
+    const date = [
+      at(`shot${d}`, 2026, 11, d, 9, { screenshot: true }), at(`photo${d}`, 2026, 11, d, 12),
+      at(`video${d}`, 2026, 11, d, 13, { type: "video", duration: 5 }), at(`live${d}`, 2026, 11, d, 14, { livePhoto: true }),
+      at(`old${d}`, 2025, 11, d, 12), at(`oldShot${d}`, 2023, 11, d, 8, { screenshot: true }),
+    ];
+    const expected = [`old${d}`, `oldShot${d}`].sort();
+    assert.deepEqual(onThisDayPool(date, new Set(), now).map((m) => m.id).sort(), expected, `${day}: count`);
+    assert.deepEqual([...curate({ kind: "day", source: `day:${day}`, pool: date }, ctx({ now })).ids].sort(), expected, `${day}: review`);
+  }
+  // Other Adventures keep their own eligibility.
+  for (const kind of ["month", "year", "capsule", "detour", "random"])
+    assert.ok(adventurePool(rows, kind, new Set(), now).some((m) => m.id === "todayPhoto"), `${kind} still includes this year's photo`);
+  assert.ok(adventurePool(rows, "screenshots", new Set(), now).some((m) => m.id === "todayShot"));
+});
+
+test("the calendar-year boundary: 2026 media joins On This Day on 1 January 2027 in local time", () => {
+  const dec31 = at("dec31", 2026, 12, 31, 23), jan1 = at("jan1", 2027, 1, 1, 0), old = at("old", 2025, 12, 31, 12);
+  const lastMoment = new Date(2026, 11, 31, 23, 59, 59, 999).getTime(), firstMoment = new Date(2027, 0, 1, 0, 0, 0, 0).getTime();
+  assert.equal(capturedThisYear(dec31, lastMoment), true);
+  assert.equal(capturedThisYear(dec31, firstMoment), false);
+  assert.equal(capturedThisYear(jan1, firstMoment), true);
+  assert.deepEqual(onThisDayPool([dec31, old], new Set(), lastMoment).map((m) => m.id), ["old"]);
+  assert.deepEqual(onThisDayPool([dec31, old], new Set(), firstMoment).map((m) => m.id).sort(), ["dec31", "old"]);
+  assert.deepEqual(onThisDayPool([jan1], new Set(), firstMoment), [], "media from the new year waits for the next one");
+  // Looking back from 2 January 2027 at 31 December: last year's photo of that date now counts.
+  const jan2 = new Date(2027, 0, 2, 9).getTime();
+  assert.deepEqual([...curate({ kind: "day", source: "day:12-31", pool: [dec31, old] }, ctx({ now: jan2 })).ids].sort(), ["dec31", "old"]);
+});
+
+test("the store: every date in the list counts and reviews only earlier years, for new and reopened reviews", async () => {
+  const dates = Array.from({ length: 8 }, (_, i) => addDays(today, -i));
+  const rows = dates.flatMap((date, i) => {
+    const [, m, d] = date.split("-").map(Number);
+    return [
+      at(`cur${i}`, TY, m, d, 9), at(`curShot${i}`, TY, m, d, 10, { screenshot: true }), at(`curVideo${i}`, TY, m, d, 11, { type: "video", duration: 4 }),
+      at(`prev${i}`, TY - 1, m, d, 12), at(`prevShot${i}`, TY - 3, m, d, 8, { screenshot: true }),
+    ];
+  });
+  const f = await fixture(rows);
+  const history = await f.adventureStore.history();
+  assert.deepEqual(history.map((h) => h.date), dates);
+  for (const [i, h] of history.entries()) {
+    const expected = [`prev${i}`, `prevShot${i}`].sort();
+    assert.equal(h.count, expected.length, `${h.date}: list count`);
+    const a = await f.adventureStore.choose(i === 0 ? { kind: "day" } : { kind: "day", date: h.date }, 3, true);
+    const s = await f.explore.exploreStoreFor(f.adventureSessionKey(a.id)).load();
+    assert.equal(a.count, h.count, `${h.date}: review count`);
+    assert.deepEqual([...exploreFeed(s)].sort(), expected, `${h.date}: review selection`);
+    const again = await f.adventureStore.choose(i === 0 ? { kind: "day" } : { kind: "day", date: h.date }, 4, true);
+    assert.equal(again.id, a.id);
+    assert.equal(again.count, h.count, `${h.date}: reopened`);
+  }
+  assert.equal((await f.adventureStore.choices()).dayCount, history[0].count);
+});
+
+test("a photo or screenshot captured after the review was made never raises today's counts or joins the saved review", async () => {
+  const f = await fixture();
+  const a = await f.adventureStore.choose({ kind: "day" }, 3, false);
+  const key = f.adventureSessionKey(a.id);
+  const before = await f.explore.exploreStoreFor(key).load();
+  const now = Date.now();
+  await f.app.storage.put([
+    media("newPhoto", { created: now, modified: now, ...dateKeys(now) }),
+    media("newShot", { created: now, modified: now, ...dateKeys(now), screenshot: true }),
+  ]);
+  assert.equal((await f.adventureStore.history())[0].count, EXPECTED.length);
+  assert.equal((await f.adventureStore.choices()).dayCount, EXPECTED.length);
+  const reopened = await f.adventureStore.open(a.id, false);
+  assert.equal(reopened.count, EXPECTED.length);
+  assert.deepEqual((await f.explore.exploreStoreFor(key).load()).ids, before.ids);
+  const audit = await f.audit.run(today, { census: false, lookup: false });
+  assert.deepEqual(audit.steps.find((s) => s.key === "capturedThisYear").items.map((i) => i.id).sort(), ["newPhoto", "newShot", "thisYear"]);
+  assert.ok(audit.reconciles);
+});
+
+test("a review saved before this rule hides this year’s media but keeps its marks, place, Restore and Undo", async () => {
+  const f = await fixture();
+  const a = await f.adventureStore.choose({ kind: "day" }, 4, false);
+  const key = f.adventureSessionKey(a.id), store = f.explore.exploreStoreFor(key);
+  const fresh = await store.load();
+  // An older build listed today's own photo, and the user discarded it there.
+  const old = { ...fresh, ids: [...fresh.ids, "thisYear"], activeId: "thisYear",
+    records: { ...fresh.records, thisYear: { encountered: true, unavailable: false, discarded: true, queued: true, changedAt: 1 } } };
+  await f.app.storage.put([{ ...(await f.app.storage.get("thisYear")), decision: "delete" }], { [key]: old });
+  let s = await store.load();
+  assert.ok(s.ids.includes("thisYear"), "history is kept");
+  assert.ok(!exploreFeed(s).includes("thisYear"), "but it leaves the feed and its N of M");
+  assert.equal(exploreFeed(s).length, EXPECTED.length);
+  assert.notEqual(s.activeId, "thisYear", "the saved place moves to a photo still in the review");
+  assert.equal((await f.app.storage.get("thisYear")).decision, "delete", "its Discarded mark is untouched");
+  const target = "plain2019";
+  await store.change({ type: "page", id: s.activeId, revision: s.revision, toId: target, availableIds: s.ids });
+  s = await store.load();
+  await store.change({ type: "discard", id: target, revision: s.revision, direction: "left" });
+  assert.equal((await f.app.storage.get(target)).decision, "delete");
+  await store.change({ type: "undo" });
+  assert.notEqual((await f.app.storage.get(target)).decision, "delete", "Undo still works");
+  s = await store.load();
+  await store.change({ type: "discard", id: target, revision: s.revision, direction: "left" });
+  await store.change({ type: "restore", id: target });
+  assert.notEqual((await f.app.storage.get(target)).decision, "delete", "Restore still works");
+  assert.deepEqual(f.p.requests, []);
 });

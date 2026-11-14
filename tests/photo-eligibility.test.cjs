@@ -66,7 +66,7 @@ for (const os of ["ios", "android"]) test(`${os} SQLite queries filter before LI
     assert.ok(sample.length >= 6);
     assert.ok(sample.every(m => !m.screenshot));
   }
-  const sweep = await store.choose({ kind: "screenshots" }, 1);
+  const sweep = await store.choose({ kind: "screenshots" }, 1, true);
   assert.ok(sweep.count >= 10);
   const sweepSession = await app.storage.getValue(`adventure:${sweep.id}:explore`);
   assert.ok(sweepSession.ids.every(id => id.startsWith("s")));
@@ -141,11 +141,12 @@ test("screenshot-only libraries keep Screenshot Sweep and expose no photo-game c
   const games = loader("services/pitstops.ts").pitStopStore;
   assert.equal((await games.library()).photos, 0);
   assert.deepEqual(await games.sample("memoryMatch", 1), []);
-  const home = await adventures.home(1);
+  assert.ok((await adventures.home(1)).slots.every(slot => slot.adventure.kind !== "screenshots"), "Free Home never offers screenshots");
+  const home = await adventures.home(1, true);
   assert.ok(home.slots.length > 0);
   assert.ok(home.slots.every(slot => ["screenshots", "day", "detour", "random", "corners"].includes(slot.adventure.kind)));
   assert.equal(await adventures.choose({ kind: "year", year: "2019" }, 1), undefined);
-  assert.ok(await adventures.choose({ kind: "screenshots" }, 1));
+  assert.ok(await adventures.choose({ kind: "screenshots" }, 1, true));
   assert.deepEqual(p.requests, []);
   db.close();
 });

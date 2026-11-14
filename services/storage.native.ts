@@ -102,6 +102,15 @@ export const storage: Storage = {
     );
     return rows.map((r) => JSON.parse(r.data));
   },
+  async count(q) {
+    const { sql, args } = conditions({ ...q, cursor: undefined, limit: undefined, offset: undefined });
+    const row = await db.getFirstAsync<{ total: number; bytes: number }>(
+      `SELECT COUNT(*) total, COALESCE(SUM(COALESCE(size,json_extract(data,'$.scan.size'),0)),0) bytes
+       FROM media WHERE ${sql} AND json_extract(data,'$.deletedAt') IS NULL`,
+      ...args,
+    );
+    return row ?? { total: 0, bytes: 0 };
+  },
   async put(items, values = {}) {
     await db.withExclusiveTransactionAsync(async (tx) => {
       for (const m of items) {

@@ -1,5 +1,6 @@
 import { reviewTrace, tracePhoto } from "@/lib/pictopia/review-trace";
 import { qualifiedEncounterTime } from "@/lib/pictopia/photo-encounter";
+import { capturedThisYear } from "@/lib/pictopia/photo-eligibility";
 import { storage, serialize, deletionGuard, firstSeenUpdates, activityValues } from "./repository";
 import { mediaService } from "./media";
 import { Platform } from "react-native";
@@ -47,8 +48,10 @@ export function exploreStoreFor(key: string) {
       if (!saved) return undefined;
       const session = migrateExplore(saved);
       if (!review) return session;
-      const metadata = key.startsWith("adventure:") ? await storage.getValue<{ finishedAt?: number }>(key.slice(0, -8)) : undefined;
-      return reconcileReview(session, await Promise.all(session.ids.map(id => storage.get(id))), !!metadata?.finishedAt);
+      const metadata = key.startsWith("adventure:") ? await storage.getValue<{ finishedAt?: number; kind?: string }>(key.slice(0, -8)) : undefined;
+      const now = Date.now();
+      return reconcileReview(session, await Promise.all(session.ids.map(id => storage.get(id))), !!metadata?.finishedAt,
+        metadata?.kind === "day" ? m => capturedThisYear(m, now) : undefined);
     },
     /** A function action is built from the stored session inside the serialized write, so
      * queued feed updates always reference the page that is actually saved. */

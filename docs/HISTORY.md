@@ -137,3 +137,19 @@ The review interaction uses the original 1.0.21 live feed: marked photos leave s
 - Screenshots participate by Adventure: all eligible items in On This Day, a soft 20% preference in Surprise Me/Hidden Corners, photographic memory defaults and unchanged cleanup/game rules; saved review evidence remains intact.
 
 - New badge awards persist with an acknowledgment-based medal celebration; Progress refreshes avoid layout shifts, and Yearbook continuation excludes all prior batches and remounts its feed.
+- On This Day never includes media captured on the current local calendar day; the same date in earlier years still counts.
+
+- Pictopia+ testing uses one entitlement resolver with developer overrides that only development and opted-in staging builds honor; Production fails closed.
+- On This Day shows only media from earlier calendar years (matches SwipeWipe/Picnic); current-year media, including screenshots, is left out on every date.
+- Videos are reviewed and discarded from their poster like photos; playback, iCloud download and playback failures never block discard or review credit.
+- App icon switched to the white-tile stacked-photo artwork (replacing the light-blue tile).
+- Near-copies (same quick series or identical hash) of photos already shown count as seen, so later sets of 20 don't feel like repeats.
+- Onboarding can no longer be skipped: the story's Skip and the access screen's Not now were removed; the trial offer keeps its close button (store requirement).
+- The discard flight now continues from the finger without a pause (card rides the flight curve until handoff, momentum-matched cubic path into the trash), the next photo slides up more visibly, and Restore no longer flashes during a discard.
+- Review discards now scroll the pager to the next photo instead of sliding a card into the emptied slot, because the slide was skipped most of the time on device.
+- Illustration canvas backdrops deepened one step so artwork stands apart from the same-hue page pastel (e.g. Surprise Me blue on the default Sky page).
+- Feed scrolls after a discard now run at a fixed 520 ms glide on every platform, because the platforms' own smooth scrolls were too quick to see.
+- Which Came First returned to stacked (top/bottom) photos as shadowed prints; the purple “?” was removed from its artwork; new badges get a spinning, confetti reveal.
+- Pit Stop games skip paperwork (documents, receipts, cheques, screenshots) and favour people, pets and places using on-device iOS Vision; Android not yet.
+- Pit Stops use camera photos only (no PNG/GIF/WebP or Screenshot files, even unflagged) and favour people/places in both games.
+- Screenshot Sweep is Pictopia+ only (no free sweep, matching SwipeWipe and Picnic); Home's unstarted second option rotates daily.

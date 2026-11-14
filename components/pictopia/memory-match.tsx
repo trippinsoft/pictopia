@@ -7,9 +7,10 @@ import Animated, { cancelAnimation, FadeIn, ReduceMotion, useAnimatedStyle, useR
 import { Button, Icon, Loading, Text } from "./ui";
 import { Illustration } from "./illustration";
 import { MemoryCard } from "./memory-card";
+import { ShuffleDeck } from "./shuffle-deck";
 import { usePictopia } from "./provider";
 import { cardPhoto, memoryDeck } from "@/lib/pictopia/pitstops";
-import { initialMemoryState, memoryController, memoryGrid, type MemoryPairs } from "@/lib/pictopia/memory-match";
+import { initialMemoryState, MEMORY_DEAL_STAGGER, memoryController, memoryDealFrom, memoryDealTotal, memoryGrid, type MemoryPairs } from "@/lib/pictopia/memory-match";
 import type { Media } from "@/lib/pictopia/types";
 import { pitStopStore } from "@/services/pitstops";
 import { preparePitStop } from "@/services/pit-stop-photos";
@@ -29,6 +30,7 @@ export function MemoryMatchScreen() {
   useEffect(() => () => run?.dispose?.(), [run]);
   const request = useRef(0), busy = useRef(false);
   const preferenceWrite = useRef(Promise.resolve());
+  const reducedMotion = useReducedMotion();
   useEffect(() => {
     let alive = true;
     setError(undefined);
@@ -74,15 +76,16 @@ export function MemoryMatchScreen() {
     <View className="mx-auto w-full max-w-3xl flex-1 px-4 pb-2">
       {run ? <MemoryBoard deck={run.deck} photos={run.photos} uris={run.uris} pairs={run.pairs} onRestart={restart} onExit={exit} /> : <>
         <MemoryHeader onExit={exit} />
-        {loading ? <Loading /> : <ScrollView contentContainerStyle={styles.center}>
+        {loading ? <ShuffleStage reduced={reducedMotion} /> : <ScrollView contentContainerStyle={styles.center}>
           <View className="gap-6 px-4 py-6">
             <View className="h-32 w-40 self-center overflow-hidden rounded-2xl"><Illustration name="memoryMatch" /></View>
             <View className="gap-2"><Text className="text-center text-h2 text-foreground">A little moment to remember.</Text><Text className="text-center text-body text-muted-foreground">Turn two cards. Find the same photograph.</Text></View>
             {capacity === undefined && !error ? <Loading /> : <>
               <View className="flex-row self-center rounded-2xl bg-secondary p-1">
                 {([4, 6] as const).map(value => <Pressable key={value} accessibilityRole="radio" accessibilityLabel={`${value === 4 ? "Easy" : "Standard"}, ${value} pairs`} accessibilityState={{ checked: pairs === value, disabled: loading || (capacity ?? 0) < value }}
-                  disabled={loading || (capacity ?? 0) < value} onPress={() => choosePairs(value)} className={`min-h-11 min-w-24 items-center justify-center rounded-xl px-5 ${(capacity ?? 0) < value ? "opacity-40" : ""} ${pairs === value ? "bg-card" : ""}`}>
-                  <Text className={`text-h6 ${pairs === value ? "text-primary" : "text-muted-foreground"}`}>{value === 4 ? "Easy · 4 pairs" : "Standard · 6 pairs"}</Text>
+                  disabled={loading || (capacity ?? 0) < value} onPress={() => choosePairs(value)} className={`min-h-11 min-w-24 flex-row items-center justify-center gap-1.5 rounded-xl px-4 ${(capacity ?? 0) < value ? "opacity-40" : ""} ${pairs === value ? "bg-primary" : ""}`}>
+                  {pairs === value ? <Icon name="Check" size={16} strokeWidth={2.5} className="text-primary-foreground" /> : null}
+                  <Text className={`text-h6 ${pairs === value ? "text-primary-foreground" : "text-muted-foreground"}`}>{value === 4 ? "Easy · 4 pairs" : "Standard · 6 pairs"}</Text>
                 </Pressable>)}
               </View>
               {(capacity ?? 0) < 4 ? <Text className="text-center text-body text-muted-foreground">Choose at least four photographs in Home to play.</Text> : <Button disabled={loading} onPress={() => void start()}>{loading ? "Preparing your photos…" : "Let’s play"}</Button>}
@@ -93,6 +96,15 @@ export function MemoryMatchScreen() {
       </>}
     </View>
   </SafeAreaView>;
+}
+/** The table while photos are prepared: a status line and the shuffling deck, laid out exactly
+ * like the board's waiting state so the deck stays put when the board takes over. */
+function ShuffleStage({ reduced, message = "Shuffling your photos…", paused }: { reduced: boolean; message?: string; paused?: boolean }) {
+  return <>
+    <Text accessibilityLiveRegion="polite" className="pb-3 pt-1 text-center text-body text-muted-foreground">{message}</Text>
+    <View className="min-h-0 flex-1 items-center justify-center"><ShuffleDeck reduced={reduced} paused={paused} /></View>
+    <View className="min-h-11" />
+  </>;
 }
 function MemoryHeader({ onExit, children }: { onExit(): void; children?: ReactNode }) {
   return <View className="min-h-14 flex-row items-center gap-2">
@@ -139,7 +151,16 @@ export function MemoryBoard({ deck, photos, uris, pairs, onRestart, onExit }: Ru
     setFocused(true);
     return () => { controller.current?.configure({ active: false, ready: false, reduced: false, reader: true }); setFocused(false); };
   }, []));
-  useEffect(() => { controller.current?.configure({ active: active && focused, ready: ready && !failed, reduced, reader }); }, [active, focused, ready, failed, reduced, reader]);
+  // Shuffle while photos load, then deal once every photo is ready; play starts once dealt.
+  const [dealing, setDealing] = useState<"waiting" | "dealing" | "dealt">("waiting");
+  useEffect(() => { if (ready && !failed && area.width > 0) setDealing(old => old === "waiting" ? "dealing" : old); }, [ready, failed, area.width]);
+  useEffect(() => {
+    if (dealing !== "dealing") return;
+    const timeout = setTimeout(() => setDealing("dealt"), reduced ? 0 : memoryDealTotal(deck.length));
+    return () => clearTimeout(timeout);
+  }, [dealing, reduced, deck.length]);
+  const dealt = dealing === "dealt";
+  useEffect(() => { controller.current?.configure({ active: active && focused, ready: ready && !failed && dealt, reduced, reader }); }, [active, focused, ready, failed, dealt, reduced, reader]);
   const count = state.matched.length / 2;
   const countScale = useSharedValue(1);
   useEffect(() => {
@@ -149,13 +170,13 @@ export function MemoryBoard({ deck, photos, uris, pairs, onRestart, onExit }: Ru
   }, [count, reduced, countScale]);
   const progress = useAnimatedStyle(() => ({ transform: [{ scale: countScale.value }] }));
   function stop(action: () => void) { controller.current?.dispose(); action(); }
-  const frame = memoryGrid(area.width, area.height - 8, pairs);
+  const frame = memoryGrid(area.width - PAD_X * 2, area.height - PAD_Y * 2, pairs);
   return <View className="flex-1">
     <MemoryHeader onExit={() => stop(onExit)}>
       <Animated.View style={progress}><Text accessibilityLiveRegion="polite" accessibilityLabel={`${count} of ${pairs} pairs found`} className="text-h6 text-muted-foreground">{count} / {pairs}</Text></Animated.View>
     </MemoryHeader>
     {state.phase === "complete" ? <MemoryCompletion pairs={pairs} moves={state.moves} ids={[...new Set(deck.map(cardPhoto))]} reduced={reduced} onRestart={() => stop(onRestart)} onExit={() => stop(onExit)} /> : <>
-      <Text accessibilityLiveRegion="polite" className="pb-3 pt-1 text-center text-body text-muted-foreground">{failed ? "A photo couldn’t load. Try a new set." : !ready ? "Preparing your photographs…" : "Turn two cards. Find the pair."}</Text>
+      <Text accessibilityLiveRegion="polite" className="pb-3 pt-1 text-center text-body text-muted-foreground">{failed ? "A photo couldn’t load. Try a new set." : dealing === "waiting" ? "Shuffling your photos…" : dealing === "dealing" ? "Dealing the cards…" : "Turn two cards. Find the pair."}</Text>
       <View className="min-h-0 flex-1" onLayout={event => { const { width, height } = event.nativeEvent.layout; setArea(old => old.width === width && old.height === height ? old : { width, height }); }}>
         {area.width > 0 && <ScrollView contentContainerStyle={styles.board} showsVerticalScrollIndicator={false}>
           <View style={[styles.grid, { gap: frame.gap }]}>
@@ -164,11 +185,13 @@ export function MemoryBoard({ deck, photos, uris, pairs, onRestart, onExit }: Ru
               return <MemoryCard key={card} index={index} photoNumber={[...new Set(deck.map(cardPhoto))].indexOf(cardPhoto(card)) + 1}
                 photo={photos.find(photo => photo.id === cardPhoto(card))} uri={uris?.[cardPhoto(card)]} open={open} matched={matched} celebrating={state.phase === "matching" && state.open.includes(card)}
                 reduced={reduced} active={active && focused} width={frame.cardWidth} height={frame.cardHeight}
-                disabled={!ready || failed || !active || !focused || state.phase !== "ready" || open}
+                deal={dealing === "waiting" ? "stacked" : "dealt"} dealDelay={index * MEMORY_DEAL_STAGGER} dealFrom={memoryDealFrom(frame, index, deck.length)}
+                disabled={!ready || failed || !dealt || !active || !focused || state.phase !== "ready" || open}
                 onPress={() => controller.current?.select(card)} onSettled={status => { if (status === "failed") setFailed(true); else setLoaded(old => old[card] ? old : { ...old, [card]: true }); }} />;
             })}
           </View>
         </ScrollView>}
+        {dealing === "waiting" ? <View pointerEvents="none" style={styles.deck}><ShuffleDeck reduced={reduced} paused={failed} /></View> : null}
       </View>
       <Pressable accessibilityRole="button" onPress={() => stop(onRestart)} className="min-h-11 items-center justify-center"><Text className="text-h6 text-muted-foreground">{failed ? "Try a new set" : "Start over"}</Text></Pressable>
     </>}
@@ -187,4 +210,7 @@ export function MemoryCompletion({ pairs, moves = 0, reduced, onRestart, onExit 
   </ScrollView>;
 }
 
-const styles = StyleSheet.create({ center: { flexGrow: 1, justifyContent: "center" }, board: { flexGrow: 1, justifyContent: "center", paddingVertical: 4 }, grid: { flexDirection: "row", flexWrap: "wrap" } });
+/** Room around the board for tilted corners and table shadows. */
+const PAD_X = 8, PAD_Y = 10;
+const styles = StyleSheet.create({ center: { flexGrow: 1, justifyContent: "center" }, board: { flexGrow: 1, justifyContent: "center", paddingVertical: PAD_Y, paddingHorizontal: PAD_X },
+  deck: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" }, grid: { flexDirection: "row", flexWrap: "wrap" } });

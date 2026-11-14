@@ -52,7 +52,7 @@ export function Planning({ ready, total, onDone }: { ready: boolean; total: numb
   useEffect(() => {
     if (!finished) return;
     progress.value = withTiming(1, { duration: 250 });
-    AccessibilityInfo.announceForAccessibility(`${total.toLocaleString()} photos ready to explore.`);
+    AccessibilityInfo.announceForAccessibility(`${total.toLocaleString()} photos and videos ready to explore.`);
   }, [finished, progress, total]);
   const bar = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` }));
   useEffect(() => {
@@ -67,7 +67,7 @@ export function Planning({ ready, total, onDone }: { ready: boolean; total: numb
       </View>
       <View accessibilityLiveRegion="polite" className="w-full items-center gap-3">
         <Text accessibilityRole="header" className="text-center text-h1 text-foreground">
-          {finished ? `${total.toLocaleString()} photos ready to explore` : "Planning your first adventure…"}
+          {finished ? `${total.toLocaleString()} photos & videos ready to explore` : "Planning your first adventure…"}
         </Text>
         <Text className="text-center text-body leading-6 text-muted-foreground">
           {finished ? "Pictopia has picked where to start." : "Looking through your years and months for a great place to start."}

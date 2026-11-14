@@ -246,7 +246,8 @@ test('the next photograph is swipeable before a discard is saved, and rapid disc
   await flush(); await flush(); await flush();
   assert.equal(c.busy, false, 'the lock is released as soon as the photograph is in the air');
   assert.equal(c.activeId, 'b');
-  assert.deepEqual(h.pages(), ['b','c','d'], 'the flying photograph has already left the sequence');
+  assert.deepEqual(h.pages(), ['a','b','c','d'], 'the emptied slot stays where it was');
+  assert.equal(h.scrolls.at(-1), 1, 'the pager scrolls on to the next photograph');
   assert.equal(c.canDiscard('b'), true);
   const second = c.discard('b', 'right', Promise.resolve());
   await flush(); await flush(); await flush();
@@ -264,7 +265,8 @@ test('the next photograph is swipeable before a discard is saved, and rapid disc
   assert.equal(s.activeId, 'd');
   assert.equal(c.activeId, 'd');
   assert.deepEqual(h.errors, []);
-  assert.deepEqual(h.arrivals.map(entry => entry.id), ['b','c','d'], 'each arriving photograph is the right one');
+  assert.deepEqual(h.scrolls, [1, 2, 3], 'each discard scrolls on to the right photograph');
+  assert.deepEqual(h.arrivals, [], 'nothing is re-laid out or slid in');
 });
 test('Undo during an unfinished flight restores the same queued photograph once', async () => {
   const h = reviewHarness(['a','b'], true);
@@ -382,6 +384,28 @@ test('the flight carries the photograph from the finger to the trash, shrinking 
       assert.ok(p.scale > 0 && p.scale < 0.2, `miniature scale ${p.scale}`);
       assert.ok(Math.abs(p.control.x) <= size.width * 0.8 + 1, `the arc stays watchable: ${p.control.x}`);
     }
+});
+test('the flight leaves at the speed the finger let go and never stalls on its way to the can', () => {
+  const frame = { width: 390, height: 650 };
+  // The can sits above the photograph, in the header.
+  const target = { x: 355, y: -40 };
+  for (const [offset, direction, velocity] of [[{ x: 120, y: 0 }, 'right', 1500], [{ x: -110, y: 10 }, 'left', 1200], [{ x: 90, y: 0 }, 'right', 700]]) {
+    const path = flightPath(frame, offset, target, direction, velocity);
+    const dt = 1e-4;
+    const start = (flightAt(path, dt).x - flightAt(path, 0).x) / (dt * path.duration / 1000);
+    assert.ok(Math.abs(Math.abs(start) - velocity) / velocity < 0.1, `release speed carried on: ${start} vs ${velocity}`);
+    // Its speed never collapses mid-air: no visible hesitation before it heads for the can.
+    for (let t = 0; t <= 1; t += 0.02) {
+      const a = flightAt(path, t), b = flightAt(path, Math.min(1, t + 0.02));
+      if (t + 0.02 > 1) break;
+      const speed = Math.hypot(b.x - a.x, b.y - a.y) / (0.02 * path.duration / 1000);
+      assert.ok(speed > 250, `keeps moving at ${t.toFixed(2)}: ${speed}`);
+    }
+  }
+  // A right swipe released short of the can never swings past it and doubles back.
+  const right = flightPath(frame, { x: 80, y: 0 }, target, 'right', 400);
+  let previous = -Infinity;
+  for (let t = 0; t <= 1.0001; t += 0.05) { const x = flightAt(right, t).x; assert.ok(x >= previous - 0.5, `x keeps heading right at ${t.toFixed(2)}`); previous = x; }
 });
 test('review instructions persist completion, interruption, dismissal and explicit replay', async () => {
   const saved = new Map(); let tail=Promise.resolve();

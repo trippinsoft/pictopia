@@ -13,13 +13,13 @@ export class VideoLifecycle<P extends ReviewPlayer> {
   private wantsPlay = false;
   private healthy = true;
   private removers: (() => void)[] = [];
-  constructor(private readonly failure: () => void) {}
+  constructor(private readonly failure: (error?: unknown) => void) {}
   attach(player: P) { this.current = player; }
   get live() { return !!this.current; }
   command(work: (player: P) => void) {
     const player = this.current;
     if (!player) return;
-    try { work(player); } catch { this.healthy = false; if (this.current === player) this.failure(); }
+    try { work(player); } catch (error) { this.healthy = false; if (this.current === player) this.failure(error); }
   }
   listen(remove: () => void) { this.removers.push(remove); }
   replace(source: string | null) {
@@ -31,7 +31,7 @@ export class VideoLifecycle<P extends ReviewPlayer> {
       if (!player || revision !== this.revision) return;
       this.replacing++; this.healthy = true;
       try { player.pause(); await player.replaceAsync(source); }
-      catch { this.healthy = false; if (this.current === player && revision === this.revision) this.failure(); }
+      catch (error) { this.healthy = false; if (this.current === player && revision === this.revision) this.failure(error); }
       finally { this.replacing--; if (this.current === player && revision === this.revision && this.wantsPlay && this.healthy) this.command(p => p.play()); }
     });
     this.tail = operation.catch(() => {});

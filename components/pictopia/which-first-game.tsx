@@ -1,6 +1,6 @@
 import { NavigationBack } from "./navigation-header";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { AccessibilityInfo, AppState, Platform, Pressable, View } from "react-native";
+import { AccessibilityInfo, AppState, Platform, Pressable, View, type ViewStyle } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { Button, Icon, Text } from "./ui";
 import { MediaImage, type MediaSettled } from "./media-image";
@@ -10,7 +10,8 @@ import { ZoomChoice } from "./zoom-choice";
 import type { GameResult } from "./pit-stop-games";
 import type { Media } from "@/lib/pictopia/types";
 import type { OrderRound } from "@/lib/pictopia/pitstops";
-import { ORDER_GAP, orderChoiceFrames, orderRoundController } from "@/lib/pictopia/order-round";
+import { ORDER_GAP, orderPhotoFrames, orderRoundController } from "@/lib/pictopia/order-round";
+import { memoryTable } from "@/lib/pictopia/memory-match";
 
 export function WhichFirstGame({ rounds, photos, uris, onFinish, onExit }: { rounds: OrderRound[]; photos: Media[]; uris?: Record<string, string>; onFinish(result: GameResult): void; onExit(): void }) {
   const [index, setIndex] = useState(0);
@@ -81,23 +82,24 @@ export function OrderPhotoRound({ round, photos, uris, onNext }: { round: OrderR
     if (prefs.haptics) memoryMatchHaptic();
     if (screenReader) AccessibilityInfo.announceForAccessibility(`${id === round.answer ? "Correct." : "Not quite."} Photo ${round.answer === round.ids[0] ? 1 : 2} was taken first. Photo 1: ${date(round.ids[0])}. Photo 2: ${date(round.ids[1])}.`);
   }
-  // Both photos share the space: height one doesn't need goes to the other.
-  const frames = area && orderChoiceFrames({ width: area.width, height: area.height - 48 });
+  // The two prints stack, each sized to its own photo; height one doesn't need goes to the other.
+  const pair = round.ids.map(id => photos.find(item => item.id === id) ?? { width: 0, height: 0 });
+  const frames = area && orderPhotoFrames({ width: area.width - PRINT_INSET * 2 - PRINT_MARGIN * 2, height: area.height - PRINT_INSET * 4 - PRINT_GAP + ORDER_GAP }, pair);
   return <View className="min-h-0 flex-1">
-    <View className="min-h-0 flex-1 flex-row items-center justify-center" style={{ gap: ORDER_GAP }} onLayout={event => { const { width, height } = event.nativeEvent.layout; setArea(old => old?.width === width && old.height === height ? old : { width, height }); }}>
+    <View className="min-h-0 flex-1 items-center justify-center" style={{ gap: PRINT_GAP }} onLayout={event => { const { width, height } = event.nativeEvent.layout; setArea(old => old?.width === width && old.height === height ? old : { width, height }); }}>
       {area && round.ids.map((id, index) => {
         const photo = photos.find(item => item.id === id);
         const frame = frames?.[index] ?? { width: 0, height: 0 };
         const first = answered && id === round.answer;
-        return <OrderPhotoCard key={id} number={index + 1} first={first} selected={selected === id} answered={answered} date={date(id)} disabled={!ready || answered} frame={frame} onPress={() => choose(id)}>
+        return <OrderPhotoCard key={id} index={index} number={index + 1} first={first} selected={selected === id} answered={answered} date={date(id)} disabled={!ready || answered} frame={frame} onPress={() => choose(id)}>
           <MediaImage media={uris?.[id] ? undefined : photo} uri={uris?.[id]} className="h-full w-full" fit="contain" showLoading onSettled={status => setStates(old => old[id] === status ? old : { ...old, [id]: status })} />
         </OrderPhotoCard>;
       })}
     </View>
-    <View className="h-32 shrink-0 justify-center pt-1.5">
+    <View className="h-28 shrink-0 justify-center">
       <Pressable accessibilityRole="button" accessibilityLabel={answered ? "Pause this result to examine the photos" : "Which photo came first?"} disabled={!answered || paused} onPress={() => { if (controller.current?.pause()) setPaused(true); }} className="min-h-12 justify-center">
       <Text accessibilityLiveRegion="polite" className={`text-center ${!answered ? "text-body text-muted-foreground" : selected === round.answer ? "text-headline text-primary" : "text-headline text-destructive"}`}>
-        {answered ? selected === round.answer ? "You got it!" : `Not quite! The photo on the ${round.answer === round.ids[0] ? "left" : "right"} came first.` : failed ? "A photo couldn’t load. This round won’t count." : !ready ? "Loading your photographs…" : "Tap the photo taken first"}
+        {answered ? selected === round.answer ? "You got it!" : `Not quite! The ${round.answer === round.ids[0] ? "top" : "bottom"} photo came first.` : failed ? "A photo couldn’t load. This round won’t count." : !ready ? "Loading your photographs…" : "Tap the photo taken first"}
       </Text>
       </Pressable>
       <Text className="text-center text-caption text-muted-foreground">{answered && !paused && screenReader === false ? "Tap the result to pause" : " "}</Text>
@@ -106,22 +108,29 @@ export function OrderPhotoRound({ round, photos, uris, onNext }: { round: OrderR
     </View>
   </View>;
 }
-/** Each target hugs its photo and zooms inside its own frame; dates and answer feedback overlay it without moving the layout. */
-export function OrderPhotoCard({ number, first, selected, answered, date, disabled, frame, onPress, children }: {
-  number: number; first: boolean; selected: boolean; answered: boolean; date: string;
+/** White border around each photo, room for the tilt and shadow, and space between the two prints. */
+const PRINT_INSET = 8, PRINT_MARGIN = 6, PRINT_GAP = 14;
+const PRINT_TILT = [-1.1, 1.1];
+
+/** Each answer is an instant print lying on the table, like Memory Match's cards: white border,
+ * a slight resting tilt and a soft table shadow. The photo zooms inside its own frame; labels and
+ * the date overlay it so the layout never moves. */
+export function OrderPhotoCard({ index, number, first, selected, answered, date, disabled, frame, onPress, children }: {
+  index: number; number: number; first: boolean; selected: boolean; answered: boolean; date: string;
   disabled: boolean; frame: { width: number; height: number }; onPress(): void; children: ReactNode;
 }) {
   const [pressed, setPressed] = useState(false);
   const wrong = selected && !first, down = pressed && !disabled;
+  const shadow = { boxShadow: memoryTable(index + 1).shadow } as ViewStyle;
   return <View accessible accessibilityRole="button"
     accessibilityLabel={`Photo ${number}${answered ? `, ${date}${first ? ", taken first" : ""}${selected ? ", your answer" : ""}` : ", choose as the earlier photograph"}`}
     accessibilityState={{ disabled, selected }} accessibilityActions={[{ name: "activate" }]}
     onAccessibilityAction={event => { if (event.nativeEvent.actionName === "activate" && !disabled) onPress(); }}
     onAccessibilityTap={() => { if (!disabled) onPress(); }}
-    style={{ width: frame.width, height: frame.height + 46, transform: [{ scale: down ? 0.98 : 1 }] }}
-    className={`rounded-2xl border-[3px] ${down ? "opacity-85" : answered && !first && !selected ? "opacity-60" : "opacity-100"} ${first ? "border-primary" : wrong ? "border-destructive" : selected ? "border-primary" : "border-transparent"}`}>
-    <View style={{ height: frame.height }} className="overflow-hidden rounded-2xl bg-secondary"><ZoomChoice onSelect={onPress} onPressChange={setPressed}>{children}</ZoomChoice></View>
-    <View pointerEvents="none" className="absolute inset-x-2 top-2 flex-row flex-wrap items-center justify-between gap-1">
+    style={[shadow, { width: frame.width + PRINT_INSET * 2, height: frame.height + PRINT_INSET * 2, padding: PRINT_INSET - 3, transform: [{ rotate: `${PRINT_TILT[index % 2]}deg` }, { scale: down ? 0.98 : 1 }] }]}
+    className={`rounded-[18px] border-[3px] bg-white ${down ? "opacity-85" : answered && !first && !selected ? "opacity-60" : "opacity-100"} ${first ? "border-primary" : wrong ? "border-destructive" : "border-white"}`}>
+    <View style={{ height: frame.height, width: frame.width }} className="overflow-hidden rounded-xl bg-secondary"><ZoomChoice onSelect={onPress} onPressChange={setPressed}>{children}</ZoomChoice></View>
+    <View pointerEvents="none" className="absolute inset-x-3 top-3 flex-row flex-wrap items-center justify-between gap-1">
       <View className={`min-h-7 flex-row items-center gap-1 rounded-full px-2.5 py-1 ${first ? "bg-primary" : "bg-card/90"}`}>
         {first && <Icon name="Check" size={14} className="text-primary-foreground" />}
         <Text className={`text-caption ${first ? "text-primary-foreground" : "text-foreground"}`}>{answered ? first ? "Taken first" : "Later" : `Photo ${number}`}</Text>
@@ -131,6 +140,11 @@ export function OrderPhotoCard({ number, first, selected, answered, date, disabl
         <Text className={`text-caption ${wrong ? "text-destructive" : "text-foreground"}`}>Your pick</Text>
       </View>}
     </View>
-    <Text className="mt-2 text-center text-caption text-foreground">{answered ? date : " "}</Text>
+    {answered && <View pointerEvents="none" className="absolute inset-x-0 bottom-3 items-center">
+      <View className="min-h-7 flex-row items-center gap-1 rounded-full bg-card/95 px-3 py-1">
+        <Icon name="Calendar" size={13} className="text-muted-foreground" />
+        <Text className="text-caption text-foreground">{date}</Text>
+      </View>
+    </View>}
   </View>;
 }

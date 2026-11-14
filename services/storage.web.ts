@@ -116,6 +116,16 @@ export const storage: Storage = {
     }, q.order);
     return result;
   },
+  async count(q) {
+    const result = { total: 0, bytes: 0 };
+    const all = { ...q, cursor: undefined, limit: undefined, offset: undefined };
+    await each((m) => {
+      if (m.deletedAt || !matches(m, all)) return;
+      result.total++;
+      result.bytes += m.size ?? m.scan?.size ?? 0;
+    });
+    return result;
+  },
   async put(items, values = {}) {
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(["media", "preferences"], "readwrite");

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { MemoryMatchScreen } from "@/components/pictopia/memory-match";
@@ -8,7 +8,6 @@ import { ScreenHeader } from "@/components/pictopia/navigation-header";
 import { Button, Loading, Text } from "@/components/pictopia/ui";
 import type { GameResult } from "@/components/pictopia/pit-stop-games";
 import { orderRounds, type OrderRound } from "@/lib/pictopia/pitstops";
-import { pitStopStore } from "@/services/pitstops";
 import { preparePitStop, type PitStopPhotos } from "@/services/pit-stop-photos";
 
 const exit = () => router.canGoBack() ? router.back() : router.replace("/pit-stops");
@@ -28,9 +27,8 @@ function WhichFirstScreen({ enabled }: { enabled: boolean }) {
     const controller = new AbortController(); let prepared: PitStopPhotos | undefined;
     setRun(undefined); setResult(undefined); setError(undefined);
     void (async () => {
-      const library = await pitStopStore.library();
-      if (controller.signal.aborted) return;
-      if (!library.captureDates) { setUnsupported(true); throw Error("This Pit Stop needs capture dates from your iOS or Android photo library. Browser files only provide modified dates."); }
+      // Only browsers lack capture dates; no need to count the whole library to know that.
+      if (Platform.OS === "web") { setUnsupported(true); throw Error("This Pit Stop needs capture dates from your iOS or Android photo library. Browser files only provide modified dates."); }
       const seed = Date.now(); prepared = await preparePitStop("whichFirst", seed, controller.signal);
       const rounds = orderRounds(prepared.photos, seed);
       if (!rounds.length) throw Error("This Pit Stop needs accessible photos taken on different dates.");

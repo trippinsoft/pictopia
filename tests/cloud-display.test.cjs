@@ -62,6 +62,7 @@ test('native display implementation is bounded, uses full IDs, and removes reque
   assert.match(swift,/CGSize\(width: 2048, height: 2048\)/);
   assert.match(swift,/cancelImageRequest\(request.id\)/);
   assert.match(swift,/displays.removeValue\(forKey: token\)/);
-  assert.match(swift,/options.deliveryMode = \.mediumQualityFormat/);
+  assert.match(swift,/options.deliveryMode = network \? \.mediumQualityFormat : \.automatic/);
+  assert.match(swift,/options.isNetworkAccessAllowed = network\n/);
   assert.doesNotMatch(swift,/deleteAssets|performChanges.*display/);
 });

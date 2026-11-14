@@ -20,10 +20,13 @@ import {
   Media,
   DeletionResult,
 } from "@/lib/pictopia/types";
-import { SCAN_VERSION, entitlementActive } from "@/lib/pictopia/logic";
+import { SCAN_VERSION } from "@/lib/pictopia/logic";
+import { noOverride, resolveEntitlement, type DevOverride, type EntitlementSource } from "@/lib/pictopia/entitlement";
+import { devOverrideStore } from "@/services/entitlement";
 import { nativeScheme } from "@/theming/appearance";
 import { allowanceStore } from "@/services/daily";
 import { recoveryMessage } from "@/lib/pictopia/deletion";
+import { withIndexRetry } from "@/lib/pictopia/index-retry";
 const emptyStats: Stats = {
   total: 0,
   photos: 0,
@@ -45,8 +48,17 @@ interface Context {
   busy: boolean;
   syncProgress: string;
   error: string | null;
+  /** Pictopia+ is on. The only premium check screens use; resolved in `lib/pictopia/entitlement`. */
   pro: boolean;
+  /** The store's purchase record (never changed by developer overrides). */
   entitlement: Entitlement | null;
+  /** What decided `pro`: the store, or an authorized developer override. */
+  entitlementSource: EntitlementSource;
+  /** Developer tools: whether this build may use them, and the saved override. */
+  devTools: boolean;
+  devOverride: DevOverride;
+  setDevOverride: (change: Partial<Omit<DevOverride, "version">>) => Promise<void>;
+  resetDailyUsage: () => Promise<void>;
   scan: ScanState;
   revision: number;
   setError: (e: string | null) => void;
@@ -84,6 +96,7 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
     [syncProgress, setSyncProgress] = useState(""),
     [error, setError] = useState<string | null>(null),
     [entitlement, setEnt] = useState<Entitlement | null>(null),
+    [devOverride, setDevOverrideState] = useState<DevOverride>(noOverride),
     [scan, setScan] = useState<ScanState>({ status: "idle", processed: 0, total: 0, skipped: 0 }),
     [revision, setRevision] = useState(0),
     [clock, setClock] = useState(Date.now());
@@ -144,18 +157,25 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
       setPermission(p);
       if (!p.granted)
         throw Error("Photo access is off. Allow access in Settings to start cleaning.");
-      const epoch = Date.now();
-      const indexedIds = new Set<string>();
+      let epoch = 0;
+      let indexedIds = new Set<string>();
       let discovered = 0;
-      await storage.setValue("libraryIndex:v1", { status: "indexing", startedAt: epoch });
-      const syncReport = await mediaService.sync(
-        async (page) => {
-          await repository.ingest(page, epoch);
-          for (const m of page) indexedIds.add(m.id);
-        },
-        (n, total) => { discovered = total; setSyncProgress(`${n.toLocaleString()} of ${total.toLocaleString()} photos & videos`); },
-        controller.signal,
-      );
+      // A library that changes mid-index (iCloud Photos syncing, a new screenshot) restarts
+      // the pass with a fresh epoch, so reconcile judges presence by the complete pass only.
+      const syncReport = await withIndexRetry(async () => {
+        epoch = Date.now();
+        indexedIds = new Set<string>();
+        discovered = 0;
+        await storage.setValue("libraryIndex:v1", { status: "indexing", startedAt: epoch });
+        return mediaService.sync(
+          async (page) => {
+            await repository.ingest(page, epoch);
+            for (const m of page) indexedIds.add(m.id);
+          },
+          (n, total) => { discovered = total; setSyncProgress(`${n.toLocaleString()} of ${total.toLocaleString()} photos & videos`); },
+          controller.signal,
+        );
+      }, controller.signal);
       if (Platform.OS !== "web" && !controller.signal.aborted) await repository.reconcile(epoch);
       if (!controller.signal.aborted) {
         const indexed = await storage.stats();
@@ -193,6 +213,7 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
         setPrefs(p);
         Appearance.setColorScheme(nativeScheme(p.appearance));
         setEnt((await storage.getValue<Entitlement>("entitlement")) ?? null);
+        setDevOverrideState(await devOverrideStore.load());
         const saved = await storage.getValue<ScanState>("scan");
         if (saved) setScan(saved.status === "running" ? { ...saved, status: "paused" } : saved);
         setPermission(await mediaService.permission());
@@ -249,15 +270,19 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
       clearInterval(timer);
     };
   }, []);
+  const resolved = resolveEntitlement(entitlement, devOverride, devOverrideStore.authorized, clock);
+  /** Fresh resolution from saved state, for long-running work that must stop if Pictopia+ ends. */
+  const proNow = async () =>
+    resolveEntitlement((await storage.getValue<Entitlement>("entitlement")) ?? null, await devOverrideStore.load(), devOverrideStore.authorized).pro;
   async function start(c: Collection, minutes: SessionMinutes = 5) {
     if (!ready) return;
     if (session && !session.complete && session.collection === c) return;
     if (
       (c === "large" || c === "blurry" || c.startsWith("group:")) &&
-      !entitlementActive(entitlement)
+      !resolved.pro
     )
       throw Error("This collection is part of Pictopia+.");
-    setSession(await repository.start(c, prefs, entitlementActive(entitlement), minutes));
+    setSession(await repository.start(c, prefs, resolved.pro, minutes));
     await refresh();
   }
   // Resolves as soon as the decision is saved; library totals refresh in the background so the
@@ -275,7 +300,7 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
     Appearance.setColorScheme(nativeScheme(next.appearance));
   }
   async function scanLibrary() {
-    if (!entitlementActive(entitlement)) throw Error("Smart analysis is part of Pictopia+.");
+    if (!resolved.pro) throw Error("Smart analysis is part of Pictopia+.");
     if (!analyzer.available) throw Error("Smart analysis requires a native build.");
     if (deletingRef.current)
       throw Error("Wait for the current deletion to finish before scanning.");
@@ -299,7 +324,7 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
         if (!page.length) break;
         for (const m of page) {
           if (controller.signal.aborted) break;
-          if (!entitlementActive((await storage.getValue<Entitlement>("entitlement")) ?? null))
+          if (!(await proNow()))
             throw Error("Your Pictopia+ access has expired. Your scan results are kept.");
           try {
             const result = await analyzer.analyze(m);
@@ -370,8 +395,19 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
     busy,
     syncProgress,
     error,
-    pro: entitlementActive(entitlement, clock),
+    pro: resolved.pro,
     entitlement,
+    entitlementSource: resolved.source,
+    devTools: devOverrideStore.authorized,
+    devOverride,
+    setDevOverride: async (change) => {
+      setDevOverrideState(await devOverrideStore.save(change));
+      setRevision((r) => r + 1);
+    },
+    resetDailyUsage: async () => {
+      await allowanceStore.resetToday();
+      setRevision((r) => r + 1);
+    },
     scan,
     revision,
     setError,

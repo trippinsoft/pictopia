@@ -71,7 +71,7 @@ function video(resolve) {
     expo:{useEvent:(_,event)=>event==='statusChange'?{status:player.status}:{currentTime:0}},
     './use-review-video':{useReviewVideo:()=>({player,status:player.status,currentTime:0,owner:{current:{pause:()=>player.pause(),play:()=>player.play(),replace:uri=>player.replaceAsync(uri)}}})},
     'expo-video':{useVideoPlayer:source=>{assert.equal(source,null,'player identity must stay stable during async source replacement');return player},VideoView:'VideoView'},
-    './ui':{Icon:'Icon',Text:'Text'}, '@/services/video-source':{videoSource:(m,network)=>resolve(m,{download:network})}, '@/services/media':{mediaService:{resolve}},
+    './ui':{Icon:'Icon',Text:'Text'}, './video-scrubber':{VideoScrubber:'VideoScrubber'}, './video-scrubber-bar':{clock:v=>`${Math.floor(v/60)}:${String(Math.floor(v%60)).padStart(2,'0')}`}, '@/services/video-source':{videoSource:(m,network)=>resolve(m,{download:network})}, '@/services/media':{mediaService:{resolve}},
   },props);
   return {h,props,player,sources,events,appEvents};
 }

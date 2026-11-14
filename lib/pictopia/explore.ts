@@ -64,14 +64,19 @@ export type ExploreAction =
       revision: number;
       toId: string | null;
       availableIds: string[];
+      /** Review photographs the user scrolled through since the last confirmed save. Credited
+       * even when this cursor move is stale or refused. Without it, the legacy range applies. */
+      passed?: string[];
     }
+  /** Review credit only, for traversal the cursor can't carry (the end card, leaving). */
+  | { type: "traverse"; ids: string[] }
   | { type: "discard"; id: string; revision: number; direction: DiscardDirection }
   /** Restores the latest outstanding discard; `id`, when given, must be that discard. */
   | { type: "undo"; id?: string }
   | { type: "back" }
   | { type: "unavailable"; id: string }
   | { type: "seen"; id: string; displayedAt?: number }
-  | { type: "finish"; expectedRevision?: number; endId?: string; boundary?: { startedAt: number; endpoint: string } }
+  | { type: "finish"; expectedRevision?: number; endId?: string; boundary?: { startedAt: number; endpoint: string }; passed?: string[] }
   | { type: "restore"; id: string }
   | { type: "restoreAll" }
   | { type: "restart" }
@@ -162,6 +167,29 @@ export function lastExploreDiscard(s: ExploreSession): ExploreDiscard | undefine
   return latest ? { id: latest, direction: "left" } : undefined;
 }
 
+/** Review credit for photographs the user scrolled through. Monotonic and idempotent: it never
+ * depends on the saved cursor or revision, never clears a record, and skips photographs that
+ * failed to load or have left the feed. Returns `s.records` itself when nothing changes. */
+function creditTraversal(s: ExploreSession, ids: readonly string[] | undefined, now: number) {
+  if (!s.review || !ids?.length) return s.records;
+  const feed = new Set(exploreFeed(s));
+  let records = s.records;
+  for (const id of ids) {
+    const previous = records[id];
+    if (!feed.has(id) || previous?.encountered || previous?.unavailable) continue;
+    if (records === s.records) records = { ...s.records };
+    records[id] = {
+      encountered: true,
+      unavailable: false,
+      discarded: previous?.discarded ?? false,
+      ...(previous?.queued !== undefined ? { queued: previous.queued } : {}),
+      // A mark's time orders Undo; seeing it again never changes that.
+      changedAt: previous?.changedAt ?? now,
+    };
+  }
+  return records;
+}
+
 export function reduceExplore(
   s: ExploreSession,
   a: ExploreAction,
@@ -170,6 +198,15 @@ export function reduceExplore(
   const next = { ...s, highestPosition: Math.max(s.highestPosition ?? 0, s.activeId ? s.ids.indexOf(s.activeId) : 0, a.type === "page" && a.toId ? s.ids.indexOf(a.toId) : 0), revision: s.revision + 1 };
   switch (a.type) {
     case "page": {
+      if (s.review && a.passed) {
+        // Credit and cursor are separate: a superseded or refused place never loses the
+        // photographs scrolled through on the way to it.
+        const records = creditTraversal(s, a.passed, now);
+        const credited = records === s.records ? s : { ...s, revision: s.revision + 1, records };
+        const feed = exploreFeed(s);
+        if (a.revision !== s.revision || a.id !== s.activeId || a.toId === null || a.toId === s.activeId || !feed.includes(a.toId)) return credited;
+        return { ...next, activeId: a.toId, records };
+      }
       if (a.revision !== s.revision || a.id !== s.activeId) return s;
       const feed = exploreFeed(s);
       if (s.review) {
@@ -180,21 +217,8 @@ export function reduceExplore(
         const from = s.activeId === null ? -1 : feed.indexOf(s.activeId);
         if (from < 0 || feed.indexOf(a.toId) < from) return { ...next, activeId: a.toId };
         // Scrolling past a photograph reviews it, as in any feed. Only a photograph that
-        // failed to load stays unreviewed.
-        const records = { ...s.records };
-        for (const id of feed.slice(from, feed.indexOf(a.toId))) {
-          const previous = records[id];
-          if (previous?.encountered || previous?.unavailable) continue;
-          records[id] = {
-            encountered: true,
-            unavailable: false,
-            discarded: previous?.discarded ?? false,
-            ...(previous?.queued !== undefined ? { queued: previous.queued } : {}),
-            // A mark's time orders Undo; seeing it again never changes that.
-            changedAt: previous?.changedAt ?? now,
-          };
-        }
-        return { ...next, activeId: a.toId, records };
+        // failed to load stays unreviewed. (Legacy callers without a traversal.)
+        return { ...next, activeId: a.toId, records: creditTraversal(s, feed.slice(from, feed.indexOf(a.toId)), now) };
       }
       const from = s.activeId === null ? feed.length : feed.indexOf(s.activeId);
       const to = a.toId === null ? feed.length : feed.indexOf(a.toId);
@@ -267,10 +291,18 @@ export function reduceExplore(
       if (a.displayedAt !== undefined && !qualified) return s;
       return { ...next, records: { ...s.records, [a.id]: { ...s.records[a.id], encountered: true, unavailable: false, discarded: s.records[a.id]?.discarded ?? false, changedAt: now } } };
     }
+    case "traverse": {
+      const records = creditTraversal(s, a.ids, now);
+      return records === s.records ? s : { ...s, revision: s.revision + 1, records };
+    }
     case "finish": {
+      // Everything scrolled through is saved first, in this same write, so completion is
+      // computed from complete records. A refused finish still keeps that credit.
+      const records = creditTraversal(s, a.passed, now);
+      const credited = records === s.records ? s : { ...s, revision: s.revision + 1, records };
       const feed = exploreFeed(s);
       const boundary = s.review && a.boundary?.startedAt === s.startedAt && !!a.boundary?.endpoint && (a.boundary.endpoint === s.ids.at(-1) || a.boundary.endpoint === feed.at(-1));
-      if (!boundary && a.expectedRevision !== undefined && a.expectedRevision !== s.revision) return s;
+      if (!boundary && a.expectedRevision !== undefined && a.expectedRevision !== s.revision) return credited;
       // A stale end-page callback cannot finish a review from the middle. The final
       // original discard may have already selected an earlier surviving photograph.
       const last = s.review ? feed[feed.length - 1] : s.ids[s.ids.length - 1];
@@ -278,9 +310,9 @@ export function reduceExplore(
       // An explicit end-page action can identify the last surviving, meaningfully seen
       // photo, but must still match the captured revision (navigation/Undo invalidate it).
       const witnessedEnd = a.expectedRevision !== undefined && a.endId !== undefined &&
-        a.endId === feed[feed.length - 1] && !!(s.records[a.endId]?.encountered || s.records[a.endId]?.unavailable);
-      const atEnd = !!last && (s.activeId === feed[feed.length - 1] || !!s.records[last]?.queued || witnessedEnd);
-      return s.review && (atEnd || boundary) ? { ...next, activeId: null, finished: true, ...(a.expectedRevision !== undefined || boundary ? { completionVerifiedAt: now } : {}) } : s;
+        a.endId === feed[feed.length - 1] && !!(records[a.endId]?.encountered || records[a.endId]?.unavailable);
+      const atEnd = !!last && (s.activeId === feed[feed.length - 1] || !!records[last]?.queued || witnessedEnd);
+      return s.review && (atEnd || boundary) ? { ...next, activeId: null, finished: true, records, ...(a.expectedRevision !== undefined || boundary ? { completionVerifiedAt: now } : {}) } : credited;
     }
     case "back": {
       const feed = exploreFeed(s);
@@ -374,12 +406,14 @@ function resumeOn(s: ExploreSession, id: string) {
   return !!s.review && !s.finished && s.activeId === null && s.ids.includes(id);
 }
 /** Queue is authoritative. Legacy adventure-only marks are preserved, never auto-enqueued. */
-export function reconcileReview(session: ExploreSession, media: (Media | undefined)[], confirmedLegacy = false): ExploreSession {
+/** `hidden` leaves the feed like a deleted item (kept in `ids` and records): On This Day uses it
+ * for media captured this calendar year, which a review saved earlier may still list. */
+export function reconcileReview(session: ExploreSession, media: (Media | undefined)[], confirmedLegacy = false, hidden: (m: Media) => boolean = () => false): ExploreSession {
   const records = { ...session.records };
   const gone: string[] = [];
   for (const item of media) {
     if (!item) continue;
-    if (item.deletedAt || !item.active) gone.push(item.id);
+    if (item.deletedAt || !item.active || hidden(item)) gone.push(item.id);
     const old = records[item.id];
     const queued = !item.deletedAt && item.decision === "delete";
     if (queued || old?.queued) records[item.id] = {

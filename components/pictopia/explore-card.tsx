@@ -26,6 +26,7 @@ import type { Media } from "@/lib/pictopia/types";
 import { ExploreGesture } from "./explore-gesture";
 import type { ExploreScrollMotion } from "./explore-pager.types";
 import type { DiscardFlight } from "./discard-flight";
+import { flightAt, type FlightPath } from "@/lib/pictopia/flight-math";
 import { MediaImage } from "./media-image";
 import { VideoPage } from "./video-page";
 import { Icon, Text } from "./ui";
@@ -41,6 +42,9 @@ interface Props {
   marked?: boolean;
   onRestore?(id: string): void;
   active: boolean;
+  /** Next to the shown photo: its display copy is fetched (from iCloud if needed) ahead of
+   * time, so it is ready when it scrolls or slides in. */
+  nearby?: boolean;
   /** Arriving in the shown slot: from the side it was discarded to (undo), or sliding up/down
    * into the slot a discarded photo just left. Positioned at once, animated once active. */
   entrance?: "left" | "right" | "below" | "above";
@@ -74,6 +78,7 @@ export const ExploreCard = memo(
       marked = false,
       onRestore,
       active,
+      nearby = false,
       entrance,
       pageHeight,
       nativeScroll,
@@ -95,6 +100,10 @@ export const ExploreCard = memo(
   ) {
     const { width } = useWindowDimensions();
     const isVideo = media?.type === "video";
+    // A load that fails before the photo is shown isn't reported: it is usually a photo not
+    // yet fetched from iCloud, and it tries again (with network) the moment it is shown.
+    const activeRef = useRef(active);
+    activeRef.current = active;
     const [videoPlaying, setVideoPlaying] = useState(false);
     const videoRef = useRef(isVideo);
     videoRef.current = isVideo;
@@ -149,7 +158,11 @@ export const ExploreCard = memo(
       // invisible: for a frame the two are the same picture in the same spot.
       shown = useSharedValue(1),
       locked = useSharedValue(!!entrance),
-      arriving = useSharedValue(!!entrance);
+      arriving = useSharedValue(!!entrance),
+      // From release until the flying copy takes over, the card itself rides the flight's
+      // curve on the UI thread, so the photograph never pauses where the finger left it.
+      follow = useSharedValue<{ path: FlightPath; reduced: boolean } | null>(null),
+      along = useSharedValue(0);
     const arrival = useRef<{ from: Props["entrance"]; animating: boolean }>({
       from: entrance,
       animating: false,
@@ -177,6 +190,10 @@ export const ExploreCard = memo(
       onAvailability(id, phase === "loaded");
     }, [id, phase, onAvailability]);
     const unavailableCallback = useRef(onUnavailable); unavailableCallback.current = onUnavailable;
+    // Shown again after failing: the image retries at once, so it reads as loading, not failed.
+    useLayoutEffect(() => {
+      if (active && media) setPhase(current => (current === "failed" ? "loading" : current));
+    }, [active]);
     useEffect(() => { if (active && phase === "failed") unavailableCallback.current?.(); }, [active, phase, id]);
     const cancel = useCallback(() => {
       reviewTrace("card.cancel", { photo: tracePhoto(id), inFlight: inFlight.current, started: started.current, locked: locked.value, x: x.value, y: y.value });
@@ -217,6 +234,11 @@ export const ExploreCard = memo(
           const watchdog = setTimeout(finish, 400);
           reviewTrace("flight.launch", { photo: tracePhoto(id), direction, velocity });
           const flightRun = launcher.launch({ id, media, offset: { x: x.value, y: y.value }, direction, velocity });
+          if (flightRun.path) {
+            along.value = 0;
+            follow.value = { path: flightRun.path, reduced: !!flightRun.reduced };
+            along.value = withTiming(1, { duration: flightRun.path.duration, easing: Easing.linear, reduceMotion: ReduceMotion.Never });
+          }
           void flightRun.handoff
             .catch(() => {})
             .then(() => {
@@ -232,6 +254,7 @@ export const ExploreCard = memo(
             launcher.cancel(id);
             if (alive.current) {
               inFlight.current = false;
+              follow.value = null;
               shown.value = 1;
               cancel();
             }
@@ -258,30 +281,32 @@ export const ExploreCard = memo(
             clearTimeout(watchdog);
           });
       },
-      [begin, cancel, id, locked, media, onAction, shown, unzoom, width, x, y],
+      [along, begin, cancel, follow, id, locked, media, onAction, shown, unzoom, width, x, y],
     );
     const reset = useCallback(() => {
       reviewTrace("card.reset", { photo: tracePhoto(id), started: started.current, inFlight: inFlight.current });
       unzoom(false);
       x.value = 0;
       y.value = 0;
+      follow.value = null;
       shown.value = 1;
       locked.value = false;
       arriving.value = false;
       arrival.current = { from: undefined, animating: false };
       inFlight.current = false;
       started.current = false;
-    }, [id, x, y, shown, locked, arriving, unzoom]);
+    }, [id, x, y, follow, shown, locked, arriving, unzoom]);
     const arrived = useCallback(() => {
       reviewTrace("card.arrived", { photo: tracePhoto(id), started: started.current, inFlight: inFlight.current });
       arrival.current = { from: undefined, animating: false };
+      follow.value = null;
       shown.value = 1;
       locked.value = false;
       arriving.value = false;
       inFlight.current = false;
       started.current = false;
       onEntered(id);
-    }, [arriving, id, locked, onEntered, shown]);
+    }, [arriving, follow, id, locked, onEntered, shown]);
     // Out of view first, before paint: the feed waits for this before revealing the slot.
     useLayoutEffect(() => {
       if (!entrance) {
@@ -298,6 +323,7 @@ export const ExploreCard = memo(
       const from = start(entrance);
       x.value = from.x;
       y.value = from.y;
+      follow.value = null;
       shown.value = 1;
     }, [entrance]);
     useEffect(() => {
@@ -317,11 +343,20 @@ export const ExploreCard = memo(
     useEffect(() => () => {
       if (zoomedRef.current) onZoom(id, false);
     }, []);
-    useImperativeHandle(ref, () => ({ discard, reset }), [discard, reset]);
+    // Every discard path (swipe, buttons, accessibility) stops a playing video at once; the
+    // card then leaves the shown slot, which releases its player.
+    const discardShown = useCallback(
+      (direction: "left" | "right", velocity?: number) => {
+        if (videoRef.current) setVideoPlaying(false);
+        discard(direction, velocity);
+      },
+      [discard],
+    );
+    useImperativeHandle(ref, () => ({ discard: discardShown, reset }), [discardShown, reset]);
     // Stable handlers, so the native recognizer is configured once per photo rather than
     // rebuilt (and briefly reconfigured on the UI thread) whenever the shown photo changes.
-    const handlers = useRef({ begin, discard, cancel, onTap, onBegin, onZoomBegin, setZoom, unzoom });
-    handlers.current = { begin, discard, cancel, onTap, onBegin, onZoomBegin, setZoom, unzoom };
+    const handlers = useRef({ begin, discard: discardShown, cancel, onTap, onBegin, onZoomBegin, setZoom, unzoom });
+    handlers.current = { begin, discard: discardShown, cancel, onTap, onBegin, onZoomBegin, setZoom, unzoom };
     const gestureTrace = useCallback((samples: ReviewGestureSample[]) => traceNativeGesture(id, samples), [id]);
     const gestureStart = useCallback((offset?: number) => handlers.current.begin(offset), []);
     const gestureCommit = useCallback(
@@ -353,23 +388,39 @@ export const ExploreCard = memo(
         { scale: zoom.scale.value },
       ],
     }));
-    const style = useAnimatedStyle(() => ({
-      opacity: shown.value,
-      transform: [
-        { translateX: x.value },
-        { translateY: y.value },
-        // Tilts toward the side it is dragged to, matching the review deck.
-        { rotate: `${x.value / 22}deg` },
-      ],
-    }));
+    const style = useAnimatedStyle(() => {
+      const riding = follow.value;
+      if (riding) {
+        const at = flightAt(riding.path, along.value);
+        return {
+          opacity: shown.value * (riding.reduced ? Math.max(0, 1 - along.value) : at.opacity),
+          transform: [
+            { translateX: at.x },
+            { translateY: at.y },
+            { scale: at.scale },
+            { rotate: `${at.rotate}deg` },
+          ],
+        };
+      }
+      return {
+        opacity: shown.value,
+        transform: [
+          { translateX: x.value },
+          { translateY: y.value },
+          { scale: 1 },
+          // Tilts toward the side it is dragged to, matching the review deck.
+          { rotate: `${x.value / 22}deg` },
+        ],
+      };
+    });
     // Either side means discard (a reversible mark, never a deletion): the label appears on
     // whichever side the photo uncovers.
     // Gone the instant the photograph is handed to its flight, so no label is left behind.
     const discardLeft = useAnimatedStyle(() =>
-      labelStyle(arriving.value || !shown.value ? 0 : x.value),
+      labelStyle(arriving.value || !shown.value || follow.value ? 0 : x.value),
     );
     const discardRight = useAnimatedStyle(() =>
-      labelStyle(arriving.value || !shown.value ? 0 : -x.value),
+      labelStyle(arriving.value || !shown.value || follow.value ? 0 : -x.value),
     );
     return (
       // Active accessibility must not flatten/unflatten this ancestor during a live pan.
@@ -380,7 +431,7 @@ export const ExploreCard = memo(
           switch (event.nativeEvent.actionName) {
             case "increment": onAccessibleNext?.(); break;
             case "decrement": onAccessiblePrevious?.(); break;
-            case "mark": discard("left"); break;
+            case "mark": discardShown("left"); break;
             case "undo": onAccessibleUndo?.(); break;
           }
         }}>
@@ -414,16 +465,25 @@ export const ExploreCard = memo(
                 style={styles.fill}
                 showLoading
                 active={active}
+                network={active || nearby}
+                quietFailure={!active}
                 allowRetry
                 failureContent={isVideo ? <View className="flex-1 bg-background" /> : undefined}
-                onSettled={state => { if (!isVideo) setPhase(state); }}
+                // A video is reviewed and discarded by its poster, like a photo by its pixels:
+                // playback (and any iCloud download) is never required. A poster failure
+                // can't undo a first frame that playback already displayed.
+                onSettled={state => setPhase(current => {
+                  if (state !== "failed") return state;
+                  if (isVideo && current === "loaded") return current;
+                  return activeRef.current ? "failed" : "loading";
+                })}
               />
             </Animated.View>
           )}
           {media && isVideo && (
-            <VideoPage media={media} active={active} playing={videoPlaying} onPlayingChange={setVideoPlaying} onReady={() => setPhase("loaded")} />
+            <VideoPage media={media} active={active} playing={videoPlaying} onPlayingChange={setVideoPlaying} onReady={() => setPhase("loaded")} nativeScroll={nativeScroll} />
           )}
-          {phase === "failed" && !isVideo && (
+          {phase === "failed" && active && !isVideo && (
             <View
               style={StyleSheet.absoluteFill}
               className="items-center justify-center bg-background px-8"
@@ -484,10 +544,11 @@ export const ExploreCard = memo(
 );
 const EXIT_DRIFT = 40;
 const ENTER = { duration: 340, easing: Easing.out(Easing.cubic), reduceMotion: ReduceMotion.System };
-// Close to UIKit's animated page scroll, which this slide stands in for.
+// Reads as the feed scrolling the next photo up into the freed slot: a soft start and a long,
+// gentle settle, so the travel is seen rather than landing almost at once.
 const SLIDE = {
-  duration: 300,
-  easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+  duration: 460,
+  easing: Easing.bezier(0.3, 0.1, 0.2, 1),
   reduceMotion: ReduceMotion.System,
 };
 const ZOOM_OUT = { duration: 180, reduceMotion: ReduceMotion.System };

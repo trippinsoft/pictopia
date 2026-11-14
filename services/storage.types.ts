@@ -13,6 +13,8 @@ export interface Storage {
   init(): Promise<void>;
   get(id: string): Promise<Media | undefined>;
   query(q: Query): Promise<Media[]>;
+  /** Uncapped count and known size of everything matching `q` (verified deletions excluded). */
+  count(q: Query): Promise<{ total: number; bytes: number }>;
   put(items: Media[], values?: Record<string, unknown>): Promise<void>;
   getValue<T>(key: string): Promise<T | undefined>;
   setValue(key: string, value: unknown): Promise<void>;

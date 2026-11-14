@@ -30,7 +30,7 @@ export function useAdventures() {
       do {
         reloadRequested.current = false;
         try {
-          const [home, totals] = await Promise.all([adventureStore.home(), adventureStore.progress()]);
+          const [home, totals] = await Promise.all([adventureStore.home(Date.now(), app.pro), adventureStore.progress()]);
           if (!alive.current) return;
           setSlots(home.slots);
           setProgress(totals);
@@ -42,7 +42,7 @@ export function useAdventures() {
     } finally {
       loading.current = false;
     }
-  }, [hasPhotos]);
+  }, [hasPhotos, app.pro]);
   /** "Show me two more". Reports a new pair, exhaustion, or an error separately. */
   const refresh = useCallback(async () => {
     if (!hasPhotos) return "busy" as const;
@@ -51,7 +51,7 @@ export function useAdventures() {
     if (loading.current) return "busy" as const;
     loading.current = true;
     try {
-      const next = await adventureStore.refresh();
+      const next = await adventureStore.refresh(Date.now(), app.pro);
       if (alive.current) {
         setSlots(next.slots);
         setError(undefined);
@@ -64,7 +64,7 @@ export function useAdventures() {
       loading.current = false;
       if (reloadRequested.current && alive.current) void load();
     }
-  }, [hasPhotos, load]);
+  }, [hasPhotos, app.pro, load]);
   useFocusEffect(
     useCallback(() => {
       void load();

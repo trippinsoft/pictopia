@@ -10,10 +10,11 @@ import {
 } from "react";
 import { FlatList } from "react-native";
 import { useReducedMotion } from "react-native-reanimated";
+import { GLIDE_DURATION, glideEase } from "@/lib/pictopia/glide";
 import { WebPageDrag, type PagePointer, type PageSurface } from "@/lib/pictopia/web-page-drag";
 import type { ExplorePagerProps } from "./explore-pager.types";
 export const ExplorePager = forwardRef<FlatList<string>, ExplorePagerProps>(function ExplorePager(
-  { motion: _motion, nativeScroll: _nativeScroll, onPointerDragChange, pendingPage, ...props },
+  { motion: _motion, nativeScroll: _nativeScroll, onPointerDragChange, pendingPage, glide, ...props },
   ref,
 ) {
   const list = useRef<FlatList<string>>(null);
@@ -23,6 +24,34 @@ export const ExplorePager = forwardRef<FlatList<string>, ExplorePagerProps>(func
   const reducedMotion = useReducedMotion();
   useImperativeHandle(ref, () => list.current!, []);
   useEffect(() => () => drag.dispose(), [drag]);
+  // A programmatic glide at the shared pace: the browser's smooth scroll is too quick to see.
+  // Snapping pauses while it runs; a pointer press takes over at once.
+  const gliding = useRef<{ frame: number; node: HTMLElement; snap: string } | undefined>(undefined);
+  const stopGlide = () => {
+    const run = gliding.current;
+    if (!run) return;
+    gliding.current = undefined;
+    globalThis.cancelAnimationFrame(run.frame);
+    if (run.node.style.scrollSnapType === "none") run.node.style.scrollSnapType = run.snap;
+  };
+  useEffect(() => stopGlide, []);
+  if (glide)
+    glide.current = (offset: number) => {
+      const node = list.current?.getScrollableNode();
+      if (!(node instanceof HTMLElement)) return;
+      const previous = gliding.current;
+      stopGlide();
+      const snap = previous?.snap ?? node.style.scrollSnapType;
+      node.style.scrollSnapType = "none";
+      const from = node.scrollTop, started = performance.now();
+      const step = (now: number) => {
+        const t = Math.min(1, (now - started) / GLIDE_DURATION);
+        node.scrollTop = from + (offset - from) * glideEase(t);
+        if (t < 1 && gliding.current) gliding.current.frame = globalThis.requestAnimationFrame(step);
+        else if (gliding.current) stopGlide();
+      };
+      gliding.current = { frame: globalThis.requestAnimationFrame(step), node, snap };
+    };
   // The feed re-anchors on the shown photo's ID itself when photos are removed or restored.
   // Browsers would also keep the old node in view, through scroll anchoring and by re-snapping
   // to the same snap target, so a photo restored into the shown slot would be scrolled past.
@@ -55,6 +84,9 @@ export const ExplorePager = forwardRef<FlatList<string>, ExplorePagerProps>(func
       onDragStart={(e) => e.preventDefault()}
       onPointerDownCapture={(e) => {
         if (e.button !== 0 || !e.isPrimary) return;
+        stopGlide();
+        // A video's progress bar keeps its drags; they never page the feed.
+        if (e.target instanceof Element && e.target.closest("[data-scrubber]")) return;
         const node = list.current?.getScrollableNode();
         if (node instanceof HTMLElement)
           drag.start(sample(e), surfaceFor(node), props.scrollEnabled !== false, pendingPage?.());

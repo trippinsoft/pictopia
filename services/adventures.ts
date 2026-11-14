@@ -273,7 +273,7 @@ async function scopeStatus(a: Adventure) {
   const explored = eligibleRows.filter(m => !!m.firstSeenAt).length;
   const remaining = eligibleRows.filter(m => !m.firstSeenAt && m.decision !== "delete");
   const pendingUnseen = eligibleRows.filter(m => !m.firstSeenAt && m.decision === "delete").length;
-  return { total: eligibleRows.length, explored, remaining, complete: eligibleRows.length > 0 && explored === eligibleRows.length && pendingUnseen === 0 };
+  return { rows, total: eligibleRows.length, explored, remaining, complete: eligibleRows.length > 0 && explored === eligibleRows.length && pendingUnseen === 0 };
 }
 async function nextSegment(a: Adventure, session: ExploreSession, retryUnavailable = false) {
   if (!extendable(a) || !session.finished) return a;
@@ -295,7 +295,7 @@ async function nextSegment(a: Adventure, session: ExploreSession, retryUnavailab
   const index = await loadIndex();
   const blocked = await deletionBlocked();
   const ctx = { ...(await curationContext(index, Date.now())), chosen: true, exclude: onlyFresh ? new Set([...blocked, ...attempted]) : blocked };
-  const curated = curate({ kind: a.kind, source: a.source, pool }, ctx);
+  const curated = curate({ kind: a.kind, source: a.source, pool, context: status.rows }, ctx);
   if (!curated) return a;
   const archive = `adventure:${a.id}:segment:${a.segment ?? 0}:explore`;
   const updated = { ...a, count: curated.ids.length, segment: (a.segment ?? 0) + 1, segmentKeys: [...(a.segmentKeys ?? []), archive], finishedAt: undefined, completionProof: undefined };
@@ -355,7 +355,12 @@ async function curateAll(plans: Plan[], ctx: CurationContext) {
 
 /** Fills Home's empty (or, when refreshing, all) slots with the best-scoring pair. Call inside
  * serialize(). */
-async function homeSlots(seed: number, refresh: boolean) {
+/** Pictopia+ members see a Screenshot Sweep on Home at most this often; Free members never do
+ * (screenshot cleanup is Pictopia+, like SwipeWipe and Picnic). */
+const HOME_SCREENSHOTS_EVERY_MS = 3 * 86_400_000;
+const startOfToday = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); };
+
+async function homeSlots(seed: number, refresh: boolean, pro: boolean) {
   const index = await loadIndex();
   let changed = false;
   // Positional: a finished Adventure's replacement takes its place, so B stays B.
@@ -365,14 +370,18 @@ async function homeSlots(seed: number, refresh: boolean) {
   const avoidSources = new Set<string>(),
     avoidIds = new Set<string>();
   const shown: AdventureSlot[] = [];
-  for (const id of index.slots.slice(0, 2)) {
+  for (const [position, id] of index.slots.slice(0, 2).entries()) {
     const [adventure, session] = await Promise.all([loadMeta(id), loadSession(id)]);
+    // Screenshot cleanup is Pictopia+; a Free member's Home never offers it.
+    const locked = adventure?.kind === "screenshots" && !pro;
+    // The alternative changes daily until the user starts it, so Home never looks stuck.
+    const stale = position === 1 && !!adventure && !adventure.startedAt && adventure.createdAt < startOfToday();
     const dayAvailable = adventure?.kind !== "day" || (adventure.source === `day:${daysAround(Date.now(), 0)[0]}` && (await onThisDayRows(adventure.source.slice(4, 9))).length > 0);
     // Once the user has finished the on-screen adventure, the slot is spent and makes way for
     // a fresh one — even for extendable kinds (a 20-photo Yearbook never exhausts the whole
     // year, so finishedAt stays unset; completionEvidence is what actually says "done here").
     const done = completionEvidence(session);
-    const live = adventure && session && !adventure.finishedAt && !done && dayAvailable && await validPhotoOffer(adventure, session);
+    const live = adventure && session && !locked && !stale && !adventure.finishedAt && !done && dayAvailable && await validPhotoOffer(adventure, session);
     if (!live) {
       changed = true;
       // A genuinely unfinished slot stays resumable in Explore's Continue; a finished one is
@@ -400,7 +409,7 @@ async function homeSlots(seed: number, refresh: boolean) {
       now: ctx.now!,
       seed,
       mixedMonths: await monthProfiles(ctx.explored, false),
-      screenshots: await hasScreenshots(),
+      screenshots: pro && Date.now() - (index.screenshotsOfferedAt ?? 0) >= HOME_SCREENSHOTS_EVERY_MS && await hasScreenshots(),
       recentSources: index.recent,
     });
     let all = await curateAll(plans, ctx);
@@ -504,6 +513,7 @@ async function homeSlots(seed: number, refresh: boolean) {
         if (!refresh) await storage.setValue(metaKey(stored.adventure.id), stored.adventure);
         stored.session.ids.forEach((id) => taken.add(id));
         remember(index, stored.adventure.source);
+        if (stored.adventure.kind === "screenshots") index.screenshotsOfferedAt = Date.now();
         fill.push(stored);
       }
       if (!refresh || fill.length >= 2) break;
@@ -579,12 +589,12 @@ export const adventureStore = {
   },
   /** Home's two Adventures, chosen by the engine as a pair. A finished one is replaced by the
    * best partner for the other; an unfinished one stays until it is done. */
-  async home(seed = Date.now()) {
-    return serialize(() => homeSlots(seed, false));
+  async home(seed = Date.now(), pro = false) {
+    return serialize(() => homeSlots(seed, false, pro));
   },
   /** "Show me two more": a genuinely new pair, never the two just shown. */
-  async refresh(seed = Date.now()) {
-    return serialize(() => homeSlots(seed, true));
+  async refresh(seed = Date.now(), pro = false) {
+    return serialize(() => homeSlots(seed, true, pro));
   },
   /** The user tapped an Adventure: mark it started (once) so it resumes. */
   async open(id: string, pro = false) {
@@ -593,6 +603,7 @@ export const adventureStore = {
       let adventure = await loadMeta(id);
       if (!adventure) throw Error("This adventure couldn’t be found.");
       if (adventure.historyPro && !pro) throw Error("Past-date Adventures require Pictopia+.");
+      if (adventure.kind === "screenshots" && !pro) throw Error("Screenshot Sweep is part of Pictopia+.");
       const session = await loadSession(id);
       if (session) adventure = await refreshDaySnapshot(adventure, session);
       if (session && !await validPhotoOffer(adventure, session)) throw Error("This older adventure contains screenshots. Choose a fresh photo adventure in Explore.");
@@ -615,6 +626,7 @@ export const adventureStore = {
   async choose(choice: ExploreChoice, seed = Date.now(), pro = false) {
     return serialize(async () => {
       if (choice.kind === "year" && !/^\d{4}$/.test(choice.year)) return undefined;
+      if (choice.kind === "screenshots" && !pro) throw Error("Screenshot Sweep is part of Pictopia+.");
       if (choice.kind === "day" && !permittedHistoryDate(choice.date ?? localDate(Date.now()), localDate(Date.now()), pro)) throw Error("Previous dates require Pictopia+ and must be within the last seven days.");
       const index = await loadIndex();
       const canonical = choice.kind === "year" ? await resolveYearbooks(index, choice.year) : undefined;

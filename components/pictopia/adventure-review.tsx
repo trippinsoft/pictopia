@@ -61,7 +61,6 @@ export function AdventureReview({ id, collection, finishContent, onContinue }: {
   const navigation = useNavigation();
   const photo = selected ?? session?.activeId ?? undefined;
   const current = photo ? media[photo] : undefined;
-  const queued = !!(photo && session?.records[photo]?.queued), legacy = !!(photo && session?.records[photo]?.discarded && !queued);
   const complete = !!session?.finished;
   const canUndo = !!session && !!lastExploreDiscard(session);
   const guidance = useReviewGuidance(app.ready && !!session && !complete);
@@ -110,6 +109,9 @@ export function AdventureReview({ id, collection, finishContent, onContinue }: {
     trash.current?.bounce();
   }, []);
   const { flight, layer, flying, flyingIds } = useDiscardFlights({ geometry, reduced, onArrive: arrived });
+  // A photograph still flying to the trash has left the screen: its Restore would only flash.
+  const leaving = !!photo && flyingIds.has(photo);
+  const queued = !leaving && !!(photo && session?.records[photo]?.queued), legacy = !leaving && !!(photo && session?.records[photo]?.discarded && !session?.records[photo]?.queued);
   const apply = (action: ExploreAction) => {
     setTransitionError(undefined);
     if (feed.current) feed.current.action(action);
@@ -211,9 +213,11 @@ export function AdventureReview({ id, collection, finishContent, onContinue }: {
     const endpoint = exploreFeed(snapshot).at(-1);
     if (!endpoint) return;
     finishing.current = true; setTransitionError(undefined);
+    // Photographs scrolled through on the way here are credited in the same write, so the
+    // completion percentage comes from complete saved records.
     void finishState.current.change(saved => feed.current && !feed.current.isAtEnd()
-      ? { type: "page", id: saved.activeId, revision: saved.revision, toId: saved.activeId, availableIds: [] }
-      : { type: "finish", boundary: { startedAt: snapshot.startedAt, endpoint } })
+      ? { type: "page", id: saved.activeId, revision: saved.revision, toId: saved.activeId, availableIds: [], passed: feed.current.traversal() }
+      : { type: "finish", boundary: { startedAt: snapshot.startedAt, endpoint }, passed: feed.current?.traversal() ?? [] })
       .catch(() => setTransitionError("Couldn’t save this review. Try again or finish for now."))
       .finally(() => { finishing.current = false; });
   }, []);

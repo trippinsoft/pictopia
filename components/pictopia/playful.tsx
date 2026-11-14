@@ -58,7 +58,12 @@ export function TabHeader({ title }: { title?: string }) {
           <Text accessibilityRole="header" accessibilityLabel={title} className="text-h1 text-foreground">
             {title.toLowerCase()}<Text className="text-h1 text-tomato">.</Text>
           </Text>
-        ) : <Wordmark large />}
+        ) : (
+          <View className="shrink">
+            <Wordmark large />
+            <Text className="-mt-0.5 text-muted-foreground" style={styles.tagline}>A happier place for your photos</Text>
+          </View>
+        )}
         <GearButton />
       </View>
 
@@ -305,6 +310,8 @@ export function InfoSheet({ entry, note, onClose }: { entry?: CatalogEntry; note
 const styles = StyleSheet.create({
   postcard: { boxShadow: "0px 10px 24px rgba(27,35,80,0.16)" } as ViewStyle,
   wordmarkLarge: { fontFamily: "Fredoka_700Bold", fontSize: 44, lineHeight: 52, letterSpacing: -0.5 },
+  // Between the body (16) and caption (13) sizes; a type class would override `style`.
+  tagline: { fontFamily: "Inter_400Regular", fontSize: 14.5, lineHeight: 20 },
   // Pick sits on top of alt with a tiny overlap so the two read as a stack of postcards
   // tossed on a table, not two separate tiles. The overlap only shaves the alt's rounded
   // corner — it never covers the alt's text, so the title and hint stay fully readable.

@@ -60,7 +60,7 @@ export default function Onboarding() {
   useEffect(() => {
     if (step !== "planning" || pick !== undefined) return;
     let alive = true;
-    void adventureStore.home().then(h => { if (alive) setPick(h.slots[0] ?? null); }).catch(() => { if (alive) setPick(null); });
+    void adventureStore.home(Date.now(), app.pro).then(h => { if (alive) setPick(h.slots[0] ?? null); }).catch(() => { if (alive) setPick(null); });
     return () => { alive = false; };
   }, [step, pick]);
 
@@ -121,7 +121,7 @@ export default function Onboarding() {
     const story = STORY[step];
     const Demo = story.demo;
     return <>{screen}
-      <OnboardingFrame dots={{ count: STORY_STEPS.length, index }} topAction="Skip" onTopAction={() => setStep("access")}
+      <OnboardingFrame dots={{ count: STORY_STEPS.length, index }}
         footer={<Button large onPress={() => setStep(index < STORY_STEPS.length - 1 ? STORY_STEPS[index + 1] : "access")}>Continue</Button>}>
         <View className="gap-7">
           <Demo />
@@ -140,7 +140,6 @@ export default function Onboarding() {
         {connecting ? (app.syncProgress ? `Getting to know your photos… ${app.syncProgress}` : "Opening your library…") : Platform.OS === "web" ? "Choose photos & videos" : "Allow access"}
       </Button>
       {accessError && Platform.OS !== "web" ? <QuietAction onPress={() => void Linking.openSettings()}>Open Settings</QuietAction> : null}
-      <QuietAction onPress={() => void finish()}>Not now</QuietAction>
     </>}>
       <View className="gap-7">
         <Text accessibilityRole="header" className="text-center text-h1 text-foreground">Let’s meet your photos</Text>
@@ -166,7 +165,7 @@ export default function Onboarding() {
 
   if (step === "planning") return <>{screen}
     <OnboardingFrame footer={<View className="h-14" />}>
-      <Planning ready={pick !== undefined} total={app.stats.photos || app.stats.total} onDone={() => setStep(app.pro ? "ready" : "trial")} />
+      <Planning ready={pick !== undefined} total={app.stats.total} onDone={() => setStep(app.pro ? "ready" : "trial")} />
     </OnboardingFrame>
   </>;
 

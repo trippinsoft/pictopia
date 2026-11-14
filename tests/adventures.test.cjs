@@ -50,6 +50,29 @@ test("bursts collapse to one moment; a capsule spreads across days and runs chro
   assert.ok(a.diagnostics.selection.length && a.diagnostics.sequencing && a.diagnostics.limitations.length);
 });
 
+test("Keep going never offers a sibling or copy of a moment already shown", () => {
+  const pool = [];
+  // Days 1–20: a 3-shot quick series whose first shot was shown in the last set.
+  for (let d = 1; d <= 20; d++) for (let i = 0; i < 3; i++)
+    pool.push(photo(`s${d}-${i}`, 2018, 5, { created: at(2018, 5, d) + i * 5000, scan: { version: "1", hash: `x${d}-${i}` } }));
+  // Plenty of genuinely new moments, hours away from any series.
+  for (let d = 1; d <= 30; d++) pool.push(photo(`n${d}`, 2018, 5, { created: at(2018, 5, d) + 5 * 3600_000, scan: { version: "1", hash: `n${d}` } }));
+  // An exact copy (same original bytes) of a shown photo, on another day.
+  pool.push(photo("copy", 2018, 5, { created: at(2018, 5, 31), scan: { version: "1", hash: "x2-0" } }));
+  const shown = new Set(pool.filter((m) => /^s\d+-0$/.test(m.id)).map((m) => m.id));
+  const a = curate({ kind: "capsule", source: "month:2018-05", pool }, ctx({ chosen: true, exclude: shown }));
+  assert.equal(a.ids.length, 20);
+  assert.ok(!a.ids.includes("copy"), "no copy of a shown photo");
+  assert.equal(a.ids.filter((id) => id.startsWith("s")).length, 0, "no sibling of a shown shot");
+});
+
+test("a set never shows two copies of the same photo", () => {
+  const pool = [];
+  for (let d = 1; d <= 10; d++) pool.push(photo(`p${d}`, 2017, 3, { created: at(2017, 3, d), scan: { version: "1", hash: d <= 4 ? "same" : `h${d}` } }));
+  const a = curate({ kind: "capsule", source: "month:2017-03", pool }, ctx());
+  assert.equal(a.ids.filter((id) => Number(id.slice(1)) <= 4).length, 1);
+});
+
 test("ineligible and explored photos are left out of offers", () => {
   const pool = [];
   for (let d = 1; d <= 25; d++) pool.push(photo(`p${d}`, 2019, 4, { created: at(2019, 4, d) }));
@@ -266,7 +289,9 @@ test("Explore: a chosen Adventure doesn't take a Home slot; it waits in Continue
   await app.storage.put(rows);
   const s = services(app, p);
   const before = (await s.adventureStore.home(3)).slots.map((x) => x.adventure.id);
-  const shots = await s.adventureStore.choose({ kind: "screenshots" }, 1);
+  await assert.rejects(s.adventureStore.choose({ kind: "screenshots" }, 1), /Pictopia\+/, "Screenshot Sweep is Pictopia+ only");
+  const shots = await s.adventureStore.choose({ kind: "screenshots" }, 1, true);
+  await assert.rejects(s.adventureStore.open(shots.id), /Pictopia\+/, "a Free member can't open a sweep");
   assert.equal(shots.hint.title.length > 0, true);
   assert.ok(shots.chosen);
   const year = await s.adventureStore.choose({ kind: "year", year: "2017" }, 2);
@@ -602,4 +627,22 @@ test('a failed canonical Yearbook creation rolls back its snapshot and index ins
   const a=await s.adventureStore.choose({kind:'year',year:'2017'},5);
   assert.equal((await s.adventureStore.choose({kind:'year',year:'2017'},6)).id,a.id);
   assert.deepEqual(p.requests,[]);db.close();
+});
+
+test("Home never offers Screenshot Sweep to Free members; Pictopia+ sees it at most every few days", async () => {
+  const db = new DatabaseSync(":memory:");
+  const rows = library();
+  const p = platform({ library: rows.map((m) => m.id) });
+  const app = await boot(db, p);
+  await app.storage.put(rows);
+  const s = services(app, p);
+  for (let seed = 1; seed <= 6; seed++) {
+    const free = await s.adventureStore.refresh(seed);
+    assert.ok(free.slots.every((slot) => slot.adventure.kind !== "screenshots"), "Free Home has no screenshots");
+  }
+  const kinds = [];
+  for (let seed = 7; seed <= 14; seed++) kinds.push(...(await s.adventureStore.refresh(seed, true)).slots.map((slot) => slot.adventure.kind));
+  assert.ok(kinds.filter((k) => k === "screenshots").length <= 1, "at most one sweep offered within the pacing window");
+  const total = (await app.storage.query({ type: "photo", screenshot: true, limit: 100000 })).length;
+  assert.equal((await app.storage.count({ type: "photo", screenshot: true })).total, total, "count is uncapped");
 });
