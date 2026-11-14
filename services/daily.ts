@@ -1,20 +1,26 @@
 import { storage, serialize, DAILY_ACTIVITY, deletionActivityValues } from "./repository";
 import {
-  DEFAULT_FREE_SWIPES,
   applyRestore,
   currentAllowance,
-  presentAsset,
   streak,
+  streakAllowance,
   type Activity,
   type Allowance,
   type StreakRestore,
 } from "@/lib/pictopia/daily";
 import { effectiveReviewLimit } from "@/lib/pictopia/entitlement";
 import { devOverrideStore } from "./entitlement";
+import { REFERRAL_WALLET, walletAllowance, chargeReview, refundReview, type ReferralWallet } from "@/lib/pictopia/referral-wallet";
 
 export { DAILY_ACTIVITY };
 export const STREAK_RESTORES = "streakRestores:v1";
 export const SWIPE_ALLOWANCE = "swipeAllowance:v1";
+
+/** Inside the repository serializer: commit these values with the Undo's session/media. */
+export async function reviewRefundValues(id: string, now = Date.now()) {
+  const result = refundReview(await storage.getValue<Allowance>(SWIPE_ALLOWANCE), await storage.getValue<ReferralWallet>(REFERRAL_WALLET), id, await allowanceStore.limit(now), now);
+  return { [SWIPE_ALLOWANCE]: result.state, [REFERRAL_WALLET]: result.wallet };
+}
 
 export const dailyStore = {
   async streak(now = Date.now()) {
@@ -43,20 +49,45 @@ export const dailyStore = {
 };
 
 export const allowanceStore = {
-  /** The approved business rule is fixed at 100 distinct displayed items per local day. Only an
-   * authorized developer build can substitute a testing limit (see `effectiveReviewLimit`). */
-  async limit() { return effectiveReviewLimit(DEFAULT_FREE_SWIPES, await devOverrideStore.load(), devOverrideStore.authorized); },
+  /** Completed days establish today's 100–200 allowance. Developer testing limits still win. */
+  async limit(now = Date.now()) {
+    const [activity, restores, override] = await Promise.all([
+      storage.getValue<Activity>(DAILY_ACTIVITY), storage.getValue<StreakRestore[]>(STREAK_RESTORES), devOverrideStore.load(),
+    ]);
+    return effectiveReviewLimit(streakAllowance(activity, restores ?? [], now), override, devOverrideStore.authorized);
+  },
   async refreshLimit(_fetcher?: typeof fetch) { return this.limit(); },
   async state(now = Date.now()) {
     return currentAllowance(await storage.getValue<Allowance>(SWIPE_ALLOWANCE), now);
   },
+  async snapshot(now = Date.now()) {
+    return serialize(async () => {
+      const [state, wallet, limit] = await Promise.all([
+        storage.getValue<Allowance>(SWIPE_ALLOWANCE), storage.getValue<ReferralWallet>(REFERRAL_WALLET), this.limit(now),
+      ]);
+      const result = walletAllowance(state, wallet, limit, now);
+      if (JSON.stringify(state) !== JSON.stringify(result.state) || JSON.stringify(wallet) !== JSON.stringify(result.wallet)) {
+        await storage.put([], { [SWIPE_ALLOWANCE]: result.state, [REFERRAL_WALLET]: result.wallet });
+      }
+      return { ...result, date: result.state.date };
+    });
+  },
   /** Counts a newly presented asset (once per day). Returns whether it may be shown. */
   async present(id: string, pro: boolean, now = Date.now()) {
     return serialize(async () => {
-      const limit = await this.limit();
-      const result = presentAsset(await storage.getValue<Allowance>(SWIPE_ALLOWANCE), id, limit, pro, now);
-      if (result.changed) await storage.setValue(SWIPE_ALLOWANCE, result.state);
-      return { allowed: result.allowed, left: Math.max(0, limit - result.state.counted.length), limit, counted: result.state.counted };
+      const limit = await this.limit(now);
+      const result = chargeReview(await storage.getValue<Allowance>(SWIPE_ALLOWANCE), await storage.getValue<ReferralWallet>(REFERRAL_WALLET), id, limit, pro, now);
+      await storage.put([], { [SWIPE_ALLOWANCE]: result.state, [REFERRAL_WALLET]: result.wallet });
+      return { ...result, date: result.state.date };
+    });
+  },
+  /** Undo gives the discarded photo's free review back for today. */
+  async refund(id: string, now = Date.now()) {
+    return serialize(async () => {
+      const limit = await this.limit(now);
+      const result = refundReview(await storage.getValue<Allowance>(SWIPE_ALLOWANCE), await storage.getValue<ReferralWallet>(REFERRAL_WALLET), id, limit, now);
+      await storage.put([], { [SWIPE_ALLOWANCE]: result.state, [REFERRAL_WALLET]: result.wallet });
+      return { ...result, date: result.state.date };
     });
   },
   /** Developer tools only: starts today's free allowance over. Touches nothing but the
@@ -65,7 +96,8 @@ export const allowanceStore = {
     if (!devOverrideStore.authorized) throw Error("Developer tools aren’t available in this build.");
     await serialize(async () => {
       const state = currentAllowance(await storage.getValue<Allowance>(SWIPE_ALLOWANCE), now);
-      await storage.setValue(SWIPE_ALLOWANCE, { ...state, counted: [] });
+      // Developer reset touches today's usage only; it never mints referral credits.
+      await storage.setValue(SWIPE_ALLOWANCE, { ...state, counted: [], referralCounted: [] });
     });
     devOverrideStore.notify();
   },

@@ -297,12 +297,13 @@ test("on SQLite: finishing or opening an adventure never awards streak credit; t
   assert.equal(d.streak(await daily(), [], Date.now()).todayDone, true, "ten unique views qualify");
 });
 
-test("screen contracts: Back keeps the place, no running allowance counter, date top-right, completion inside the safe area", () => {
+test("screen contracts: Back keeps the place, free-plan counter only, date top-right, completion inside the safe area", () => {
   const review = fs.readFileSync("components/pictopia/adventure-review.tsx", "utf8");
   assert.match(review, /const empty = !!session && !complete && !sequence.length;/, "marking every photo cannot unmount the feed during the final flight");
   assert.match(review, /!sequence.length && !busy && flying === 0/, "all-marked resume waits for in-flight transitions before completion");
   assert.match(review, /<NavigationBack label="Back" onPress=\{exit\}/);
-  assert.doesNotMatch(review, /left today/, "no running daily countdown in review");
+  assert.match(review, /\{!app\.pro && allowance\.left !== undefined && <FreeReviews /, "free reviews left shows only without Pictopia+");
+  assert.match(review, /onUndone=\{allowance\.refund\}/, "Undo gives the review back");
   assert.match(review, /absolute right-3 top-2[^"]*"><Text[^>]*>\{label\}/, "the month and year sit top-right of the photo area");
   assert.match(review, /pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" className="absolute right-3 top-2/, "the date never takes touches");
   assert.doesNotMatch(review, /\{!!\(error \|\| loadError \|\| transitionError\) && <Pressable[^\n]*className="mx-4 mb-2/, "a save message overlays the photos instead of resizing the pages");

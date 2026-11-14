@@ -53,8 +53,8 @@ export function BadgeDetail({ definition, badges, onClose }: { definition: Badge
           <Animated.View pointerEvents={reverse ? "none" : "auto"} accessibilityElementsHidden={reverse} importantForAccessibility={reverse ? "no-hide-descendants" : "auto"} style={[styles.face, front]}>
             <Pressable accessibilityRole="button" accessibilityLabel={`${definition.name}. ${level}. Turn over for details.`} onPress={() => setReverse(true)} className="flex-1 items-center justify-center gap-4 rounded-[32px] border border-border bg-card p-6">
               <BadgeArt family={definition.family} tier={v.tier} size={Math.min(200, cardWidth - 80)} />
-              <Text className="text-center text-h2 text-foreground">{definition.name}</Text>
-              <Text className="text-center text-h5 text-muted-foreground">{level}</Text>
+              <Text className="w-full px-2 text-center text-h2 text-foreground">{definition.name}</Text>
+              <Text className="w-full px-2 text-center text-h5 text-muted-foreground">{level}</Text>
               <View className="mt-2 flex-row items-center gap-2"><Icon name="RotateCcw" size={18} className="text-primary" /><Text className="text-body text-primary">Tap to turn over</Text></View>
             </Pressable>
           </Animated.View>

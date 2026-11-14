@@ -29,6 +29,15 @@ test("On This Day only on dates with past photos, and the time already passed to
   assert.match(plan[0].title, /12 photos/);
   assert.match(plan[0].body, /2016–2021/);
   assert.equal(plan[0].url, "/on-this-day");
+  assert.equal(new Date(plan[0].at).getHours(), 8, "On This Day arrives at 8 am");
+});
+
+test("today's On This Day waits for 8 am; after 8 am the day falls through to the evening reasons", () => {
+  const days = { "2026-11-10": { count: 4, years: [2019] } };
+  const early = R.planReminders(prefs, facts({ streak: { current: 0, todayDone: true }, days }), at(10, 6));
+  assert.deepEqual(early.map(p => [p.kind, new Date(p.at).getHours()]), [["onThisDay", 8]]);
+  const late = R.planReminders(prefs, facts({ days }), at(10, 9));
+  assert.deepEqual(late.map(p => [p.kind, new Date(p.at).getHours()]), [["streakStart", 19]]);
 });
 
 test("Discarded gets one nudge two days out; switched-off kinds never appear", () => {

@@ -39,6 +39,8 @@ const lightTheme: Theme = {
     tint: sky.tint,
     sun: 'hsl(43 100% 59.6%)',
     sunSoft: 'hsl(46 100% 88%)',
+    sunPastel: 'hsl(46 100% 84%)',
+    sunInk: 'hsl(231 49.5% 21%)',
     tomato: 'hsl(9 100% 61.8%)',
     grass: 'hsl(151 55.2% 41.2%)',
   },

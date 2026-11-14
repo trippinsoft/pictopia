@@ -1,4 +1,5 @@
 - Pictopia uses local SQLite/media references on native and IndexedDB for user-selected browser files; cleanup requires no backend or account.
+- Rewards target the owner's existing Pictopia Supabase project in Data Systems Inc.; photo handling stays local and offline-first, with no user accounts or cloud photo storage.
 - Native SHA-256 and thumbnail quality analysis run in an autolinked local Expo module; browser and store limitations are explicit.
 - RevenueCat uses one `pro` entitlement across monthly, annual, and lifetime; real product pricing is supplied by the stores.
 - Smart Sessions center cleanup on Quick Wins, Memory Lane, and Best of the Bunch, with short active-time targets, resume-first continuity, and voluntary completion.
@@ -153,3 +154,23 @@ The review interaction uses the original 1.0.21 live feed: marked photos leave s
 - Pit Stop games skip paperwork (documents, receipts, cheques, screenshots) and favour people, pets and places using on-device iOS Vision; Android not yet.
 - Pit Stops use camera photos only (no PNG/GIF/WebP or Screenshot files, even unflagged) and favour people/places in both games.
 - Screenshot Sweep is Pictopia+ only (no free sweep, matching SwipeWipe and Picnic); Home's unstarted second option rotates daily.
+- Free reviews are visible during review (pastel-gold counter, Free only); Undo returns a review; On This Day reminders moved to 8 am; Home postcard descriptions no longer truncate.
+- Home never shows two of the same adventure (e.g. two Surprise Me) unless nothing else is available.
+- The daily-limit page shows a live countdown to when free reviews refresh (local midnight).
+- Memory Wall phase 1 (wall, year view, Peek, Progress/Home entry) with the "Mountains to the Sea" world; one shared photos-explored percentage keeps confirmed deletions as explored.
+- Photos that can't be displayed can be counted as reviewed with an explicit tap, and ones the library confirms are gone leave the wall, so no photo can block 100%.
+
+- Approved installation-based referrals award both parties 1,000 nonexpiring reviews immediately; completed preceding streak days establish daily totals of 100/125/150/175/200, spent before saved credits, with atomic discard-Undo refunds and no accounts or photo uploads.
+
+- Referral codes use seven characters for new installations while preserving existing twelve-character codes.
+
+- Existing installations also receive seven-character referral codes; previously shared codes remain redeemable aliases.
+
+- Prelaunch referral codes use only the seven-character format, without legacy-code compatibility.
+
+- Renamed Memory Wall to The Big Picture across screen titles, entry points, and accessibility copy; internal routes and storage identifiers remain stable.
+- Pictopia+ for Life uses a separate signed permanent entitlement and compact Progress achievement; awards stay disabled until trusted payment/completion verification, with no new accounts or services.
+- On This Day opens today’s reviewer directly, with seven in-place date tabs, empty-date indicators and existing Pictopia+ access for earlier dates.
+- Lifetime access retains direct Expo IAP and existing Supabase, with platform-scoped restore identities and disabled award gates; local photo audits remain untrusted candidates and no expired-Google recovery workaround is introduced.
+
+- Pictopia+ for Life uses current paid-subscription eligibility and local Big Picture consistency checks; historical-payment eligibility is removed and signed earned awards remain permanent.

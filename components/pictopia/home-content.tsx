@@ -67,9 +67,9 @@ function StreakSticker({ streak, onPress }: { streak?: StreakState; onPress(): v
 
 function ProgressSticker({ percent, onPress }: { percent?: number; onPress(): void }) {
   return (
-    <Sticker rotate={1.5} onPress={onPress} label={percent === undefined ? "Library progress" : `${percent}% of your library reviewed`} className="flex-1 justify-between gap-1.5">
+    <Sticker rotate={1.5} onPress={onPress} label={percent === undefined ? "The Big Picture" : `${percent}% of your photos explored. Open The Big Picture`} className="flex-1 justify-between gap-1.5">
       <Text className="text-h2 text-foreground">{percent === undefined ? "—" : `${percent}%`}</Text>
-      <Text className="text-h6 leading-4 text-foreground">of your library reviewed</Text>
+      <Text className="text-h6 leading-4 text-foreground">of your photos explored</Text>
       <View className="h-2 overflow-hidden rounded-full bg-foreground/10">
         <View className="h-full rounded-full bg-grass" style={{ width: `${Math.min(100, percent ?? 0)}%` }} />
       </View>
@@ -108,7 +108,7 @@ export function HomeContent(props: HomeContentProps) {
             setIntrinsic(previous => Math.abs(previous - measured) > 1 ? measured : previous);
           }
         }}>
-        <TabHeader />
+        <TabHeader referrals />
         {!ready ? (
           <View className="py-12"><Loading /></View>
         ) : !hasPhotos ? (

@@ -117,8 +117,8 @@ export function deleteLabel(kinds: { photos: number; videos: number }) {
  * never complete; the only ways on are Pro or coming back. */
 export function limitCopy(limit: number) {
   return {
-    title: `You’ve reviewed ${limit} photos and videos today!`,
-    body: `You’ve reached your daily free limit. Come back tomorrow for ${limit} more, or unlock unlimited photo and video reviews with Pictopia+.`,
+    title: `You’ve used today’s ${limit} reviews`,
+    body: "Your daily reviews and saved bonus credits are used up. Daily reviews refresh at midnight, with up to 200 a day as your streak grows. Pictopia+ includes unlimited photo and video reviews.",
   };
 }
 

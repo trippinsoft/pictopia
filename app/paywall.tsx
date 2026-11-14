@@ -52,6 +52,14 @@ export default function Paywall() {
       setWorking(false);
     }
   }
+  if (app.entitlementSource === "lifetime") return <Page title="Pictopia+ for Life">
+    <View className="gap-4 py-6">
+      <Text className="text-h2 text-foreground">Your lifetime access is active</Text>
+      <Text className="text-body text-muted-foreground">You do not need another subscription. An existing paid subscription may still renew until you cancel it with your store.</Text>
+      <Button secondary onPress={() => { void manageSubscription(app.entitlement?.managementURL).catch(e => setError((e as Error).message)); }}>Manage subscription</Button>
+      {error ? <Text accessibilityRole="alert" className="text-body text-destructive">{error}</Text> : null}
+    </View>
+  </Page>;
   return (
     <Page title="A little extra brilliance">
       <View className="mx-auto max-w-xl">

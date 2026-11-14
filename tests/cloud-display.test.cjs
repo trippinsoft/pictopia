@@ -49,10 +49,10 @@ test('a queued replacement cannot play the previous video before the source micr
 
 test('last free slot is reserved immediately; backward navigation to an uncounted ID is blocked at 150', async () => {
   let resolve;const charged=[];const counted=Array.from({length:149},(_,i)=>`old${i}`);
-  const h=hooks('components/pictopia/use-allowance.ts','useAllowance',{'react-native':{AppState:{currentState:'active',addEventListener:()=>({remove(){}})}},'@/services/daily':{allowanceStore:{state:async()=>({counted}),limit:async()=>150,present:id=>{charged.push(id);return new Promise(done=>resolve=done)}}}},[undefined,['last','new'],'last',false,true]);
+  const h=hooks('components/pictopia/use-allowance.ts','useAllowance',{'react-native':{AppState:{currentState:'active',addEventListener:()=>({remove(){}})}},'@/services/daily':{allowanceStore:{snapshot:async()=>({counted,left:150-counted.length,limit:150,date:"2026-11-14"}),present:id=>{charged.push(id);return new Promise(done=>resolve=done)}}}},[undefined,['last','new'],'last',false,true]);
   try {h.render();await tick();h.render();let state=h.render();
     assert.deepEqual(charged,['last']);assert.equal(state.left,0);assert.equal(state.canReview('new'),false);assert.equal(state.canReview('last'),true);
-    resolve({allowed:true,counted:[...counted,'last'],limit:150,left:0});await tick();state=h.render();
+    resolve({allowed:true,counted:[...counted,'last'],limit:150,left:0,date:"2026-11-14"});await tick();state=h.render();
     assert.equal(state.canReview('unseen-behind-cursor'),false);assert.equal(state.canReview('old8'),true);
   } finally {h.unmount();}
 });

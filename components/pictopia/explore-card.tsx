@@ -63,6 +63,10 @@ interface Props {
   onEntered(id: string): void;
   onAvailability(id: string, available: boolean): void;
   onUnavailable?(): void;
+  /** Count a photo that can't be shown as reviewed (an explicit tap), so it never blocks 100%. */
+  onCountUnavailable?(id: string): Promise<unknown>;
+  /** Already reviewed: an unavailable photo shows that it no longer blocks progress. */
+  reviewed?: boolean;
   /** The photo is zoomed in (the feed pauses paging) or back at its original size. */
   onZoom(id: string, zoomed: boolean): void;
   /** Present in a review: the committed photograph is handed to a flight that carries it to
@@ -93,6 +97,8 @@ export const ExploreCard = memo(
       onEntered,
       onAvailability,
       onUnavailable,
+      onCountUnavailable,
+      reviewed = false,
       onZoom,
       flight,
     },
@@ -105,6 +111,9 @@ export const ExploreCard = memo(
     const activeRef = useRef(active);
     activeRef.current = active;
     const [videoPlaying, setVideoPlaying] = useState(false);
+    // "Try again" remounts the image so it asks the library afresh (with iCloud allowed).
+    const [attempt, setAttempt] = useState(0);
+    const [counting, setCounting] = useState(false);
     const videoRef = useRef(isVideo);
     videoRef.current = isVideo;
     // Pinch zoom, separate from the discard transform: it scales only the photo, in its page.
@@ -459,7 +468,7 @@ export const ExploreCard = memo(
           {media && (
             <Animated.View style={[styles.fill, zoomStyle, marked ? styles.marked : undefined]}>
               <MediaImage
-                key={id}
+                key={`${id}:${attempt}`}
                 media={media}
                 fit="contain"
                 style={styles.fill}
@@ -483,17 +492,6 @@ export const ExploreCard = memo(
           {media && isVideo && (
             <VideoPage media={media} active={active} playing={videoPlaying} onPlayingChange={setVideoPlaying} onReady={() => setPhase("loaded")} nativeScroll={nativeScroll} />
           )}
-          {phase === "failed" && active && !isVideo && (
-            <View
-              style={StyleSheet.absoluteFill}
-              className="items-center justify-center bg-background px-8"
-            >
-              <Text className="text-h3 text-center text-foreground">Photo unavailable</Text>
-              <Text className="mt-3 text-body text-center text-muted-foreground">
-                It may be in iCloud, removed, or outside your allowed photos. Scroll to another photo. You can come back later.
-              </Text>
-            </View>
-          )}
           {phase === "loading" && active && !isVideo && (
             <View className="absolute bottom-4 self-center rounded-full bg-background px-4 py-2">
               <Text className="text-caption text-muted-foreground">
@@ -503,6 +501,44 @@ export const ExploreCard = memo(
           )}
         </Animated.View>
       </ExploreGesture>
+        {/* Outside the gesture layer (like Restore) so its buttons always receive taps on device. */}
+        {phase === "failed" && active && !isVideo && (
+            <View
+              style={StyleSheet.absoluteFill}
+              className="items-center justify-center bg-background px-8"
+            >
+              <Text className="text-h3 text-center text-foreground">Photo unavailable</Text>
+              <Text className="mt-3 text-body text-center text-muted-foreground">
+                {reviewed
+                  ? "Counted as reviewed, so it won’t hold up your progress."
+                  : "Pictopia can’t show this photo right now. It may still be in iCloud, or the file can’t be opened. Try again, or count it as reviewed so it never blocks your progress."}
+              </Text>
+              <View className="mt-5 w-full max-w-xs gap-2.5">
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Try loading this photo again"
+                  onPress={() => { setPhase("loading"); setAttempt(n => n + 1); }}
+                  className="min-h-12 flex-row items-center justify-center gap-2 rounded-full bg-card px-5 active:opacity-80"
+                >
+                  <Icon name="RotateCcw" size={18} className="text-foreground" />
+                  <Text className="text-button text-foreground">Try again</Text>
+                </Pressable>
+                {!reviewed && onCountUnavailable && (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Count this photo as reviewed"
+                    accessibilityState={{ busy: counting }}
+                    disabled={counting}
+                    onPress={() => { setCounting(true); void onCountUnavailable(id).finally(() => setCounting(false)); }}
+                    className="min-h-12 flex-row items-center justify-center gap-2 rounded-full bg-primary px-5 active:opacity-80"
+                  >
+                    <Icon name="Check" size={18} className="text-primary-foreground" />
+                    <Text className="text-button text-primary-foreground">Count as reviewed</Text>
+                  </Pressable>
+                )}
+              </View>
+            </View>
+          )}
         {/* Drawn with the page itself, so it is already there as the photo scrolls into view. */}
         {marked && (
           <View pointerEvents="box-none" style={StyleSheet.absoluteFill} className="items-center justify-center">

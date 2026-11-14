@@ -110,7 +110,7 @@ export default function Onboarding() {
         <View className="items-center gap-3">
           <Wordmark />
           <Text accessibilityRole="header" className="text-center text-display text-foreground">{TAGLINE}</Text>
-          <Text className="text-center text-body leading-6 text-muted-foreground">Scroll, swipe and rediscover your memories in a few minutes a day.</Text>
+          <Text className="text-center text-body leading-6 text-muted-foreground">Scroll through your memories. Swipe away the clutter. Just a few minutes a day.</Text>
         </View>
       </View>
     </OnboardingFrame>

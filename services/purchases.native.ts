@@ -1,6 +1,7 @@
 import { Platform } from "react-native";
 import {
   initConnection,
+  verifyAppOwnership,
   fetchProducts,
   requestPurchase,
   finishTransaction,
@@ -24,8 +25,8 @@ import {
   offerKind,
 } from "@/lib/pictopia/store-entitlement";
 
-// Apple StoreKit 2 and Google Play Billing directly, with no server and no account. The stores
-// only report active, unrefunded subscriptions, so each refresh is the entitlement check.
+// Subscription access stays direct StoreKit 2 / Play Billing, without accounts.
+// Separate lifetime eligibility sends store evidence to the existing Supabase verifier.
 const os = Platform.OS === "ios" ? "ios" : "android";
 const PACKAGE = "com.trippinsoft.pictopia";
 let connection: Promise<boolean> | null = null;
@@ -143,6 +144,20 @@ export const purchaseService: PurchaseService = {
     });
   },
   refresh: check,
+  async evidence(refreshOwnership = false) {
+    await connect();
+    const available = await getAvailablePurchases(os === "ios" ? { onlyIncludeActiveItemsIOS: false, alsoPublishToEventListenerIOS: false } : undefined);
+    const tokens = [...new Set(available.filter(p => owned(p) && p.purchaseState === "purchased").map(p => p.purchaseToken).filter((t): t is string => !!t))].slice(0, 6);
+    if (os === "android") return { platform: "android", tokens };
+    // iOS 16+ exposes signed app ownership even after all subscriptions expire.
+    // Older binaries/OS versions can still provide signed subscription transactions.
+    let appJws: string | undefined;
+    try {
+      const ownership = await verifyAppOwnership({ apple: { refresh: refreshOwnership } });
+      appJws = ownership.signedAppTransactionIOS ?? undefined;
+    } catch { /* Missing native support is not paid evidence. */ }
+    return { platform: "ios", transactions: tokens, ...(appJws ? { appJws } : {}) };
+  },
   async purchase(id) {
     await connect();
     if (!PRO_PRODUCT_IDS.includes(id)) throw Error("This plan is unavailable.");

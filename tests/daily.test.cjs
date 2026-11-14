@@ -161,3 +161,23 @@ test("a confirmed deletion qualifies today's streak", async () => {
   assert.equal(s.todayDone, true);
   assert.equal(s.current, 1);
 });
+
+test("Undo gives back today's free review, and only today's", () => {
+  const L = require("./loader.cjs").makeLoader()("lib/pictopia/daily.ts");
+  const now = new Date(2026, 10, 14, 10).getTime();
+  const a = L.presentAsset(undefined, "p1", 100, false, now).state;
+  const b = L.presentAsset(a, "p2", 100, false, now).state;
+  const r = L.refundAsset(b, "p1", now);
+  assert.equal(r.changed, true);
+  assert.deepEqual(r.state.counted, ["p2"]);
+  assert.equal(L.refundAsset(r.state, "p1", now).changed, false, "a second undo can't refund twice");
+  assert.equal(L.refundAsset(b, "p2", new Date(2026, 10, 15, 10).getTime()).changed, false, "yesterday's reviews stay spent");
+});
+
+test("the daily-limit countdown runs to the next local midnight", () => {
+  const L = require("./loader.cjs").makeLoader()("lib/pictopia/daily.ts");
+  const now = new Date(2026, 10, 14, 18, 52, 57).getTime();
+  assert.equal(L.countdownClock(L.untilAllowanceReset(now)), "05:07:03");
+  assert.equal(L.countdownClock(L.untilAllowanceReset(new Date(2026, 10, 14, 23, 59, 59, 500).getTime())), "00:00:01");
+  assert.equal(L.countdownClock(0), "00:00:00");
+});

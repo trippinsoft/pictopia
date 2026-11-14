@@ -28,7 +28,12 @@ import { qualifiedEncounterTime } from "@/lib/pictopia/photo-encounter";
 export { storage };
 let tail = Promise.resolve();
 export function serialize<T>(work: () => Promise<T>) {
-  const next = tail.then(work, work);
+  // The same installation can be open in multiple browser tabs. Share the write lock so
+  // read/modify/write wallet operations cannot spend one saved credit twice across tabs.
+  const locked = () => typeof navigator !== "undefined" && navigator.locks
+    ? navigator.locks.request("pictopia:repository", work)
+    : work();
+  const next = tail.then(locked, locked);
   tail = next.then(
     () => {},
     () => {},
@@ -361,8 +366,10 @@ export const repository = {
       if (!m?.active) throw Error("This item is no longer available to undo.");
       const next = undoDecision(s, m);
       const values = await deletionGuard([m.id], next.media.decision !== "delete");
+      const refund = last.decision === "delete" ? await (await import("./daily")).reviewRefundValues(m.id) : {};
       await storage.put([next.media], {
         ...values,
+        ...refund,
         session: next.session,
         [`session:${s.id}`]: next.session,
       });

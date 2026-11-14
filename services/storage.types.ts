@@ -4,9 +4,15 @@ export interface LibraryProgress {
   explored: number; remaining: number; pending: number; deleted: number; deletedBytes: number; unknownSizes: number;
 }
 export interface CalendarProgress { key: string; total: number; explored: number; remaining: number; coverId?: string; }
+/** Memory Wall month: `total`/`explored`/`remaining` cover accessible photos exactly like
+ * CalendarProgress; `cleared` adds photos whose deletion the phone confirmed, so deleting
+ * never erases review progress. Videos and photos removed outside Pictopia are excluded. */
+export interface WallMonth extends CalendarProgress { cleared: number; }
 export interface Storage {
   calendarProgress(screenshotsOnly?: boolean): Promise<CalendarProgress[]>;
   progress(): Promise<LibraryProgress>;
+  /** Photo months for the Memory Wall (see WallMonth); includes months that only hold confirmed deletions. */
+  memoryWall(): Promise<WallMonth[]>;
   /** Accessible videos and how many have been explored; kept apart from photo progress. */
   videoProgress(): Promise<{ total: number; explored: number; remaining: number }>;
   migrateSeen(): Promise<void>;

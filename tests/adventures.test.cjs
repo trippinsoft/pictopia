@@ -5,7 +5,7 @@ const { makeLoader } = require("./loader.cjs");
 const { DatabaseSync, media, platform, boot } = require("./native-harness.cjs");
 const load = makeLoader();
 const { adventureProgress, adventureComplete, ADVENTURE_SIZE, adventureSize } = load("lib/pictopia/adventures.ts");
-const { curate, choosePair, planCandidates, bursts, similarity } = load("lib/pictopia/curation.ts");
+const { curate, choosePair, planCandidates, bursts, similarity, diverseCandidates } = load("lib/pictopia/curation.ts");
 const { createExplore, reduceExplore } = load("lib/pictopia/explore.ts");
 
 const at = (year, month, day = 10, minute = 0) => new Date(year, month - 1, day, 12, minute).getTime();
@@ -139,6 +139,25 @@ test("pairs are optimized together: near-twins lose to a different kind", () => 
   assert.equal(choosePair([y2, shots], y1)[0].source, "screenshots", "best partner for the one on Home");
 });
 
+test("Home never pairs two of the same adventure while anything else is available", () => {
+  const mk = (kind, source, total, ids) => ({ kind, source, ids, hint: { title: source, detail: "" }, closing: "", diagnostics: { total } });
+  const d1 = mk("detour", "detour:a", 0.95, ["a"]);
+  const d2 = mk("random", "random:b", 0.94, ["b"]);
+  const capsule = mk("capsule", "capsule:2020-05", 0.2, ["c"]);
+  assert.deepEqual(choosePair([d1, d2, capsule]).map((p) => p.kind).sort(), ["capsule", "detour"], "Surprise Me twins (detour/random) lose even to a low score");
+  assert.equal(choosePair([d2, capsule], d1)[0].kind, "capsule", "the partner for a Surprise Me on Home is something else");
+  assert.equal(choosePair([d2], d1)[0].kind, "random", "with nothing else left, a twin is still better than an empty Home");
+});
+
+test("freshness never forces a duplicate: a recently shown different kind comes back", () => {
+  const k = (x) => x.kind;
+  const d = { kind: "detour" }, capsule = { kind: "capsule" }, year = { kind: "year" };
+  assert.deepEqual(diverseCandidates([d], [d, capsule], k, "random"), [d, capsule], "only a twin was fresh");
+  assert.deepEqual(diverseCandidates([d, year], [d, year, capsule], k, "random"), [d, year], "a fresh different kind is enough");
+  assert.deepEqual(diverseCandidates([d], [d, capsule], k), [d, capsule], "a fresh pair needs two kinds");
+  assert.deepEqual(diverseCandidates([d], [d], k, "detour"), [d], "nothing different exists");
+});
+
 test("planning reads only what the month index supports", () => {
   const months = [
     { key: "2019-07", count: 60, reviewed: 0, explored: 0 },
@@ -194,6 +213,31 @@ function library() {
         rows.push(photo(`${year}-${m}-${i}`, year, m, { created: at(year, m, i + 1), screenshot: i < 2 }));
   return rows;
 }
+
+test("Home swaps a saved pair of twins for a different kind, even when that kind was shown recently", async () => {
+  const db = new DatabaseSync(":memory:");
+  const rows = library();
+  const p = platform({ library: rows.map((m) => m.id) });
+  const app = await boot(db, p);
+  await app.storage.put(rows);
+  const s = services(app, p);
+  const [A, B] = (await s.adventureStore.home(11)).slots;
+  // Recreate the bug report: both cards are Surprise Me, the second already started, and
+  // every other source counts as recently shown.
+  for (const slot of [A, B]) await app.storage.setValue(`adventure:${slot.adventure.id}`, { ...slot.adventure, kind: "detour", startedAt: slot === B ? 1 : undefined });
+  const index = await app.storage.getValue(s.ADVENTURES_KEY);
+  // Only the last two recent sources are avoided on a normal visit: make them the different kinds.
+  index.recent = [...index.recent, A.adventure.source, B.adventure.source, "year:2017", "corners:2019-07,2019-10,2023-03,2023-06,2023-09,2023-12"];
+  await app.storage.setValue(s.ADVENTURES_KEY, index);
+  const after = (await s.adventureStore.home(12)).slots;
+  assert.equal(after.length, 2);
+  const names = after.map((x) => x.adventure.kind === "detour" || x.adventure.kind === "random" ? "Surprise Me" : x.adventure.kind);
+  assert.notEqual(names[0], names[1], "never two Surprise Me");
+  assert.ok(after.some((x) => x.adventure.id === B.adventure.id), "the started one stays");
+  const again = (await s.adventureStore.home(13)).slots.map((x) => x.adventure.id);
+  assert.deepEqual(again, after.map((x) => x.adventure.id), "the fixed pair is stable");
+  db.close();
+});
 
 test("native SQLite: two distinct, stable adventures; resume across relaunch; completion refills; nothing deleted", async () => {
   const db = new DatabaseSync(":memory:");

@@ -21,6 +21,7 @@ import {
 } from "@/lib/pictopia/adventures";
 import {
   choosePair,
+  diverseCandidates,
   curate,
   daysAround,
   eligible,
@@ -398,6 +399,17 @@ async function homeSlots(seed: number, refresh: boolean, pro: boolean) {
     kept.push(live && !refresh ? { adventure, session } : undefined);
   }
   while (kept.length < 2) kept.push(undefined);
+  // Two of the same adventure side by side (e.g. two Surprise Me): one makes way for a
+  // different kind — the unstarted one, else the alternative (it stays resumable in Explore's
+  // Continue). If the library has nothing different to offer, the twin is put back untouched.
+  const [first, second] = kept;
+  let twin: { position: number; slot: AdventureSlot } | undefined;
+  if (first && second && adventureName(first.adventure.kind) === adventureName(second.adventure.kind)) {
+    const position = !second.adventure.startedAt ? 1 : !first.adventure.startedAt ? 0 : 1;
+    twin = { position, slot: kept[position]! };
+    kept[position] = undefined;
+  }
+  const sameName = (kind: AdventureKind, other?: AdventureSlot) => !!other && adventureName(kind) === adventureName(other.adventure.kind);
   const holes = kept.flatMap((slot, i) => (slot ? [] : [i]));
   if (holes.length) {
     const ctx = await curationContext(index, seed);
@@ -470,7 +482,7 @@ async function homeSlots(seed: number, refresh: boolean, pro: boolean) {
       ...index.recent.slice(refresh ? -4 : -2),
       ...avoidSources,
     ]);
-    const varied = all.filter((m) => !avoid.has(m.curated.source));
+    const varied = diverseCandidates(all.filter((m) => !avoid.has(m.curated.source)), all, (m) => m.curated.kind, other?.adventure.kind);
     // "Shuffle" relaxes step by step rather than doing nothing: first avoid recent pairs, then
     // only the pair on screen (its photos are always excluded), then anything with new photos.
     const attempts = refresh
@@ -489,6 +501,8 @@ async function homeSlots(seed: number, refresh: boolean, pro: boolean) {
       );
       const taken = new Set<string>(other?.session.ids ?? []);
       for (const curated of pair) {
+        // Replacing a twin with another twin would only churn; keep the original instead.
+        if (twin && sameName(curated.kind, other)) continue;
         const found = made.find((m) => m.curated.source === curated.source)!;
         // The second of a fresh pair never repeats a photo from the first.
         const overlap = curated.ids.some((id) => taken.has(id));
@@ -529,6 +543,8 @@ async function homeSlots(seed: number, refresh: boolean, pro: boolean) {
       }
     }
     for (const i of holes) kept[i] = fill.shift();
+    if (twin && !kept[twin.position]) kept[twin.position] = twin.slot;
+    else if (twin?.slot.adventure.startedAt && !index.parked.includes(twin.slot.adventure.id)) index.parked.unshift(twin.slot.adventure.id);
     changed = true;
   }
   // A library that supports only one Adventure shows it first.

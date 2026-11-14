@@ -103,3 +103,15 @@ test("restore re-reads the store and reports Pro only when a subscription is act
   s.active = [{ productId: PRO_PRODUCTS.annual, isActive: true, expirationDateIOS: Date.now() + DAY }];
   assert.equal((await s.service.restore()).active, true);
 });
+
+test('iOS evidence includes expired purchase JWS and app ownership; only explicit restore refreshes ownership', async()=>{
+ const s=store('ios');const prompts=[];s.iap.verifyAppOwnership=async input=>{prompts.push(input.apple.refresh);return{signedAppTransactionIOS:'signed-app-jws'};};
+ s.available=[{productId:PRO_PRODUCTS.monthly,purchaseState:'purchased',purchaseToken:'signed-expired-transaction'},{productId:PRO_PRODUCTS.annual,purchaseState:'pending',purchaseToken:'pending'}];
+ assert.deepEqual(await s.service.evidence(),{platform:'ios',transactions:['signed-expired-transaction'],appJws:'signed-app-jws'});
+ await s.service.evidence(true);assert.deepEqual(prompts,[false,true]);
+});
+test('Android exposes only owned purchased tokens and unsupported iOS ownership never invents evidence',async()=>{
+ const s=store('android');s.available=[{productId:PRO_PRODUCTS.monthly,purchaseState:'purchased',purchaseToken:'verified-by-server-later'},{productId:'other',purchaseState:'purchased',purchaseToken:'wrong'}];
+ assert.deepEqual(await s.service.evidence(),{platform:'android',tokens:['verified-by-server-later']});
+ const ios=store('ios');assert.deepEqual(await ios.service.evidence(),{platform:'ios',transactions:[]});
+});

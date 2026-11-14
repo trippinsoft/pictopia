@@ -33,10 +33,20 @@ export default function TabLayout() {
           options={{
             title: t.title,
             ...(t.hidden ? { href: null } : {}),
-            // The selected tab sits in a sun-yellow pill so it reads at a glance on every pastel.
+            // Gold interiors with black outlines, without a background pill.
             tabBarIcon: ({ color, focused }) => (
-              <View className={`h-7 w-14 items-center justify-center rounded-full ${focused ? "bg-sun" : ""}`}>
-                <Icon name={t.icon} size={21} color={focused ? theme.colors.foreground : color} />
+              <View className="h-7 w-14 items-center justify-center">
+                {focused ? <View className="absolute">
+                  <Icon name={t.icon} size={21}
+                    color={t.icon === "ChartNoAxesColumn" ? theme.colors.stage : theme.colors.sun}
+                    fill={t.icon === "ChartNoAxesColumn" ? "none" : theme.colors.sun}
+                    strokeWidth={t.icon === "ChartNoAxesColumn" ? 5 : 2} />
+                </View> : null}
+                <View className="absolute">
+                  <Icon name={t.icon} size={21}
+                    color={focused ? t.icon === "ChartNoAxesColumn" ? theme.colors.sun : theme.colors.stage : color}
+                    strokeWidth={focused && t.icon === "ChartNoAxesColumn" ? 3 : 2} />
+                </View>
               </View>
             ),
           }}

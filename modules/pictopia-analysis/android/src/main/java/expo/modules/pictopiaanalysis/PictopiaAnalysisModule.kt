@@ -26,6 +26,9 @@ class PictopiaAnalysisModule : Module() {
   @Volatile private var cancelled = false
   override fun definition() = ModuleDefinition {
     Name("PictopiaAnalysis")
+    AsyncFunction("verifyLifetimeSignature") { payload: String, signature: String, publicKey: String ->
+      PictopiaLifetime.verify(payload, signature, publicKey)
+    }
     AsyncFunction("reviewFavorite") Coroutine { id: String ->
       withContext(Dispatchers.IO) { PictopiaReview.favorite(appContext.reactContext ?: error("Context unavailable"), id) }
     }

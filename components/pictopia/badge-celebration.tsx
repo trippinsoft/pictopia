@@ -130,8 +130,10 @@ function BadgeReveal({ award, name, detail, more, saving, error, onDone }: {
       <Animated.View style={medalStyle}><BadgeArt family={award.family} tier={award.tier} size={170} /></Animated.View>
     </View>
     <Animated.View style={[styles.full, infoStyle]}><View className="w-full items-center gap-5">
-      <View className="gap-2">
-        <Text className="text-center text-h1 text-foreground">{name}</Text>
+      {/* Full width + side padding: iOS measures bold Fredoka a few points short, and a
+          shrink-wrapped title clips its last letter (e.g. the V of "IV"). */}
+      <View className="w-full gap-2">
+        <Text className="w-full px-2 text-center text-h1 text-foreground">{name}</Text>
         <Text className="text-center text-body text-muted-foreground">{detail}</Text>
       </View>
       {!!error && <Text accessibilityRole="alert" className="text-center text-caption text-destructive">Couldn’t save your acknowledgment. Please try again.</Text>}

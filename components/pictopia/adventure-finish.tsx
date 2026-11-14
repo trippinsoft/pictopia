@@ -14,6 +14,7 @@ import { adventureStore } from "@/services/adventures";
 import { badgeStore } from "@/services/badges";
 
 interface Props {
+  headerContent?: ReactNode;
   adventure?: Adventure; title?: string; photoIds?: string[];
   explored: number; marked: number; unavailable: number; pending: boolean;
   scope?: { complete: boolean; explored: number; total: number };
@@ -32,7 +33,7 @@ interface Props {
 }
 /** The end of an adventure: how much of the set was reviewed, what was kept and discarded,
  * and the discards themselves, ready to delete or look through. */
-export function AdventureFinish({ adventure, title, photoIds, explored, marked, unavailable, pending, scope, more, discarded = [], onContinueSegment, onBackToPhotos, onDeleteNow, onReview, onDone }: Props) {
+export function AdventureFinish({ adventure, title, photoIds, explored, marked, unavailable, pending, scope, more, discarded = [], onContinueSegment, onBackToPhotos, onDeleteNow, onReview, onDone, headerContent }: Props) {
   const [facts, setFacts] = useState<Awaited<ReturnType<typeof adventureStore.segmentStatus>>>();
   const [ready, setReady] = useState(!adventure), [error, setError] = useState<string>();
   const [retry, setRetry] = useState(0), [busy, setBusy] = useState(false);
@@ -75,6 +76,7 @@ export function AdventureFinish({ adventure, title, photoIds, explored, marked, 
   const moreLabel = more?.label ?? (adventure?.kind === "screenshots" ? "Next sweep" : `Keep going: ${facts?.nextCount} more`);
   return <SafeAreaView edges={["top", "bottom", "left", "right"]} className="flex-1 bg-background">
     <View className="mx-auto w-full max-w-md px-5"><ScreenHeader title={name} onBack={onDone} /></View>
+    {headerContent}
     {!ready ? <View className="flex-1 items-center justify-center gap-4 px-6">
       {error ? <><Text accessibilityRole="alert" className="text-center text-body text-muted-foreground">{error}</Text><Button onPress={() => setRetry(n => n + 1)}>Try again</Button><Button secondary onPress={onDone}>Finish for Now</Button></> : <Loading />}
     </View> : <ScrollView className="flex-1" contentContainerClassName="flex-grow">

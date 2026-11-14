@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { AppState } from "react-native";
 import { useFocusEffect } from "expo-router";
-import { explorationPercent } from "@/lib/pictopia/library-progress";
+import { libraryPercent } from "@/lib/pictopia/library-progress";
 import { progressResource } from "@/services/progress";
 import { usePictopia } from "./provider";
 
@@ -21,6 +21,6 @@ export function useLibraryProgress() {
   return {
     progress, snapshot: state.value, error: state.error, refreshing: state.refreshing,
     initialLoading: !state.value && !state.error,
-    percent: progress ? explorationPercent(progress.accessibleExplored, progress.accessible) : undefined,
+    percent: progress ? libraryPercent(progress) : undefined,
   };
 }

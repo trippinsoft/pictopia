@@ -66,6 +66,12 @@ interface Props {
   onError(message: string): void;
   /** Restore a discarded photograph from its faded slot. */
   onRestore?(id: string): void;
+  /** Count a photo that can't be shown as reviewed (explicit tap on its unavailable page). */
+  onCountUnavailable?(id: string): Promise<unknown>;
+  /** The shown photo couldn't be displayed (after the image's own retries). */
+  onPhotoUnavailable?(id: string): void;
+  /** A discard was undone; the photo is back in the review. */
+  onUndone?(id: string): void;
   /** A discard undone while the feed wasn't shown; it slides in once the feed mounts. */
   initialEntrance?: ExploreDiscard;
   /** Free daily allowance: the feed ends before this photo with `limitPage` instead of the
@@ -526,7 +532,7 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
         controller.activeId !== null && cards.current.get(controller.activeId)?.discard(direction),
       undo: async () => {
         const id = await controller.undo();
-        if (id) latest.current.props.flight?.cancel(id);
+        if (id) { latest.current.props.flight?.cancel(id); latest.current.props.onUndone?.(id); }
         return !!id;
       },
       action: (action) => {
@@ -642,6 +648,8 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
                   media={media[id]}
                   marked={!!session.review && !!session.records[id]?.queued && !feed.departing.has(id) && !concealedIds.has(id)}
                   onRestore={props.onRestore}
+                  onCountUnavailable={props.onCountUnavailable}
+                  reviewed={!!session.review && !!session.records[id]?.encountered}
                   active={id === activeId}
                   nearby={shownIndex >= 0 && index >= shownIndex - 1 && index <= shownIndex + 2}
                   entrance={entering?.id === id ? entering.from : undefined}
@@ -654,9 +662,9 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
                   onTap={undoTap}
                   onAccessibleNext={() => controller.next(availableIds())}
                   onAccessiblePrevious={() => { const previous = pages.current[controller.page - 1]; if (previous) controller.jump(previous, availableIds()); }}
-                  onAccessibleUndo={() => { void controller.undo().then(restored => { if (restored) latest.current.props.flight?.cancel(restored); }); }}
+                  onAccessibleUndo={() => { void controller.undo().then(restored => { if (restored) { latest.current.props.flight?.cancel(restored); latest.current.props.onUndone?.(restored); } }); }}
                   onEntered={entered}
-                  onUnavailable={() => { void latest.current.props.change({ type: "unavailable", id }).catch(() => {}); }}
+                  onUnavailable={() => { void latest.current.props.change({ type: "unavailable", id }).catch(() => {}); latest.current.props.onPhotoUnavailable?.(id); }}
                   onAvailability={ready}
                   onZoom={zoomChange}
                   flight={props.flight}

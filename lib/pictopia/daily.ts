@@ -132,12 +132,22 @@ export function applyRestore(activity: Activity | undefined, restores: readonly 
   return [...restores, { date: offer.date, usedAt: now, streakBefore: offer.streakBefore }];
 }
 
+/** Only completed calendar days establish today's tier; qualifying today affects tomorrow. */
+export function streakAllowance(activity: Activity | undefined, restores: readonly StreakRestore[], now: number) {
+  const today = [localDate(now), activity?.today.date ?? ""].sort().at(-1)!;
+  const restored = new Set(restores.filter(r => r.date < today).map(r => r.date));
+  const completed = runEnding(addDays(today, -1), date => qualifies(activity?.days[date]) || restored.has(date));
+  return DEFAULT_FREE_SWIPES + Math.min(4, completed) * 25;
+}
+
 // ── Daily swipe allowance ───────────────────────────────────────────────────────────────────
 export interface Allowance {
   version: 1;
   date: string;
   /** Assets already counted today; revisiting them is free. */
   counted: string[];
+  /** Subset charged to the persistent referral wallet rather than today's allowance. */
+  referralCounted?: string[];
   lastWallClock: number;
 }
 export const emptyAllowance = (): Allowance => ({ version: 1, date: "", counted: [], lastWallClock: 0 });
@@ -158,6 +168,24 @@ export function presentAsset(state: Allowance | undefined, id: string, limit: nu
   if (pro || s.counted.includes(id)) return { state: s, allowed: true, changed: s.date !== state?.date };
   if (s.counted.length >= limit) return { state: s, allowed: false, changed: false };
   return { state: { ...s, counted: [...s.counted, id] }, allowed: true, changed: true };
+}
+/** Gives back today's free review for an asset (Undo of a discard). Earlier days are untouched. */
+export function refundAsset(state: Allowance | undefined, id: string, now: number) {
+  const s = currentAllowance(state, now);
+  if (!s.counted.includes(id)) return { state: s, changed: false };
+  return { state: { ...s, counted: s.counted.filter(counted => counted !== id) }, changed: true };
+}
+/** Milliseconds until today's free reviews refresh: the next local midnight. */
+export function untilAllowanceReset(now: number) {
+  const next = new Date(now);
+  next.setHours(24, 0, 0, 0);
+  return Math.max(0, next.getTime() - now);
+}
+/** "05:07:09" — hours, minutes, seconds left, for the daily-limit countdown. */
+export function countdownClock(ms: number) {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const two = (n: number) => String(n).padStart(2, "0");
+  return `${two(Math.floor(total / 3600))}:${two(Math.floor(total / 60) % 60)}:${two(total % 60)}`;
 }
 /** Whether an asset may be shown without spending: already counted today, or Pro. */
 export const canShowFree = (state: Allowance | undefined, id: string, pro: boolean, now: number) =>

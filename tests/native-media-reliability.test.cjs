@@ -102,8 +102,8 @@ test('an unavailable item never consumes allowance; the first successfully displ
   let charged=0;const session={ids:['a','b'],activeId:'a',records:{}},counted=[];
   const h=hooks('components/pictopia/use-allowance.ts','useAllowance',{
     'react-native':{AppState:{currentState:'active',addEventListener:()=>({remove(){}})}},
-    '@/services/daily':{allowanceStore:{state:async()=>({counted}),limit:async()=>150,
-      present:async id=>{charged++;counted.push(id);return{counted,left:149,limit:150}}}},
+    '@/services/daily':{allowanceStore:{snapshot:async()=>({counted,left:150-counted.length,limit:150,date:"2026-11-14"}),
+      present:async id=>{charged++;counted.push(id);return{counted,left:149,limit:150,date:"2026-11-14"}}}},
   },[session,session.ids,'a',false,false]);
   try {h.render();await tick();h.render();await tick();assert.equal(charged,0);
     h.render([session,session.ids,'a',false,true]);await tick();h.render();assert.equal(charged,1);
@@ -130,7 +130,7 @@ test('full preview cannot autoplay a pending source after backgrounding or unmou
     '@/components/pictopia/navigation-header':{},
     'react-native':{AppState:{currentState:'active',addEventListener:(_,fn)=>{appEvent=fn;return{remove(){}}}},View:'View'},
     'react-native-safe-area-context':{},'expo-video':{VideoView:'Video'},
-    '@/components/pictopia/live-photo':{},'@/components/pictopia/use-photo-encounter':{},'@/components/pictopia/zoom-photo':{},
+    '@/components/pictopia/live-photo':{},'@/components/pictopia/use-photo-encounter':{},'@/components/pictopia/zoom-photo':{},'@/components/pictopia/reset-countdown':{},
     '@/components/pictopia/ui':{Text:'Text'},'@/components/pictopia/provider':{},
     '@/services/repository':{},'@/services/media':{},
   },{uri:'file://video',autoplay:true,onReady:()=>{ready++}});
@@ -143,7 +143,7 @@ test('a failed current photo does not block the next accessible photo when one f
   const counted=Array.from({length:149},(_,i)=>String(i)),session={ids:['failed','next','later'],activeId:'failed',records:{}};
   const h=hooks('components/pictopia/use-allowance.ts','useAllowance',{
     'react-native':{AppState:{currentState:'active',addEventListener:()=>({remove(){}})}},
-    '@/services/daily':{allowanceStore:{state:async()=>({counted}),limit:async()=>150,present:async()=>{throw Error('must not charge failed media')}}},
+    '@/services/daily':{allowanceStore:{snapshot:async()=>({counted,left:150-counted.length,limit:150,date:"2026-11-14"}),present:async()=>{throw Error('must not charge failed media')}}},
   },[session,session.ids,'failed',false,false]);
   try {h.render();await tick();assert.equal(h.render().stopBefore,'later','next remains reachable without charging the failed photo');}
   finally{h.unmount()}

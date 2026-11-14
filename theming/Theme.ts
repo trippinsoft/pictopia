@@ -43,6 +43,10 @@ export interface Theme {
     /** Streak flame and progress highlights (fills). */
     sun?: string;
     sunSoft?: string;
+    /** Pastel gold that stands out on any background (the free-reviews counter). */
+    sunPastel?: string;
+    /** Text on `sunPastel`. */
+    sunInk?: string;
     /** The "or" medallion and pending-deletion icon (fills). */
     tomato?: string;
     /** Progress bars and completion ticks (fills). */

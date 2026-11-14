@@ -39,7 +39,8 @@ export default function Home() {
     // Home's picks are fully-formed adventures — including The Yearbook, where Pictopia has
     // already chosen the year — so open them straight into the review. No picker, no up-front
     // choice (see the "guide, not menu" principle).
-    await adventureStore.open(id, adv.pro);
+    const adventure = await adventureStore.open(id, adv.pro);
+    if (adventure.kind === "day") { router.push("/on-this-day"); return; }
     router.push({ pathname: "/vertical-explore", params: { adventure: id } });
   }
   const pendingBytes = app.stats.pendingBytes;
@@ -54,7 +55,7 @@ export default function Home() {
     onConnect={() => void run(() => adv.connect().then(() => undefined))}
     onAdventure={id => void run(() => openAdventure(id))}
     onStreak={() => router.push("/(tabs)/progress")}
-    onProgress={() => router.push("/(tabs)/progress")}
+    onProgress={() => router.push("/memory-wall")}
     onPending={() => router.push("/queue")}
     onRetry={() => { setRetry(n => n + 1); void reload(); }}
   />;

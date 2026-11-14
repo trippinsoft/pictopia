@@ -2,6 +2,7 @@ import { eligibleStills, adventurePool, selectMixedMedia } from "./photo-eligibi
 import type { Media } from "./types";
 import { bestScore, shuffle, similar } from "./logic";
 import { plural } from "./text";
+import { adventureName } from "./catalog";
 import {
   adventureSize,
   OFFER_MIN,
@@ -582,23 +583,28 @@ export function similarity(a: Pick<CuratedAdventure, "kind" | "source" | "ids">,
  * With `fixed`, picks the best partner for the Adventure already on Home. */
 export function choosePair(candidates: CuratedAdventure[], fixed?: Pick<CuratedAdventure, "kind" | "source" | "ids">) {
   const ranked = [...candidates].sort((a, b) => b.diagnostics.total - a.diagnostics.total).slice(0, 10);
+  // Two cards with the same name on Home (e.g. two Surprise Me) read as a mistake, so a
+  // same-named pair is chosen only when the library offers nothing else at all.
+  const sameName = (a: Pick<CuratedAdventure, "kind">, b: Pick<CuratedAdventure, "kind">) => adventureName(a.kind) === adventureName(b.kind);
   const describe = (other: Pick<CuratedAdventure, "kind" | "source" | "ids">, s: number) =>
     s < 0.05 ? `Paired with a different kind of Adventure (${other.kind}), no shared photos.` : `Paired despite some likeness to ${other.kind} (similarity ${s.toFixed(2)}).`;
   if (fixed) {
+    const different = ranked.filter((item) => !sameName(item, fixed));
     let best: { item: CuratedAdventure; value: number; s: number } | undefined;
-    for (const item of ranked) {
+    for (const item of different.length ? different : ranked) {
       const s = similarity(item, fixed);
       const value = item.diagnostics.total - s;
       if (!best || value > best.value) best = { item, value, s };
     }
     return best ? [{ ...best.item, diagnostics: { ...best.item.diagnostics, pairing: describe(fixed, best.s) } }] : [];
   }
-  let best: { a: CuratedAdventure; b?: CuratedAdventure; value: number; s: number } | undefined;
+  let best: { a: CuratedAdventure; b?: CuratedAdventure; value: number; s: number; varied: boolean } | undefined;
   for (let i = 0; i < ranked.length; i++)
     for (let j = i + 1; j < ranked.length; j++) {
       const s = similarity(ranked[i], ranked[j]);
       const value = ranked[i].diagnostics.total + ranked[j].diagnostics.total - s;
-      if (!best || value > best.value) best = { a: ranked[i], b: ranked[j], value, s };
+      const varied = !sameName(ranked[i], ranked[j]);
+      if (!best || (varied && !best.varied) || (varied === best.varied && value > best.value)) best = { a: ranked[i], b: ranked[j], value, s, varied };
     }
   if (!best) return ranked.slice(0, 1);
   const { a, b, s } = best;
@@ -606,6 +612,18 @@ export function choosePair(candidates: CuratedAdventure[], fixed?: Pick<CuratedA
     { ...a, diagnostics: { ...a.diagnostics, pairing: describe(b!, s) } },
     { ...b!, diagnostics: { ...b!.diagnostics, pairing: describe(a, s) } },
   ];
+}
+
+/** Never two of the same on Home: when freshness rules leave only twins of the card already
+ * on Home (or a single kind for a fresh pair), a recently shown different kind is added back,
+ * because a repeat source is better than a duplicate card. */
+export function diverseCandidates<T>(varied: T[], all: T[], kindOf: (item: T) => AdventureKind, other?: AdventureKind): T[] {
+  const name = (item: T) => adventureName(kindOf(item));
+  const kinds = (list: T[]) => new Set(list.map(name).filter((n) => !other || n !== adventureName(other)));
+  const needed = other ? 1 : 2;
+  if (kinds(varied).size >= needed || kinds(all).size < needed) return varied;
+  const have = kinds(varied);
+  return [...varied, ...all.filter((item) => !varied.includes(item) && !have.has(name(item)) && (!other || name(item) !== adventureName(other)))];
 }
 
 export interface MonthProfile {

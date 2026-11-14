@@ -1,8 +1,7 @@
 import { type ReactNode } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import type { ImageContentPosition } from "expo-image";
 import { router } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { Icon, Text } from "./ui";
 import { ART_THEMES, AdventureCover } from "./adventure-art";
 import { Illustration } from "./illustration";
@@ -28,7 +27,7 @@ export function Wordmark({ large = false }: { large?: boolean }) {
   const type = large ? "" : "text-h1 ";
   const size = large ? styles.wordmarkLarge : undefined;
   return (
-    <Text accessibilityRole="header" accessibilityLabel="Pictopia" className={`${type}text-foreground`} style={size}>
+    <Text accessibilityRole="header" accessibilityLabel="Pictopia" numberOfLines={1} adjustsFontSizeToFit className={`${type}text-foreground`} style={size}>
       pictopia<Text className={`${type}text-tomato`} style={size}>.</Text>
     </Text>
   );
@@ -50,21 +49,25 @@ export function GearButton() {
 }
 
 /** Wordmark (Home) or a tab title with the red dot, with the one Settings entry point on the right. */
-export function TabHeader({ title }: { title?: string }) {
+export function TabHeader({ title, referrals = false }: { title?: string; referrals?: boolean }) {
+  const lift = useLift();
   return (
     <View className={title ? undefined : "mb-3"}>
-      <View className="flex-row items-center justify-between">
+      <View className="flex-row items-center justify-between gap-1">
         {title ? (
           <Text accessibilityRole="header" accessibilityLabel={title} className="text-h1 text-foreground">
             {title.toLowerCase()}<Text className="text-h1 text-tomato">.</Text>
           </Text>
         ) : (
-          <View className="shrink">
+          <View className="min-w-0 flex-1">
             <Wordmark large />
-            <Text className="-mt-0.5 text-muted-foreground" style={styles.tagline}>A happier place for your photos</Text>
+            <Text className="-mt-0.5 text-muted-foreground" style={styles.tagline}>The happier place for your photos</Text>
           </View>
         )}
-        <GearButton />
+        <View className="flex-row items-center gap-2">
+          {referrals ? <Pressable accessibilityRole="button" accessibilityLabel="Invite a friend" onPress={() => router.push("/referrals")} style={lift} className="h-12 w-12 items-center justify-center rounded-full bg-card active:opacity-70"><Icon name="Handshake" size={22} className="text-tomato" /></Pressable> : null}
+          <GearButton />
+        </View>
       </View>
 
     </View>
@@ -151,7 +154,7 @@ export function Postcard({ kind, ids, title, hint, rotate, onPress, variant = "a
         </View>
       )}
       <Text numberOfLines={2} className={`${isPick ? "text-h3" : "text-h4"} px-1 leading-[22px] text-foreground`}>{title}</Text>
-      <Text numberOfLines={2} className="px-1 text-caption leading-[17px] text-muted-foreground">{hint}</Text>
+      <Text className="px-1 text-caption leading-[17px] text-muted-foreground">{hint}</Text>
     </Pressable>
   );
 }
@@ -222,24 +225,18 @@ export function WaitingPill({ count, size, onPress }: { count: number; size?: st
   );
 }
 
-/** A straight Explore card: artwork on top, the permanent name, a short line, and an ⓘ. */
-export function AdventureCard({ entry, kind, blurb, badge, landscape, onPress, onInfo, focus }: {
+/** A straight Explore card: artwork on top, the permanent name, and a short line. */
+export function AdventureCard({ entry, kind, blurb, badge, landscape, onPress, focus }: {
   entry: CatalogEntry;
   kind?: AdventureKind;
   blurb?: string;
   badge?: string;
   landscape?: boolean;
   onPress: () => void;
-  onInfo: () => void;
   focus?: ImageContentPosition;
 }) {
   const lift = useLift();
   const art = kind ? <AdventureCover kind={kind} /> : <ArtImage art={entry.art} focus={focus} />;
-  const info = (
-    <Pressable accessibilityRole="button" accessibilityLabel={`About ${entry.name}`} onPress={onInfo} hitSlop={8} className="h-9 w-9 items-center justify-center rounded-full active:opacity-60">
-      <Icon name="Info" size={18} className="text-muted-foreground" />
-    </Pressable>
-  );
   const text = (
     <View className="flex-1 gap-0.5">
       <View className="flex-row items-center gap-2">
@@ -253,7 +250,6 @@ export function AdventureCard({ entry, kind, blurb, badge, landscape, onPress, o
     <View className="absolute left-2 top-2 rounded-lg bg-primary px-2 py-1"><Text className="text-caption text-primary-foreground">{badge}</Text></View>
   ) : null;
   if (landscape)
-    // The ⓘ sits beside the card's button, not inside it: nested buttons are invalid on web.
     return (
       <View>
         <Pressable accessibilityRole="button" accessibilityLabel={`${entry.name}. ${blurb ?? entry.blurb}${badge ? `. ${badge}` : ""}`} onPress={onPress} style={lift} className="h-[104px] flex-row overflow-hidden rounded-[18px] bg-card active:opacity-90">
@@ -263,10 +259,8 @@ export function AdventureCard({ entry, kind, blurb, badge, landscape, onPress, o
               {badge && <Stamp tone="tomato">{badge}</Stamp>}
               {text}
             </View>
-            <View className="w-9" />
           </View>
         </Pressable>
-        <View className="absolute right-1.5 top-[34px]">{info}</View>
       </View>
     );
   return (
@@ -275,35 +269,9 @@ export function AdventureCard({ entry, kind, blurb, badge, landscape, onPress, o
         <View className="h-[112px] bg-muted">{art}{flag}</View>
         <View className="flex-row items-start gap-1 py-2.5 pl-3 pr-1">
           {text}
-          <View className="w-9" />
         </View>
       </Pressable>
-      <View className="absolute right-1 top-[122px]">{info}</View>
     </View>
-  );
-}
-
-/** A lightweight bottom sheet that explains exactly what an adventure selects. */
-export function InfoSheet({ entry, note, onClose }: { entry?: CatalogEntry; note?: string; onClose: () => void }) {
-  return (
-    <Modal visible={!!entry} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable accessibilityLabel="Close" onPress={onClose} className="flex-1 bg-black/30" />
-      {entry && (
-        <SafeAreaView edges={["bottom"]} className="rounded-t-[28px] bg-background">
-          <ScrollView contentContainerClassName="px-6 pb-6 pt-3">
-            <View className="mb-4 h-1.5 w-10 self-center rounded-full bg-foreground/20" />
-            <View className="mb-4 h-36 overflow-hidden rounded-[18px] bg-muted"><ArtImage art={entry.art} /></View>
-            <Text accessibilityRole="header" className="text-h2 text-foreground">{entry.name}</Text>
-            <Text className="mt-1 text-caption uppercase tracking-wider text-muted-foreground">What it picks</Text>
-            <Text className="mt-2 text-body leading-6 text-foreground">{entry.details}</Text>
-            {!!note && <Text className="mt-3 text-body leading-6 text-muted-foreground">{note}</Text>}
-            <Pressable accessibilityRole="button" onPress={onClose} className="mt-6 min-h-12 items-center justify-center rounded-2xl bg-primary active:opacity-80">
-              <Text className="text-button text-primary-foreground">Got it</Text>
-            </Pressable>
-          </ScrollView>
-        </SafeAreaView>
-      )}
-    </Modal>
   );
 }
 

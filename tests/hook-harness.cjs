@@ -12,7 +12,7 @@ exports.hooks = (file, exportName, mocks, initialProps) => {
   };
   // Compiled named hook calls do not preserve `this`.
   react.useCallback = (fn,deps) => react.useMemo(() => fn,deps);
-  const load = makeLoader({ ...mocks, react, 'expo-router': { useFocusEffect: fn => react.useEffect(fn,[fn]) } });
+  const load = makeLoader({ ...mocks, react, 'expo-router': { ...mocks['expo-router'], useFocusEffect: fn => react.useEffect(fn,[fn]) } });
   const component = load(file)[exportName];
   return {
     render(next = props) { props = next; cursor = 0; const tree = Array.isArray(props) ? component(...props) : component(props); const todo = effects; effects = []; todo.forEach(fn => fn()); return tree; },

@@ -6929,6 +6929,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"expo-clipboard@npm:~55.0.17":
+  version: 55.0.17
+  resolution: "expo-clipboard@npm:55.0.17"
+  peerDependencies:
+    expo: "*"
+    react: "*"
+    react-native: "*"
+  checksum: 10c0/aa1bf089051f9dea281777c7b7ef4bb83c32f26658c30ddcd923f98dfb4b6fbf96f523f99c3af0cb24fc8dd500da33b630d5e623ee5391623f4efc6329d11842
+  languageName: node
+  linkType: hard
+
 "expo-constants@npm:~55.0.17":
   version: 55.0.17
   resolution: "expo-constants@npm:55.0.17"
@@ -6938,6 +6949,15 @@ __metadata:
     expo: "*"
     react-native: "*"
   checksum: 10c0/b29d9ade9492cf1656df84568c84529626308d845364f3a924303dbed93022ec63a7886249f341c8c5e3826873463e99e1f05346ade62703ec597a672e46bae7
+  languageName: node
+  linkType: hard
+
+"expo-crypto@npm:~55.0.19":
+  version: 55.0.19
+  resolution: "expo-crypto@npm:55.0.19"
+  peerDependencies:
+    expo: "*"
+  checksum: 10c0/fe61e40d8c004543b4fa785edf0179d64d2c0ee852dbb55d724cdd59741ff347a178530441e529c79e52ef12a88e3bc25ca2d6da25529db8114e4c57c267a0b5
   languageName: node
   linkType: hard
 
@@ -7261,6 +7281,15 @@ __metadata:
     react-server-dom-webpack:
       optional: true
   checksum: 10c0/51cf9cfff21f74fecdd0f6b17ada36fd102bc8969d10dc632b5084534525d1ce759ebd108a0e8dc222e47613b7318ce319180f178d658f006b1e0d6f85d4601d
+  languageName: node
+  linkType: hard
+
+"expo-secure-store@npm:~55.0.18":
+  version: 55.0.18
+  resolution: "expo-secure-store@npm:55.0.18"
+  peerDependencies:
+    expo: "*"
+  checksum: 10c0/755c2c4eecbb1a3f3ae097c5ae3e37d6421894c82677c31c5f3fe4090a3bfe4b573a4df3a14811fb1770f8540771875b46561d36e36417f938e4fe87b1eb2ad0
   languageName: node
   linkType: hard
 
@@ -10054,7 +10083,9 @@ __metadata:
     expo: "npm:^55.0.0"
     expo-application: "npm:~55.0.18"
     expo-asset: "npm:~55.0.19"
+    expo-clipboard: "npm:~55.0.17"
     expo-constants: "npm:~55.0.17"
+    expo-crypto: "npm:~55.0.19"
     expo-dev-client: "npm:~55.0.41"
     expo-document-picker: "npm:~55.0.8"
     expo-file-system: "npm:~55.0.17"
@@ -10067,6 +10098,7 @@ __metadata:
     expo-navigation-bar: "npm:~55.0.16"
     expo-notifications: "npm:~55.0.27"
     expo-router: "npm:~55.0.18"
+    expo-secure-store: "npm:~55.0.18"
     expo-splash-screen: "npm:~55.0.24"
     expo-sqlite: "npm:~55.0.12"
     expo-status-bar: "npm:~55.0.6"

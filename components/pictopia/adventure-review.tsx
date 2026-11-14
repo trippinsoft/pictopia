@@ -18,6 +18,7 @@ import { ReviewTrash, type ReviewTrashHandle } from "./review-trash";
 import { DiscardTray } from "./discard-tray";
 import { useDiscardFlights } from "./discard-flight";
 import { useAllowance } from "./use-allowance";
+import { ResetCountdown } from "./reset-countdown";
 import { DEFAULT_FREE_SWIPES } from "@/lib/pictopia/daily";
 import { exploreCounts, exploreFeed, lastExploreDiscard, type ExploreAction } from "@/lib/pictopia/explore";
 import { limitCopy, monthYear, reviewProgressLabel } from "@/lib/pictopia/review-flow";
@@ -39,13 +40,15 @@ export interface FinishActions {
   explored: number; marked: number; unavailable: number; libraryBefore?: number;
   photoIds: string[]; discarded: Media[];
 }
-export function AdventureReview({ id, collection, finishContent, onContinue }: {
+export function AdventureReview({ id, collection, finishContent, onContinue, dateNavigation }: {
   id: string;
   /** Collections: their session, title and, for the header, explored progress when opened. */
   collection?: { sessionKey: string; title: string; progress?: { explored: number; total: number } };
   finishContent?: (actions: FinishActions) => ReactNode;
   /** Remount the review after a persisted segment change to discard the prior feed state. */
   onContinue?: () => void;
+  /** Date navigation flushes this feed before the owner switches saved sessions. */
+  dateNavigation?: (controls: { disabled: boolean; flush(): void }) => ReactNode;
 }) {
   const sessionKey = collection?.sessionKey ?? adventureSessionKey(id);
   const { app, session, media, pending, error, change, getSession, reload } = useExplore(sessionKey);
@@ -133,7 +136,12 @@ export function AdventureReview({ id, collection, finishContent, onContinue }: {
     if (!canUndo) return;
     setTransitionError(undefined);
     if (feed.current) void feed.current.undo();
-    else void change({ type: "undo" }).catch(() => {});
+    else undoSaved();
+  };
+  // Undo outside the feed (finish screens): the undone photo's free review comes back too.
+  const undoSaved = () => {
+    const target = session ? lastExploreDiscard(session)?.id : undefined;
+    void change({ type: "undo" }).then(() => allowance.refund(target)).catch(() => {});
   };
   const exit = () => { feed.current?.flush(); router.canGoBack() ? router.back() : router.replace("/(tabs)/home"); };
   // What is still in the sequence, and what is waiting in the trash. The queue decision on
@@ -188,6 +196,16 @@ export function AdventureReview({ id, collection, finishContent, onContinue }: {
   const empty = !!session && !complete && !sequence.length;
   const allowance = useAllowance(session, sequence, valid && !complete ? photo : undefined, app.pro, available);
   const encounter = useCallback((displayedAt: number) => photo ? change({ type: "seen", id: photo, displayedAt }) : Promise.resolve(), [photo, change]);
+  // A photo that can't be shown must never block 100%: an explicit tap counts it as reviewed
+  // (no allowance is used), and one the library confirms no longer exists leaves the review,
+  // the month and the Memory Wall on its own. Neither path decides or deletes anything.
+  const countUnavailable = useCallback((id: string) => change({ type: "seen", id, displayedAt: Date.now() })
+    .catch(() => app.setError("This photo couldn’t be counted. Try again.")), [change, app]);
+  const checkGone = useCallback((id: string) => {
+    void mediaService.inspect([id]).then(async ({ scope, presence }) => {
+      if (scope === "full" && presence[id] === "absent") await repository.update(id, (m) => (m.deletedAt ? m : { ...m, active: false }));
+    }).catch(() => {});
+  }, []);
   usePhotoEncounter(photo, !!photo && allowance.canReview(photo) && available && valid === true && !!session?.review && photo === session.activeId && !!current?.active && !current.deletedAt && !session.records[photo]?.encountered && !complete && !busy && !tray, undefined, encounter, app.setError);
 
   // From the review or its end: just this adventure's discards, everything else one tap away.
@@ -199,11 +217,12 @@ export function AdventureReview({ id, collection, finishContent, onContinue }: {
   const limitPage = <View className="flex-1 items-center justify-center gap-3 px-8">
     <View className="h-16 w-16 items-center justify-center rounded-full bg-sun"><Icon name="Sparkles" size={28} className="text-primary-foreground" /></View>
     <Text accessibilityRole="header" className="text-center text-display text-foreground">{limit.title}</Text>
-    <Text className="mb-2 text-center text-body leading-6 text-muted-foreground">{limit.body}</Text>
-    <View className="w-full max-w-xs gap-2">
+    <Text className="text-center text-body leading-6 text-muted-foreground">{limit.body}</Text>
+    <ResetCountdown />
+    <View className="mt-2 w-full max-w-xs gap-2">
       <Button onPress={() => router.push("/paywall")}>Unlock unlimited with Pictopia+</Button>
       {marked.length > 0 && <Button secondary icon="Trash2" onPress={reviewMarked}>{"See discarded photos"}</Button>}
-      <Pressable accessibilityRole="button" onPress={exit} className="min-h-12 items-center justify-center"><Text className="text-button text-foreground">Continue tomorrow</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={exit} className="min-h-12 items-center justify-center"><Text className="text-button text-foreground">Come back tomorrow</Text></Pressable>
     </View>
   </View>;
   const finishState = useRef({ session, change }); finishState.current = { session, change };
@@ -240,18 +259,36 @@ export function AdventureReview({ id, collection, finishContent, onContinue }: {
   }, [originalPlace, atEnd, allowance.stopBefore, sequence.length]);
   const contextProgress = reviewProgressLabel(atEnd ? Math.max(0, sequence.length - 1) : originalPlace, sequence.length);
   const label = current ? monthYear(current.created) : undefined;
+  const dateStrip = dateNavigation?.({ disabled: busy || pending || flying > 0 || finishing.current, flush: () => feed.current?.flush() });
+  // Date switches must keep the full header while the saved review loads; the
+  // compact loading header otherwise lifts the date strip and drops it again.
   if (!session || valid === undefined || (!collection && !adventure) || (complete && awaitingReopen)) return <AdventureTheme enabled><SafeAreaView className="flex-1 bg-background">
+    <StatusBar style="light" />
     <Stack.Screen options={{ title: "Photo review", headerShown: false }} />
-    <View className="px-4"><NavigationBack onPress={exit} /></View>
+    <View className="mx-auto w-full max-w-3xl flex-1">
+    {dateNavigation ? <View className="gap-2 px-4 pb-2 pt-1">
+      <View className="flex-row items-center justify-between pb-6">
+        <NavigationBack onPress={exit} />
+        <View className="min-w-0 flex-1 items-center px-2">
+          <Text numberOfLines={1} accessibilityRole="header" className="text-center text-headline text-foreground">On This Day</Text>
+          <Text className="text-caption text-muted-foreground" style={{ fontVariant: ["tabular-nums"] }}>…</Text>
+          {!app.pro ? <View className="h-[34px]" /> : null}
+        </View>
+        <ReviewTrash count={0} bytes={0} unknownSizes={0} disabled onMeasure={() => {}} onPress={() => {}} />
+      </View>
+      <ProgressLine total={0} initial={0} />
+    </View> : <View className="px-4"><NavigationBack onPress={exit} /></View>}
+    {dateStrip}
     <View className="flex-1 justify-center gap-4 px-6">{loadError || error ? <><Text className="text-center text-body text-foreground">{loadError || error}</Text><Button onPress={() => { setLoadError(undefined); setMetadataRetry(n => n + 1); void reload(); }}>Try again</Button></> : <Loading />}</View>
+    </View>
   </SafeAreaView></AdventureTheme>;
   if (complete && session && !awaitingReopen) {
     return <>
       <Stack.Screen options={{ title, headerShown: false }} />
       {finishContent?.({ onUndo: () => { setSelected(undefined); undo(); }, onPreviousPhoto: () => { setSelected(undefined); apply({ type: "back" }); }, onReview: reviewMarked, onDone: exit, onBackToPhotos: backToPhotos, onDeleteNow: deleteNow, canUndo, canReview: sequence.length > 0, pending, explored: counts.explored, marked: marked.length, unavailable: counts.unavailable, libraryBefore: opened.current?.finished ? undefined : libraryBefore.current, photoIds: sequence, discarded: discardedMedia }) ??
-        <AdventureFinish onContinueSegment={next => { if (onContinue) { onContinue(); return; } setSelected(undefined); setAtEnd(false); opened.current = undefined; void reload().then(() => setAdventure(next)); }} adventure={adventure} photoIds={sequence} explored={counts.explored} marked={marked.length} unavailable={counts.unavailable} libraryBefore={opened.current?.finished ? undefined : libraryBefore.current} canUndo={canUndo} pending={pending}
+        <AdventureFinish headerContent={dateStrip} onContinueSegment={next => { if (onContinue) { onContinue(); return; } setSelected(undefined); setAtEnd(false); opened.current = undefined; void reload().then(() => setAdventure(next)); }} adventure={adventure} photoIds={sequence} explored={counts.explored} marked={marked.length} unavailable={counts.unavailable} libraryBefore={opened.current?.finished ? undefined : libraryBefore.current} canUndo={canUndo} pending={pending}
           discarded={discardedMedia} onBackToPhotos={backToPhotos} onDeleteNow={deleteNow}
-          onReview={reviewMarked} onDone={exit} onUndo={() => { setSelected(undefined); void change({ type: "undo" }).catch(() => {}); }} onPrevious={() => { setSelected(undefined); void change({ type: "back" }).catch(() => {}); }} />}
+          onReview={reviewMarked} onDone={exit} onUndo={() => { setSelected(undefined); undoSaved(); }} onPrevious={() => { setSelected(undefined); void change({ type: "back" }).catch(() => {}); }} />}
     </>;
   }
   return <AdventureTheme enabled><SafeAreaView className="flex-1 bg-background">
@@ -263,13 +300,14 @@ export function AdventureReview({ id, collection, finishContent, onContinue }: {
           <View className="min-w-0 flex-1 items-center px-2">
             <Text numberOfLines={collection && id.startsWith("album:") ? undefined : 1} accessibilityRole="header" className="text-center text-headline text-foreground">{title}</Text>
             <Text className="text-caption text-muted-foreground" style={{ fontVariant: ["tabular-nums"] }}>{contextProgress}</Text>
+            {!app.pro && allowance.left !== undefined && <FreeReviews left={allowance.left} limit={allowance.limit ?? DEFAULT_FREE_SWIPES} />}
+            {!app.pro && allowance.left === undefined && !!dateNavigation ? <View className="h-[34px]" /> : null}
           </View>
           {valid && session ? <ReviewTrash ref={trash} count={trashCount} bytes={trashBytes} unknownSizes={0} onMeasure={centre => { frames.current.trash = centre; }} onPress={() => setTray(true)} /> : <View className="h-12 w-12" />}
         </View>
         {session && <ProgressLine ref={line} total={sequence.length} initial={Math.max(0, originalPlace)} />}
-        {/* On This Day states its window, including when it widened beyond today's date. */}
-        {adventure?.kind === "day" && <Text numberOfLines={1} className="text-center text-caption text-muted-foreground">{adventure.hint.detail}</Text>}
       </View>
+      {dateStrip}
       {valid === false ? <View className="flex-1 justify-center gap-4 px-6"><Text className="text-display text-foreground">Choose a fresh adventure</Text><Text className="text-body text-muted-foreground">This older adventure is no longer available. Your previous progress and marked photos are kept.</Text><Button onPress={() => router.replace("/(tabs)/explore")}>Explore adventures</Button></View> : !session || valid === undefined ? <Loading /> : <>
         <View className="min-h-0 flex-1" onLayout={event => { frames.current.feed = event.nativeEvent.layout; measureStage(); }}>
           {empty ? <View className="flex-1 items-center justify-center gap-3 px-8">
@@ -281,7 +319,7 @@ export function AdventureReview({ id, collection, finishContent, onContinue }: {
               <Button secondary icon="Trash2" onPress={() => setTray(true)}>Open Discarded</Button>
             </View>
           </View> : allowance.error ? <View className="flex-1 items-center justify-center gap-4 px-8"><Text className="text-center text-body text-foreground">Couldn’t check your daily free reviews. Your saved review is safe.</Text><Button onPress={() => void allowance.reload()}>Try again</Button></View> : !allowance.ready ? <Loading /> : <ExploreFeed ref={feed} session={session} media={media} change={change} getSession={getSession} flight={flight} canReview={allowance.canReview} stopBefore={allowance.stopBefore} limitPage={limitPage} endPage={endPage} onEnd={finish}
-            onPage={(index, total) => { setAtEnd(index >= total); if (index < total) setSelected(sequence[index]); }} onScrollPosition={position => line.current?.setPosition(position)} onScrollActive={(target, ready) => { setSelected(target); setAvailable(ready); }} onBusy={setBusy} onAvailability={setAvailable} onError={setTransitionError} onRestore={restore}
+            onPage={(index, total) => { setAtEnd(index >= total); if (index < total) setSelected(sequence[index]); }} onScrollPosition={position => line.current?.setPosition(position)} onScrollActive={(target, ready) => { setSelected(target); setAvailable(ready); }} onBusy={setBusy} onAvailability={setAvailable} onError={setTransitionError} onRestore={restore} onCountUnavailable={countUnavailable} onPhotoUnavailable={checkGone} onUndone={allowance.refund}
             onBrowse={() => guidance.complete("browse")} onDiscard={() => guidance.complete("discard")} />}
           {!!label && !empty && !atEnd && <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" className="absolute right-3 top-2 rounded-[9px] bg-black/50 px-2.5 py-1"><Text className="text-caption text-white">{label}</Text></View>}
           {/* Over the photos, never above them: inserting it would resize every page mid-scroll. */}
@@ -304,9 +342,19 @@ export function AdventureReview({ id, collection, finishContent, onContinue }: {
 }
 
 interface ProgressLineHandle { setPosition(position: number): void }
+/** Free plan only: today's remaining free reviews, in pastel gold so it reads at a glance.
+ * Tapping it opens Pictopia+. */
+function FreeReviews({ left, limit }: { left: number; limit: number }) {
+  const label = left > 0 ? `${left.toLocaleString()} free ${left === 1 ? "review" : "reviews"} left` : "No free reviews left today";
+  return <Pressable accessibilityRole="button" accessibilityLabel={`${left} reviews available, including saved bonus credits. Today's daily and streak allowance is ${limit}. Opens Pictopia+ for unlimited reviews.`} onPress={() => router.push("/paywall")}
+    className="mt-1.5 min-h-7 flex-row items-center rounded-full bg-sun-pastel px-3 py-1 active:opacity-80">
+    <Text numberOfLines={1} className="text-caption font-semibold text-sun-ink" style={{ fontVariant: ["tabular-nums"] }}>{label}</Text>
+  </Pressable>;
+}
+
 /** The thin progress line under the header. It follows scrolling directly, without
  * re-rendering the review. */
-const ProgressLine = forwardRef<ProgressLineHandle, { total: number; initial: number }>(function ProgressLine({ total, initial }, ref) {
+export const ProgressLine = forwardRef<ProgressLineHandle, { total: number; initial: number }>(function ProgressLine({ total, initial }, ref) {
   const [position, setPosition] = useState(initial);
   useImperativeHandle(ref, () => ({ setPosition: (p: number) => setPosition(Math.round(p)) }), []);
   const fraction = total ? Math.min(1, Math.max(0, (position + 1) / total)) : 0;

@@ -11,6 +11,14 @@ public class PictopiaAnalysisModule: Module {
   private let queue = DispatchQueue(label: "pictopia.analysis", qos: .utility)
   public func definition() -> ModuleDefinition {
     Name("PictopiaAnalysis")
+    AsyncFunction("verifyLifetimeSignature") { (payload: String, signature: String, publicKey: String) -> Bool in
+      guard payload.utf8.count <= 2048,
+        let keyData = Data(base64Encoded: publicKey),
+        let signatureData = Data(base64Encoded: signature), signatureData.count == 64,
+        let key = try? P256.Signing.PublicKey(derRepresentation: keyData),
+        let signed = try? P256.Signing.ECDSASignature(rawRepresentation: signatureData) else { return false }
+      return key.isValidSignature(signed, for: Data(payload.utf8))
+    }
     View(PictopiaLivePhotoView.self) {
       Events("onReady", "onUnavailable")
       Prop("assetId") { (view: PictopiaLivePhotoView, id: String) in view.load(id: id) }

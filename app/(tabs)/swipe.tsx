@@ -162,6 +162,7 @@ export default function Swipe() {
     void runAction(async () => {
       if (last) setEnter({ id: last.id, from: decisionDirection(last.decision, reversed) });
       await app.undo();
+      if (last?.decision === "delete") allowance.refund(last.id);
     });
   }
   function press(decision: Decision) {

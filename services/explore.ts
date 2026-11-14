@@ -3,11 +3,13 @@ import { qualifiedEncounterTime } from "@/lib/pictopia/photo-encounter";
 import { capturedThisYear } from "@/lib/pictopia/photo-eligibility";
 import { storage, serialize, deletionGuard, firstSeenUpdates, activityValues } from "./repository";
 import { mediaService } from "./media";
+import { reviewRefundValues } from "./daily";
 import { Platform } from "react-native";
 import {
   createExplore,
   migrateExplore,
   reduceExplore,
+  lastExploreDiscard,
   reconcileReview,
   selectExploreIds,
   ExploreAction,
@@ -95,10 +97,12 @@ export function exploreStoreFor(key: string) {
           // A mark counts as a meaningful view for streaks (once per item per day).
           const marked = built.type === "discard" ? changed.filter(id => next.records[id]?.queued) : [];
           const daily = await activityValues([...seenIds, ...marked], Date.now(), built.type === "discard");
+          const refundedId = built.type === "undo" ? lastExploreDiscard(current)?.id : undefined;
+          const refund = review && refundedId ? await reviewRefundValues(refundedId) : {};
           const seenUpdates = await firstSeenUpdates(seenIds);
           const merged = new Map(seenUpdates.map(m => [m.id, m]));
           for (const item of updates) merged.set(item.id, { ...item, firstSeenAt: item.firstSeenAt ?? merged.get(item.id)?.firstSeenAt });
-          await storage.put([...merged.values()], { ...values, ...daily, [key]: next, [`activity:${key}`]: Date.now() });
+          await storage.put([...merged.values()], { ...values, ...daily, ...refund, [key]: next, [`activity:${key}`]: Date.now() });
         } else if (next !== current) await storage.setValue(key, next);
         reviewTrace("store.saved", { action: built.type, revision: next.revision, active: tracePhoto(next.activeId) });
         return next;

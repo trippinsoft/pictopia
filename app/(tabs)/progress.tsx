@@ -1,3 +1,4 @@
+import { LifetimePlusRow } from "@/components/pictopia/lifetime-plus-row";
 import { useState } from "react";
 import { Modal, Platform, Pressable, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -6,6 +7,7 @@ import { Button, Icon, Text } from "@/components/pictopia/ui";
 import { BadgeDetail } from "@/components/pictopia/badge-detail";
 import { BadgeArt } from "@/components/pictopia/badge-art";
 import { PitStopMenu } from "@/components/pictopia/pit-stop-menu";
+import { MemoryWallCard } from "@/components/pictopia/memory-wall-card";
 import { SectionTitle, Sticker, TabHeader, WaitingPill, useLift } from "@/components/pictopia/playful";
 import { useLibraryProgress } from "@/components/pictopia/use-library-progress";
 import { progressResource } from "@/services/progress";
@@ -43,12 +45,12 @@ function Dot({ state, size = 22, date, today }: { state: "done" | "restored" | "
   );
 }
 
-function HeadlineTile({ icon, value, caption, onPress, label }: { icon: "Flame" | "Compass" | "HardDrive"; value: string; caption: string; onPress?: () => void; label: string }) {
+function HeadlineTile({ icon, value, caption, onPress, label }: { icon: "Flame" | "HardDrive"; value: string; caption: string; onPress?: () => void; label: string }) {
   return (
-    <Sticker className="flex-1 items-center gap-1.5 py-4" rotate={0} onPress={onPress} label={label}>
-      <Icon name={icon} size={22} className={icon === "Flame" ? "text-sun" : icon === "HardDrive" ? "text-grass" : "text-tertiary"} />
+    <Sticker className="flex-1 items-center gap-1 py-2.5" rotate={0} onPress={onPress} label={label}>
+      <Icon name={icon} size={22} className={icon === "Flame" ? "text-sun" : "text-grass"} />
       <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} className="text-h1 leading-9 text-foreground">{value}</Text>
-      <Text numberOfLines={2} className="h-8 text-center text-caption leading-4 text-muted-foreground">{caption}</Text>
+      <Text numberOfLines={2} className="text-center text-caption leading-4 text-muted-foreground">{caption}</Text>
     </Sticker>
   );
 }
@@ -56,7 +58,7 @@ function HeadlineTile({ icon, value, caption, onPress, label }: { icon: "Flame" 
 /** Progress: three headlines, Discarded link, streak calendar w/ restore, badges, Take a break. */
 export default function Progress() {
   const lift = useLift();
-  const { progress, percent, error, snapshot } = useLibraryProgress();
+  const { progress, error, snapshot } = useLibraryProgress();
   const streak = snapshot?.streak;
   const activity = snapshot?.activity;
   const restoredDays = new Set(snapshot?.restores.map(x => x.date) ?? []);
@@ -97,7 +99,6 @@ export default function Progress() {
     : `${monthName(first)}${first.slice(0, 4) === last.slice(0, 4) ? "" : ` ${first.slice(0, 4)}`} – ${monthName(last)} ${last.slice(0, 4)}`;
   const earnedCount = badges ? BADGES.filter((d) => (badges.state.earned[d.family]?.tier ?? 0) > 0).length : 0;
   const streakValue = streak ? `${streak.current}` : "—";
-  const percentValue = percent === undefined ? "—" : `${percent}%`;
   const clearedValue = progress ? (progress.deletedBytes > 0 ? bytes(progress.deletedBytes) : progress.deleted > 0 ? "—" : "0 B") : "—";
   const clearedCaption = progress ? (progress.deleted > 0 ? `${progress.deleted.toLocaleString()} ${progress.deleted === 1 ? "photo" : "photos"} cleared` : "nothing deleted yet") : "cleared";
   return (
@@ -107,10 +108,11 @@ export default function Progress() {
         {error && <View className="mt-3 gap-2"><Text accessibilityRole="alert" className="text-body text-destructive">{snapshot ? "Couldn’t refresh progress. Showing your last saved statistics." : "Couldn’t load progress."}</Text><Button secondary onPress={() => void progressResource.refresh()}>Retry progress</Button></View>}
         {!!message && <Text accessibilityRole="alert" className="mt-3 text-body text-destructive">{message}</Text>}
 
-        {/* Three headline numbers */}
-        <View className="mt-4 flex-row items-stretch gap-2.5">
+        {/* Memory Wall (carries the library percentage) above the streak and cleared headlines */}
+        <MemoryWallCard />
+        <LifetimePlusRow />
+        <View className="mt-2.5 flex-row items-stretch gap-2.5">
           <HeadlineTile icon="Flame" value={streakValue} caption="day streak" label={`${streakValue} day streak`} />
-          <HeadlineTile icon="Compass" value={percentValue} caption="reviewed" onPress={() => router.push("/(tabs)/timeline")} label={`${percentValue} of your library reviewed`} />
           <HeadlineTile icon="HardDrive" value={clearedValue} caption={clearedCaption} label={`${clearedValue} cleared`} />
         </View>
 

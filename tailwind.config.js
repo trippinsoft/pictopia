@@ -75,6 +75,8 @@ module.exports = {
         sun: {
           DEFAULT: 'hsl(var(--sun) / <alpha-value>)',
           soft: 'hsl(var(--sunSoft) / <alpha-value>)',
+          pastel: 'hsl(var(--sunPastel) / <alpha-value>)',
+          ink: 'hsl(var(--sunInk) / <alpha-value>)',
         },
         tomato: {
           DEFAULT: 'hsl(var(--tomato) / <alpha-value>)',

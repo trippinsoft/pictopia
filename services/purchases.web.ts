@@ -15,6 +15,7 @@ export const purchaseService: PurchaseService = {
   async refresh() {
     return { active: false, expires: null, verifiedAt: Date.now() };
   },
+  async evidence() { return null; },
   purchase: unavailable,
   restore: unavailable,
 };

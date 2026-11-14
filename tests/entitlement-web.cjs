@@ -73,7 +73,7 @@ const fs = require("node:fs");
     await see("Unlock unlimited with Pictopia+");
     await shot("limit-page");
     pass(`Free: the review (${total} photos) stops at the daily-limit page after 3`);
-    await page.getByText("Continue tomorrow", { exact: true }).click();
+    await page.getByText("Come back tomorrow", { exact: true }).click();
     await see("Where to today?");
 
     await settings();

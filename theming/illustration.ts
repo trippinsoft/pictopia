@@ -84,3 +84,20 @@ export const darkArt: ArtPalette = {
   canvasButter: "#322817",
   canvasPeach: "#352519",
 };
+
+/** Memory Wall "Mountains to the Sea" world. Light only for now (dark mode is disabled app-wide);
+ * the scene shares the Storybook palette above and adds the terrain, building and sea tones the
+ * larger world needs. Every colour the wall artwork draws comes from here. */
+export const worldArt = {
+  ...lightArt,
+  water: "#A9CDF2", waterLight: "#BFDDF6", skyTop: "#E9F1FC", skyBase: "#DCEBFB",
+  snow: "#FFFFFF", mtnBack: "#D5C6F2", mtnMid: "#B9A5E6", mtnFront: "#9D86D6",
+  forest: "#2F8F68", forest2: "#3E9E74", grass: "#A8DCC4", grass2: "#8FD1B1", pitch: "#7CC79F", leaf: "#5DB88D",
+  field1: "#F3D98C", field2: "#E9C46A", field3: "#BFE3A8", field4: "#D9A066", fieldStripe1: "#E0B94F", fieldStripe4: "#C78A52",
+  road: "#F6E7C8", roof1: "#FF6B4A", roof2: "#7B3FC4", roof3: "#F89B7A", roof4: "#46A97F", barnRoof: "#C94A34",
+  wall1: "#FFF7E6", wall2: "#FBD9B8", wall3: "#F8E4AE", wall4: "#CDE3FA", wall5: "#F8D3DE",
+  stone: "#D8CBB8", stoneD: "#B8A68E", sea: "#7FB5EA", beach: "#F6DFAE", cliff: "#C98B55", cliffShade: "#A86E3F",
+  /** Unexplored tiles: soft neutral mosaic (grout + four close shades), no preview of the art. */
+  tileGrout: "#EEF2F7", tile1: "#DCE4EE", tile2: "#D4DDE9", tile3: "#E1E8F1", tile4: "#D8E0EB",
+  wood: "#8E6A4C", timber: "#A86E3F", hayShade: "#C99A2E", seal: "#8E7A6A", eagle: "#6E4F38", horseDark: "#6E4F38",
+} as const;

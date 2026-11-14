@@ -147,6 +147,7 @@ export default function Settings() {
   const setReminders = (p: Partial<ReminderPrefs>) => void action(() => app.updatePrefs({ reminders: { ...reminders, ...p } }));
   const reminderToggle = (key: "streak" | "onThisDay" | "discarded", title: string) => (
     <Switch
+      className="self-center"
       accessibilityLabel={title}
       value={reminders[key]}
       trackColor={{ true: theme.colors.grass, false: theme.colors.tint }}
@@ -157,6 +158,7 @@ export default function Settings() {
   const close = () => (router.canGoBack() ? router.back() : router.replace("/(tabs)/home"));
   const toggle = (key: "haptics" | "autoplay", title: string) => (
     <Switch
+      className="self-center"
       accessibilityLabel={title}
       value={app.prefs[key]}
       trackColor={{ true: theme.colors.grass, false: theme.colors.tint }}
@@ -172,7 +174,7 @@ export default function Settings() {
 
         <Pressable
           accessibilityRole="button"
-          onPress={() => (app.pro && app.entitlementSource === "store" ? void action(() => manageSubscription(app.entitlement?.managementURL)) : router.push("/paywall"))}
+          onPress={() => (app.pro && app.entitlementSource !== "developer" ? void action(() => manageSubscription(app.entitlement?.managementURL)) : router.push("/paywall"))}
           style={lift}
           className="mt-4 flex-row items-center gap-3 rounded-[20px] bg-primary px-4 py-4 active:opacity-90"
         >
@@ -180,9 +182,11 @@ export default function Settings() {
             <Icon name="Sparkles" size={20} className="text-foreground" />
           </View>
           <View className="flex-1">
-            <Text className="text-h3 text-primary-foreground">{app.pro ? "Pictopia+ · Active" : "Pictopia+"}</Text>
+            <Text className="text-h3 text-primary-foreground">{app.entitlementSource === "lifetime" ? "Pictopia+ for Life" : app.pro ? "Pictopia+ · Active" : "Pictopia+"}</Text>
             <Text className="text-caption text-primary-foreground/80">
-              {app.pro && app.entitlementSource === "developer"
+              {app.entitlementSource === "lifetime"
+                ? "Permanent access · Manage store billing"
+                : app.pro && app.entitlementSource === "developer"
                 ? "Developer override · not a purchase"
                 : app.pro
                 ? app.entitlement?.expires
@@ -199,6 +203,7 @@ export default function Settings() {
           </Pressable>
         )}
 
+        <View style={lift} className="mt-4 overflow-hidden rounded-[20px] bg-card"><Row title="Invite a friend" onPress={() => router.push("/referrals")} last><Icon name="Handshake" size={20} className="text-foreground" /></Row></View>
         <Text accessibilityRole="header" className="mb-2.5 mt-4 text-h3 text-foreground">Theme</Text>
         <View style={lift} className="gap-4 rounded-[20px] bg-card px-3 pb-4 pt-3.5">
           <View className="relative flex-row items-center gap-2.5 rounded-[14px] bg-background p-2.5">
@@ -253,7 +258,7 @@ export default function Settings() {
                     );
                   })}
                 </View>
-                <Text className="text-caption leading-5 text-muted-foreground">At most one a day, and only when there’s a reason: a streak at risk, photos from this date in past years, or photos waiting to delete.</Text>
+                <Text className="text-caption leading-5 text-muted-foreground">At most one a day, and only when there’s a reason: a streak at risk, photos from this date in past years (sent at 8 am), or photos waiting to delete.</Text>
               </View>
             </>
           ) : notify === "unsupported" ? (

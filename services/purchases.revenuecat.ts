@@ -65,6 +65,7 @@ export const purchaseService: PurchaseService = {
         : [];
     });
   },
+  async evidence() { return null; },
   async refresh() {
     check();
     return entitlement(await Purchases.getCustomerInfo());

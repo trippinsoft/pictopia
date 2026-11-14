@@ -101,6 +101,22 @@ export const storage: Storage = {
     });
     return [...months.values()].sort((a, b) => b.key.localeCompare(a.key));
   },
+  async memoryWall() {
+    const months = new Map<string, import("./storage.types").WallMonth>();
+    await each(m => {
+      if (m.type !== "photo" || (!m.deletedAt && !m.active)) return;
+      const key = calendarMonth(m);
+      const row = months.get(key) ?? { key, total: 0, explored: 0, remaining: 0, cleared: 0 };
+      if (m.deletedAt) row.cleared++;
+      else {
+        row.total++;
+        if (m.firstSeenAt) row.explored++; else row.remaining++;
+        row.coverId ??= m.id;
+      }
+      months.set(key, row);
+    });
+    return [...months.values()].sort((a, b) => b.key.localeCompare(a.key));
+  },
   async get(id) {
     return await req(db.transaction("media", "readonly").objectStore("media").get(id));
   },

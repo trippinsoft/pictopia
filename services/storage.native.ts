@@ -3,6 +3,15 @@ import * as SQLite from "expo-sqlite";
 import { Storage } from "./storage.types";
 import { Query, Stats, Month } from "@/lib/pictopia/types";
 let db: SQLite.SQLiteDatabase;
+let initialization: Promise<void> | undefined;
+let writeTail = Promise.resolve();
+// Some preference writers bypass the repository serializer. SQLite permits only one
+// writer, including schema setup and migrations, across exclusive connections.
+function write<T>(work: () => Promise<T>): Promise<T> {
+  const next = writeTail.then(work);
+  writeTail = next.then(() => {}, () => {});
+  return next;
+}
 const calendarKey = "CASE WHEN created>0 AND length(month)=7 AND month GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]' AND substr(month,6,2) BETWEEN '01' AND '12' THEN month ELSE 'unknown' END";
 function conditions(q: Query) {
   let sql = q.includeInactive ? "1=1" : "active=1";
@@ -44,17 +53,31 @@ function conditions(q: Query) {
 }
 export const storage: Storage = {
   async init() {
-    // Stable legacy storage identity preserves saved decisions across the brand rename.
-    db = await SQLite.openDatabaseAsync("flickwell.db");
-    const version = await db.getFirstAsync<{ user_version: number }>("PRAGMA user_version");
-    if ((version?.user_version ?? 0) > 1)
-      throw Error("This local database needs a newer version of Pictopia.");
-    await db.execAsync(
-      `PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS media(id TEXT PRIMARY KEY NOT NULL,data TEXT NOT NULL,created REAL,month TEXT,day TEXT,type TEXT,decision TEXT,favorite INTEGER,screenshot INTEGER,size REAL,active INTEGER,scanned INTEGER,hash TEXT);CREATE TABLE IF NOT EXISTS preferences(key TEXT PRIMARY KEY,value TEXT NOT NULL);CREATE INDEX IF NOT EXISTS media_date ON media(active,created DESC);CREATE INDEX IF NOT EXISTS media_month ON media(active,month);CREATE INDEX IF NOT EXISTS media_decision ON media(active,decision);CREATE INDEX IF NOT EXISTS media_hash ON media(hash);PRAGMA user_version=1;`,
-    );
+    if (initialization) return initialization;
+    initialization = write(async () => {
+      // Stable legacy storage identity preserves saved decisions across the brand rename.
+      const connection = await SQLite.openDatabaseAsync("flickwell.db");
+      try {
+        const version = await connection.getFirstAsync<{ user_version: number }>("PRAGMA user_version");
+        if ((version?.user_version ?? 0) > 1)
+          throw Error("This local database needs a newer version of Pictopia.");
+        await connection.execAsync(
+          `PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS media(id TEXT PRIMARY KEY NOT NULL,data TEXT NOT NULL,created REAL,month TEXT,day TEXT,type TEXT,decision TEXT,favorite INTEGER,screenshot INTEGER,size REAL,active INTEGER,scanned INTEGER,hash TEXT);CREATE TABLE IF NOT EXISTS preferences(key TEXT PRIMARY KEY,value TEXT NOT NULL);CREATE INDEX IF NOT EXISTS media_date ON media(active,created DESC);CREATE INDEX IF NOT EXISTS media_month ON media(active,month);CREATE INDEX IF NOT EXISTS media_decision ON media(active,decision);CREATE INDEX IF NOT EXISTS media_hash ON media(hash);PRAGMA user_version=1;`,
+        );
+        db = connection;
+      } catch (error) {
+        await connection.closeAsync?.().catch(() => {});
+        throw error;
+      }
+    }).catch((error) => {
+      initialization = undefined;
+      throw error;
+    });
+    return initialization;
   },
   async migrateSeen() {
-    await db.runAsync("UPDATE media SET data=json_set(data,'$.firstSeenAt',?) WHERE type='photo' AND json_extract(data,'$.firstSeenAt') IS NULL AND (decision IS NOT NULL OR json_extract(data,'$.deletedAt') IS NOT NULL)", Date.now());
+    await this.init();
+    await write(() => db.runAsync("UPDATE media SET data=json_set(data,'$.firstSeenAt',?) WHERE type='photo' AND json_extract(data,'$.firstSeenAt') IS NULL AND (decision IS NOT NULL OR json_extract(data,'$.deletedAt') IS NOT NULL)", Date.now()));
   },
   async progress() {
     const row = await db.getFirstAsync<import("./storage.types").LibraryProgress>(`SELECT
@@ -81,6 +104,16 @@ export const storage: Storage = {
       COALESCE(SUM(json_extract(data,'$.firstSeenAt') IS NOT NULL),0) explored,
       COALESCE(SUM(json_extract(data,'$.firstSeenAt') IS NULL),0) remaining,
       MAX(id) coverId FROM media WHERE active=1 AND type='photo' AND json_extract(data,'$.deletedAt') IS NULL ${screenshotsOnly ? 'AND screenshot=1' : ''} GROUP BY ${calendarKey} ORDER BY key DESC`);
+  },
+  async memoryWall() {
+    return db.getAllAsync<import("./storage.types").WallMonth>(`SELECT ${calendarKey} AS key,
+      COALESCE(SUM(json_extract(data,'$.deletedAt') IS NULL),0) total,
+      COALESCE(SUM(json_extract(data,'$.deletedAt') IS NULL AND json_extract(data,'$.firstSeenAt') IS NOT NULL),0) explored,
+      COALESCE(SUM(json_extract(data,'$.deletedAt') IS NULL AND json_extract(data,'$.firstSeenAt') IS NULL),0) remaining,
+      COALESCE(SUM(json_extract(data,'$.deletedAt') IS NOT NULL),0) cleared,
+      MAX(CASE WHEN json_extract(data,'$.deletedAt') IS NULL THEN id END) coverId
+      FROM media WHERE type='photo' AND ((active=1 AND json_extract(data,'$.deletedAt') IS NULL) OR json_extract(data,'$.deletedAt') IS NOT NULL)
+      GROUP BY ${calendarKey} ORDER BY key DESC`);
   },
   async get(id) {
     const row = await db.getFirstAsync<{ data: string }>("SELECT data FROM media WHERE id=?", id);
@@ -112,7 +145,8 @@ export const storage: Storage = {
     return row ?? { total: 0, bytes: 0 };
   },
   async put(items, values = {}) {
-    await db.withExclusiveTransactionAsync(async (tx) => {
+    await this.init();
+    await write(() => db.withExclusiveTransactionAsync(async (tx) => {
       for (const m of items) {
         if (!m.id) throw Error("A media record has no identifier.");
         await tx.runAsync(
@@ -134,7 +168,7 @@ export const storage: Storage = {
       }
       for (const [k, v] of Object.entries(values))
         await tx.runAsync("INSERT OR REPLACE INTO preferences VALUES(?,?)", k, JSON.stringify(v));
-    });
+    }));
   },
   async getValue<T>(key: string) {
     const r = await db.getFirstAsync<{ value: string }>(

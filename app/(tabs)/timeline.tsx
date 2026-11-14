@@ -7,9 +7,9 @@ import { MediaImage } from "@/components/pictopia/media-image";
 import { TabHeader, useLift } from "@/components/pictopia/playful";
 import { usePictopia } from "@/components/pictopia/provider";
 import { serialize, storage } from "@/services/repository";
-import type { CalendarProgress } from "@/services/storage.types";
+import type { WallMonth as CalendarProgress } from "@/services/storage.types";
 import type { Media } from "@/lib/pictopia/types";
-import { explorationPercent } from "@/lib/pictopia/library-progress";
+import { explorationPercent, wallPercent } from "@/lib/pictopia/library-progress";
 import { plural } from "@/lib/pictopia/text";
 
 type MonthData = { key: string; month: CalendarProgress; scope: `month:${string}` | "unknown" };
@@ -31,7 +31,9 @@ export default function Timeline() {
     let alive = true;
     if (!app.ready || !app.libraryReliable) { setMonths(undefined); return; }
     void serialize(async () => {
-      const data = await storage.calendarProgress();
+      // Same months and "photos left" as before; percentages follow the shared rule (confirmed
+      // deletions stay explored). Months whose only photos were deleted have nothing to open.
+      const data = (await storage.memoryWall()).filter((m) => m.total > 0);
       if (alive) { setMonths(data); setError(false); }
     }).catch(() => { if (alive) setError(true); });
     return () => { alive = false; };
@@ -43,10 +45,11 @@ export default function Timeline() {
     const list: Row[] = [];
     let currentYear: string | undefined;
     const yearTotals = new Map<string, { total: number; explored: number; complete: number; count: number }>();
+    // Year totals include confirmed deletions so they match the Memory Wall.
     for (const m of dated) {
       const year = m.key.slice(0, 4);
       const t = yearTotals.get(year) ?? { total: 0, explored: 0, complete: 0, count: 0 };
-      t.total += m.total; t.explored += m.explored; t.count += 1;
+      t.total += m.total + m.cleared; t.explored += m.explored + m.cleared; t.count += 1;
       if (m.remaining === 0) t.complete += 1;
       yearTotals.set(year, t);
     }
@@ -130,7 +133,7 @@ function MonthRow({ row, onOpen, lift }: { row: MonthData; onOpen: () => void; l
     const [year, month] = row.month.key.split("-").map(Number);
     return new Date(year, month - 1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
   })();
-  const percent = explorationPercent(row.month.explored, row.month.total) ?? 0;
+  const percent = wallPercent(row.month) ?? 0;
   const complete = row.month.remaining === 0;
   return (
     <Pressable

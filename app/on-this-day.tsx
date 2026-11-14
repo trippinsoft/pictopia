@@ -1,49 +1,84 @@
-import { useCallback, useRef, useState } from "react";
-import { FlatList, Platform, Pressable, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Platform, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router, useFocusEffect } from "expo-router";
-import { ScreenHeader } from "@/components/pictopia/navigation-header";
-import { Icon, Loading, Text } from "@/components/pictopia/ui";
+import { router, Stack, useFocusEffect } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { NavigationBack } from "@/components/pictopia/navigation-header";
+import { AdventureReview, ProgressLine } from "@/components/pictopia/adventure-review";
+import { ReviewTrash } from "@/components/pictopia/review-trash";
+import { AdventureTheme } from "@/components/pictopia/adventure-theme";
+import { DaySelector, type DayOption } from "@/components/pictopia/day-selector";
+import { Button, Loading, Text } from "@/components/pictopia/ui";
 import { usePictopia } from "@/components/pictopia/provider";
 import { adventureStore } from "@/services/adventures";
-import { plural } from "@/lib/pictopia/text";
+import { addDays, localDate } from "@/lib/pictopia/daily";
 
 export default function OnThisDay() {
   const app = usePictopia();
-  const [dates, setDates] = useState<Awaited<ReturnType<typeof adventureStore.history>>>();
-  const [error, setError] = useState<string>(), [busy, setBusy] = useState<string>();
-  const opening = useRef(false);
+  const [dates, setDates] = useState<DayOption[]>(() => Array.from({ length: 7 }, (_, i) => ({ date: addDays(localDate(Date.now()), -i) })));
+  const [selection, setSelection] = useState<{ date: string; id?: string }>(() => ({ date: localDate(Date.now()) }));
+  const [error, setError] = useState<string>(), [datesError, setDatesError] = useState(false), [busy, setBusy] = useState(true);
+  const opening = useRef(false), alive = useRef(true), initialized = useRef(false);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  const loadDates = useCallback(async () => {
+    try {
+      const rows = await adventureStore.history();
+      if (alive.current) { setDates(rows.slice(0, 7)); setDatesError(false); }
+    } catch { if (alive.current) setDatesError(true); }
+  }, []);
   useFocusEffect(useCallback(() => {
-    let live = true; setDates(undefined);
-    void adventureStore.history().then(rows => { if (live) { setDates(rows); setError(undefined); } }).catch(() => { if (live) setError("Dates couldn’t load. Return to Explore and try again."); });
-    return () => { live = false; };
-  }, []));
-  const open = async (date: string, historical: boolean) => {
-    if (historical && !app.pro) return router.push("/paywall");
-    if (opening.current) return;
-    opening.current = true; setBusy(date); setError(undefined);
+    if (app.ready) void loadDates();
+  }, [app.ready, loadDates]));
+  const open = useCallback(async (date: string) => {
+    if (opening.current || !app.ready) return;
+    if (date !== localDate(Date.now()) && !app.pro) { router.push("/paywall"); return; }
+    opening.current = true; setBusy(true); setError(undefined); setSelection({ date });
     try {
       const adventure = await adventureStore.choose({ kind: "day", date }, Date.now(), app.pro);
-      if (!adventure) { setError("No photos or videos on this exact date. Choose another day."); return; }
-      await adventureStore.open(adventure.id, app.pro);
-      router.push({ pathname: "/vertical-explore", params: { adventure: adventure.id } });
-    } catch { setError("These memories couldn’t open. Please try again."); }
-    finally { opening.current = false; setBusy(undefined); }
-  };
-  return <SafeAreaView className="flex-1 bg-background">
-    <View className="mx-auto w-full max-w-md flex-1 px-5">
-      <ScreenHeader title="On This Day" fallback="/(tabs)/explore" />
-      <Text className="mb-4 mt-3 text-body text-muted-foreground">Today’s memories, across the years.</Text>
-      {Platform.OS === "web" && <Text className="mb-3 text-caption text-muted-foreground">Browser dates use file-modified dates.</Text>}
-      {!!error && <Text accessibilityLiveRegion="polite" className="mb-4 text-body text-destructive">{error}</Text>}
-      {!dates && !error ? <Loading /> : <FlatList data={dates} keyExtractor={row => row.date} renderItem={({ item, index }) => <Pressable accessibilityRole="button" disabled={!!busy || item.count === 0} onPress={() => void open(item.date, index > 0)} className="mb-2 min-h-16 flex-row items-center gap-3 rounded-2xl bg-card px-4 py-3 active:opacity-70">
-        <View className="flex-1">
-          <Text className="text-h4 text-foreground">{index === 0 ? "Today" : new Date(`${item.date}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</Text>
-          <Text className="mt-1 text-caption text-muted-foreground">{busy === item.date ? "Opening…" : item.count ? plural(item.count, "memory", "memories") : "No photos or videos on this date"}</Text>
+      if (adventure) await adventureStore.open(adventure.id, app.pro);
+      if (alive.current) setSelection({ date, id: adventure?.id });
+    } catch { if (alive.current) setError("These memories couldn’t open. Please try again."); }
+    finally { opening.current = false; if (alive.current) setBusy(false); }
+  }, [app.ready, app.pro]);
+  // The route itself opens today's saved reviewer; there is no intermediate date list.
+  useEffect(() => {
+    if (!app.ready || initialized.current) return;
+    initialized.current = true;
+    void open(localDate(Date.now()));
+  }, [app.ready, open]);
+  const navigation = (disabled = false, flush?: () => void) => <>
+    <DaySelector dates={dates} selected={selection.date} pro={app.pro} disabled={disabled || busy || !app.ready}
+      onSelect={date => { if (date === selection.date) return; flush?.(); void open(date); }} />
+    {datesError ? <Button secondary onPress={() => void loadDates()}>Retry photo counts</Button> : null}
+  </>;
+  if (selection.id) return <AdventureReview key={selection.id} id={selection.id}
+    dateNavigation={({ disabled, flush }) => navigation(disabled, flush)} />;
+  return <AdventureTheme enabled><SafeAreaView className="flex-1 bg-background">
+    <StatusBar style="light" /><Stack.Screen options={{ title: "On This Day", headerShown: false }} />
+    <View className="mx-auto w-full max-w-3xl flex-1">
+      <View className="gap-2 px-4 pb-2 pt-1">
+        <View className="flex-row items-center justify-between pb-6">
+          <NavigationBack fallback="/(tabs)/explore" />
+          <View className="min-w-0 flex-1 items-center px-2">
+            <Text numberOfLines={1} accessibilityRole="header" className="text-center text-headline text-foreground">On This Day</Text>
+            <Text className="text-caption text-muted-foreground" style={{ fontVariant: ["tabular-nums"] }}>{busy || !app.ready ? "…" : "0 of 0"}</Text>
+            {!app.pro ? <View className="h-[34px]" /> : null}
+          </View>
+          <ReviewTrash count={0} bytes={0} unknownSizes={0} disabled onMeasure={() => {}} onPress={() => {}} />
         </View>
-        {index > 0 && !app.pro && <View className="rounded-full bg-secondary px-2 py-1"><Text className="text-caption text-muted-foreground">Pictopia+</Text></View>}
-        {item.count > 0 && <Icon name="ChevronRight" size={18} className="text-muted-foreground" />}
-      </Pressable>} />}
+        <ProgressLine total={0} initial={0} />
+      </View>
+      {navigation()}
+      <View className="flex-1 items-center justify-center gap-3 px-6">
+        {busy || !app.ready ? <Loading /> : error ? <>
+          <Text accessibilityRole="alert" className="text-center text-body text-foreground">{error}</Text>
+          <Button onPress={() => void open(selection.date)}>Try again</Button>
+        </> : <>
+          <Text accessibilityRole="header" className="text-center text-h2 text-foreground">No memories on this date</Text>
+          <Text className="text-center text-body text-muted-foreground">No photos or videos from earlier years on this day. Try another date above.</Text>
+        </>}
+        {Platform.OS === "web" ? <Text className="text-center text-caption text-muted-foreground">Browser dates use file-modified dates.</Text> : null}
+      </View>
     </View>
-  </SafeAreaView>;
+  </SafeAreaView></AdventureTheme>;
 }

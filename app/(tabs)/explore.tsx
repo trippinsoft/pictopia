@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
 import { Button, Icon, Loading, Text } from "@/components/pictopia/ui";
 import { usePictopia } from "@/components/pictopia/provider";
-import { InfoSheet, SectionTitle, TabHeader, useLift } from "@/components/pictopia/playful";
+import { SectionTitle, TabHeader, useLift } from "@/components/pictopia/playful";
 import { AlbumCard } from "@/components/pictopia/album-card";
 import { MediaImage } from "@/components/pictopia/media-image";
 import { Illustration, type ArtName } from "@/components/pictopia/illustration";
@@ -12,7 +12,7 @@ import type { IconName } from "@/lib/icons/LucideIcon";
 import { adventureStore, type AdventureSlot, type ExploreChoice } from "@/services/adventures";
 import { storage } from "@/services/repository";
 import { adventurePlace, meaningfulReview, type AdventureKind } from "@/lib/pictopia/adventures";
-import { catalogEntry, catalogFor, type CatalogEntry, type CatalogId } from "@/lib/pictopia/catalog";
+import { type CatalogId } from "@/lib/pictopia/catalog";
 import type { Media } from "@/lib/pictopia/types";
 import { albumService } from "@/services/albums";
 import { albumsLabel } from "@/lib/pictopia/albums";
@@ -45,7 +45,6 @@ export default function Explore() {
   const [favorites, setFavorites] = useState<{ total: number; cover?: Media }>();
   const [busy, setBusy] = useState<string>();
   const [message, setMessage] = useState<string>();
-  const [info, setInfo] = useState<CatalogEntry>();
   const [retry, setRetry] = useState(0);
   const hasPhotos = app.ready && app.stats.total > 0;
   useFocusEffect(useCallback(() => {
@@ -142,14 +141,12 @@ export default function Explore() {
         ) : (
           <>
             {!!message && <Text accessibilityRole="alert" className="mt-3 text-body text-destructive">{message}</Text>}
-            {/* On This Day — always present, info icon on the right so the user can learn
-                 what it is even when there's nothing for today. */}
+            {/* On This Day stays available even when today has no memories. */}
             <ExploreTile
               lift={lift}
               title="On This Day"
               hint={choices.day ? (otd ? `${otd.adventure.hint.detail}${place(otd) ? ` · ${place(otd)}` : ""}` : "Today’s date in earlier years") : "Nothing from today’s date yet — open a past date"}
               art={{ illustration: "onThisDay" }}
-              onInfo={() => setInfo(catalogEntry("on-this-day"))}
               badge={busy === "on-this-day" ? "Preparing…" : "Today"}
               onPress={() => void begin("on-this-day")}
             />
@@ -182,7 +179,6 @@ export default function Explore() {
                 hint={surprise ? surprise.adventure.hint.detail : "20 photos, drawn from across your years"}
                 art={{ illustration: "detour" }}
                 badge={busy === "surprise-me" ? "Preparing…" : place(surprise)}
-                onInfo={() => setInfo(catalogEntry("surprise-me"))}
                 onPress={() => void begin("surprise-me")}
               />
             ) : (
@@ -200,7 +196,6 @@ export default function Explore() {
                   art={{ illustration: "screenshots" }}
                   plus={!app.pro}
                   badge={busy === "screenshot-sweep" ? "Preparing…" : app.pro ? place(screenshotSlot) : undefined}
-                  onInfo={() => setInfo(catalogEntry("screenshot-sweep"))}
                   onPress={() => openPlus(() => void begin("screenshot-sweep"))}
                 />
               ) : (
@@ -249,7 +244,6 @@ export default function Explore() {
           </>
         )}
       </ScrollView>
-      <InfoSheet entry={info} note={info && catalogFor("day") === info && otd ? `Today’s trip: ${otd.adventure.hint.detail}.` : undefined} onClose={() => setInfo(undefined)} />
     </SafeAreaView>
   );
 }
@@ -258,7 +252,7 @@ export default function Explore() {
  * panel on the left). `square` turns it into a half-width square card — art on top, text
  * below — so sibling pairs can sit two-up in a `flex-row gap-3`. `disabled` greys the tile
  * but keeps its shape, so empty sections never collapse. */
-function ExploreTile({ lift, title, hint, art, plus, disabled, badge, square, onInfo, onPress }: {
+function ExploreTile({ lift, title, hint, art, plus, disabled, badge, square, onPress }: {
   lift: object;
   title: string;
   hint: string;
@@ -268,7 +262,6 @@ function ExploreTile({ lift, title, hint, art, plus, disabled, badge, square, on
   disabled?: boolean;
   badge?: string;
   square?: boolean;
-  onInfo?: () => void;
   onPress?: () => void;
 }) {
   const label = `${title}${plus ? ", Pictopia+" : ""}. ${hint}`;
@@ -309,8 +302,7 @@ function ExploreTile({ lift, title, hint, art, plus, disabled, badge, square, on
       </View>
     </View>
   );
-  // The info button is a sibling overlay, never nested inside the card's Pressable —
-  // a button inside a button is invalid on web. `active:` lives on the Pressable, never on
+  // `active:` lives on the Pressable, never on
   // the card View: NativeWind upgrades a View with press pseudo-classes into its own
   // Pressable on native, which would claim every tap before onPress can fire.
   return (
@@ -318,13 +310,6 @@ function ExploreTile({ lift, title, hint, art, plus, disabled, badge, square, on
       {disabled || !onPress
         ? <View accessibilityLabel={label}>{row}</View>
         : <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} className="active:opacity-90">{row}</Pressable>}
-      {!!onInfo && !disabled && (
-        <View className="absolute right-0 top-0">
-          <Pressable accessibilityRole="button" accessibilityLabel={`About ${title}`} onPress={onInfo} hitSlop={6} className="h-9 w-9 items-center justify-center active:opacity-60">
-            <Icon name="Info" size={16} className="text-muted-foreground" />
-          </Pressable>
-        </View>
-      )}
     </View>
   );
 }

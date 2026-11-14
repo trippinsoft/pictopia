@@ -1,3 +1,6 @@
+import { isLifetimeEligible } from "@/lib/pictopia/lifetime-plus";
+import { lifetimePlusStore } from "@/services/lifetime-plus";
+import { checkLifetimeCompletion } from "@/services/lifetime-completion";
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from "react";
 import { AppState, Appearance, Platform, View, Pressable } from "react-native";
 import { Text } from "@/components/ui/text";
@@ -219,10 +222,14 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
         setPermission(await mediaService.permission());
         await refresh();
         setLibraryReliable(Platform.OS === "web");
+        // Verify the saved receipt locally before review screens can apply a free limit.
+        // Network availability is never required to restore a saved award.
+        await lifetimePlusStore.load().catch(() => null);
         setReady(true);
         void allowanceStore.refreshLimit().catch(() => {});
         stopPurchases = await purchaseService.init((e) => {
           void saveEnt(e);
+          void lifetimePlusStore.sync({ payment: true }).catch(() => {});
         });
         if (Platform.OS !== "web") {
           // Finish checking any deletion interrupted by a crash or termination before syncing.
@@ -270,10 +277,26 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
       clearInterval(timer);
     };
   }, []);
-  const resolved = resolveEntitlement(entitlement, devOverride, devOverrideStore.authorized, clock);
+  const [lifetime, setLifetime] = useState(lifetimePlusStore.snapshot);
+  useEffect(() => {
+    const stop = lifetimePlusStore.subscribe(() => setLifetime(lifetimePlusStore.snapshot()));
+    void lifetimePlusStore.sync().catch(() => {});
+    const refresh = setInterval(() => { void lifetimePlusStore.sync().catch(() => {}); }, 5 * 60000);
+    const foreground = AppState.addEventListener("change", state => {
+      if (state === "active") void lifetimePlusStore.sync().catch(() => {});
+    });
+    return () => { stop(); clearInterval(refresh); foreground.remove(); };
+  }, []);
+  const resolved = resolveEntitlement(entitlement, devOverride, devOverrideStore.authorized, clock, lifetime);
+  useEffect(() => {
+    if (ready && isLifetimeEligible(lifetime, clock) && !busy && scan.status === "complete" &&
+      permission?.granted && !permission.limited && AppState.currentState === "active") {
+      void checkLifetimeCompletion().catch(() => {});
+    }
+  }, [ready, lifetime, busy, scan.status, permission?.granted, permission?.limited, revision, clock]);
   /** Fresh resolution from saved state, for long-running work that must stop if Pictopia+ ends. */
   const proNow = async () =>
-    resolveEntitlement((await storage.getValue<Entitlement>("entitlement")) ?? null, await devOverrideStore.load(), devOverrideStore.authorized).pro;
+    resolveEntitlement((await storage.getValue<Entitlement>("entitlement")) ?? null, await devOverrideStore.load(), devOverrideStore.authorized, Date.now(), lifetimePlusStore.snapshot()).pro;
   async function start(c: Collection, minutes: SessionMinutes = 5) {
     if (!ready) return;
     if (session && !session.complete && session.collection === c) return;
@@ -450,7 +473,8 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
     restorePurchases: async () => {
       const e = await purchaseService.restore();
       await saveEnt(e);
-      if (!e.active) throw Error("No active Pictopia+ purchase was found for this store account.");
+      await lifetimePlusStore.sync({ restore: true });
+      if (!e.active && !resolveEntitlement(e, null, false, Date.now(), lifetimePlusStore.snapshot()).pro) throw Error("No active Pictopia+ purchase was found for this store account.");
     },
     setEntitlement: saveEnt,
     deleteQueue,

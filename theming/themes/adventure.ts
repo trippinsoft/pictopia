@@ -31,6 +31,8 @@ const adventureTheme: Theme = {
     tint: "hsl(0 0% 0%)",
     sun: lightTheme.colors.sun,
     sunSoft: "hsl(43 40% 22%)",
+    sunPastel: "hsl(46 100% 84%)",
+    sunInk: "hsl(30 8% 11%)",
     tomato: lightTheme.colors.tomato,
     grass: "hsl(151 50% 52%)",
   },

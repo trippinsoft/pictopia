@@ -58,7 +58,7 @@ test('scope labels distinguish open-ended session activity, bounded scope percen
   assert.equal(r.reviewProgressLabel(-1,18),'1 of 18');
   assert.equal(r.reviewProgressLabel(30,18),'18 of 18');
   assert.match(r.moreCollectionLabel('album:a'),/this album/);
-  assert.match(r.limitCopy(150).title,/150 photos and videos/);
+  assert.match(r.limitCopy(150).title,/150 reviews/);
 });
 
 function video(resolve) {
@@ -132,7 +132,7 @@ test('the actual allowance hook charges historical encounters on a new day, then
   const session={ids:['a','b'],activeId:'a',records:{a:{encountered:true}}};let counted=Array.from({length:149},(_,i)=>String(i)),calls=0;const events={};
   const h=hooks('components/pictopia/use-allowance.ts','useAllowance',{
     'react-native':{AppState:{currentState:'active',addEventListener:(name,fn)=>{events[name]=fn;return{remove(){}}}}},
-    '@/services/daily':{allowanceStore:{state:async()=>({counted}),limit:async()=>150,present:async id=>{calls++;counted=[...counted,id];return{counted,left:150-counted.length,limit:150}}}},
+    '@/services/daily':{allowanceStore:{snapshot:async()=>({counted,left:150-counted.length,limit:150,date:"2026-11-14"}),present:async id=>{calls++;counted=[...counted,id];return{counted,left:150-counted.length,limit:150,date:"2026-11-14"}}}},
   },[session,session.ids,'a',false,true]);
   assert.equal(h.render().ready,false);await tick();h.render();await tick();
   assert.equal(h.render().stopBefore,'b');assert.equal(calls,1,'old encounters do not grant lifetime free access');

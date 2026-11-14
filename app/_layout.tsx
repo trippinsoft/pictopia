@@ -16,6 +16,8 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { PictopiaProvider, usePictopia } from "@/components/pictopia/provider";
 import { ReminderHost } from "@/components/pictopia/use-reminders";
 import { BadgeCelebrationHost } from "@/components/pictopia/badge-celebration";
+import { LifetimeAwardNotice } from "@/components/pictopia/lifetime-award-notice";
+import { ReferralSync } from "@/components/pictopia/referral-sync";
 import { systemAppearanceService } from "@/services/system-appearance";
 import { ThemeProvider, useTheme } from "@/theming/ThemeProvider";
 import darkTheme from "@/theming/themes/dark";
@@ -174,6 +176,9 @@ function RootContent() {
           <Stack.Screen name="vertical-explore" options={{ title: "Adventure", gestureEnabled: false, fullScreenGestureEnabled: false }} />
           <Stack.Screen name="collection-review" options={{ title: "Photo review", gestureEnabled: false, fullScreenGestureEnabled: false }} />
           <Stack.Screen name="queue" options={{ title: "Discarded" }} />
+          <Stack.Screen name="referrals" options={{ title: "Invite a friend" }} />
+          <Stack.Screen name="memory-wall" options={{ title: "The Big Picture" }} />
+          <Stack.Screen name="memory-wall-year" options={{ title: "The Big Picture" }} />
           <Stack.Screen
             name="index"
             options={{
@@ -183,7 +188,9 @@ function RootContent() {
           />
         </Stack>
         <ReminderHost />
+        <ReferralSync ready={ready} />
         <BadgeCelebrationHost />
+        <LifetimeAwardNotice />
         {
           // View used as a portal container on web
           <View

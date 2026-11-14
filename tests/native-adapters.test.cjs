@@ -51,8 +51,76 @@ test("native SQLite adapter runs migrations, transactions, queries, and aggregat
   await assert.rejects(() => storage.put([{ ...m, id: null }], { session: { position: 2 } }));
   assert.equal((await storage.getValue("session")).position, 1);
   db.exec("PRAGMA user_version=2");
-  await assert.rejects(() => storage.init(), /newer version/);
+  const freshStorage = makeLoader({ "expo-sqlite": { openDatabaseAsync: async () => adapter } })("services/storage.native.ts").storage;
+  await assert.rejects(() => freshStorage.init(), /newer version/);
   db.close();
+});
+test("native storage shares initialization and queues overlapping foreground writes and migrations", async () => {
+  const db = new DatabaseSync(":memory:");
+  const tick = () => new Promise(resolve => setImmediate(resolve));
+  let writing = false, opens = 0, schemas = 0;
+  const run = async (sql, ...args) => {
+    await tick();
+    return db.prepare(sql).run(...args);
+  };
+  const adapter = {
+    execAsync: async sql => {
+      assert.equal(writing, false, "schema setup must not overlap a transaction");
+      schemas++;
+      await tick();
+      db.exec(sql);
+    },
+    getFirstAsync: async (sql, ...args) => db.prepare(sql).get(...args),
+    runAsync: async (...args) => {
+      assert.equal(writing, false, "migration must not overlap a transaction");
+      return run(...args);
+    },
+    withExclusiveTransactionAsync: async work => {
+      assert.equal(writing, false, "exclusive writes must wait their turn");
+      writing = true;
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        await work({ runAsync: run });
+        db.exec("COMMIT");
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      } finally { writing = false; }
+    },
+  };
+  const { storage } = makeLoader({ "expo-sqlite": { openDatabaseAsync: async () => {
+    opens++;
+    await tick();
+    return adapter;
+  } } })("services/storage.native.ts");
+  try {
+    await Promise.all([storage.init(), storage.init(), storage.setValue("startup", true)]);
+    await Promise.all([
+      ...Array.from({ length: 12 }, (_, i) => storage.setValue(`foreground:${i}`, i)),
+      storage.migrateSeen(), storage.init(),
+    ]);
+    assert.equal(opens, 1);
+    assert.equal(schemas, 1);
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM preferences").get().n, 13);
+    const failed = storage.put([], { partial: true, invalid: 1n });
+    const saved = storage.setValue("afterFailure", true);
+    await assert.rejects(() => failed, /BigInt/);
+    await saved;
+    assert.equal(await storage.getValue("partial"), undefined, "failed transaction must roll back");
+    assert.equal(await storage.getValue("afterFailure"), true, "failed writes must not block later saves");
+  } finally { db.close(); }
+});
+test("native database initialization can retry after a failed open", async () => {
+  let attempts = 0;
+  const adapter = { getFirstAsync: async () => ({ user_version: 1 }), execAsync: async () => {} };
+  const { storage } = makeLoader({ "expo-sqlite": { openDatabaseAsync: async () => {
+    if (++attempts === 1) throw Error("temporary open failure");
+    return adapter;
+  } } })("services/storage.native.ts");
+  await assert.rejects(() => storage.init(), /temporary open failure/);
+  await storage.init();
+  await storage.init();
+  assert.equal(attempts, 2);
 });
 function revenueFixture() {
   let info = {

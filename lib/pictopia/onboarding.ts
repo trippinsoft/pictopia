@@ -3,7 +3,7 @@
  * from what the store reports. */
 import type { Month, Offer } from "./types";
 
-export const TAGLINE = "The fast, fun way to sort your photos";
+export const TAGLINE = "The faster, more fun way to clean up your photo library";
 const DAY = 86400000;
 /** How long before a trial converts the reminder arrives. */
 export const TRIAL_REMINDER_DAYS_BEFORE = 2;
