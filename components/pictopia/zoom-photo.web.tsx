@@ -1,16 +1,23 @@
-import React, { useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { MediaImage } from "./media-image";
 import { ZoomPhotoProps } from "./zoom-photo.types";
-export function ZoomPhoto({ media, onSettled }: ZoomPhotoProps) {
-  const [scale, setScale] = useState(1),
+export function ZoomPhoto({ media, onSettled, active = true, onZoomChange, imageProps }: ZoomPhotoProps) {
+  const [scale, setScaleState] = useState(1),
     [position, setPosition] = useState({ x: 0, y: 0 });
   const pointers = useRef(new Map<number, { x: number; y: number }>()),
     lastDistance = useRef(0),
     last = useRef({ x: 0, y: 0 });
+  const setScale = (next: number | ((s: number) => number)) => setScaleState(s => {
+    const value = typeof next === "function" ? next(s) : next;
+    if ((value > 1) !== (s > 1)) onZoomChange?.(value > 1);
+    return value;
+  });
+  // A photo that stops being the shown one goes back to fitted.
+  useEffect(() => { if (!active) { setScaleState(1); setPosition({ x: 0, y: 0 }); } }, [active]);
   const outerStyle: React.CSSProperties = {
     flex: 1,
     overflow: "hidden",
-    touchAction: "none",
+    touchAction: onZoomChange && scale <= 1 ? "pan-y" : "none",
     cursor: scale > 1 ? "grab" : "zoom-in",
     display: "flex",
   };
@@ -35,9 +42,10 @@ export function ZoomPhoto({ media, onSettled }: ZoomPhotoProps) {
         }
       }}
       onPointerDown={(e) => {
+        if (!active) return;
         pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
         last.current = { x: e.clientX, y: e.clientY };
-        e.currentTarget.setPointerCapture(e.pointerId);
+        if (!onZoomChange || scale > 1) e.currentTarget.setPointerCapture(e.pointerId);
       }}
       onPointerMove={(e) => {
         if (!pointers.current.has(e.pointerId)) return;
@@ -66,7 +74,7 @@ export function ZoomPhoto({ media, onSettled }: ZoomPhotoProps) {
       }}
     >
       <div data-testid="photo-transform" style={transformStyle}>
-        <MediaImage allowRetry onSettled={onSettled} media={media} fit="contain" style={fillStyle} />
+        <MediaImage allowRetry onSettled={onSettled} media={media} fit="contain" style={fillStyle} {...imageProps} />
       </div>
     </div>
   );

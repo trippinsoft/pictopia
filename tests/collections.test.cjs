@@ -188,3 +188,49 @@ test('largest videos page by size, not by date', async () => {
   assert.deepEqual((await h.exploreStoreFor(h.currentBatch(state).sessionKey).load()).ids, ['v2', 'v3', 'v1']);
   assert.equal(h.collectionTitle('videos-large'), 'Largest videos');
 });
+
+test('largest videos resolves missing sizes before ranking and preserves old snapshots and decisions', async () => {
+  const rows = [
+    media('new-small', { type: 'video', created: 300, decision: 'keep' }),
+    media('old-big', { type: 'video', created: 100 }),
+    media('scanned', { type: 'video', created: 200, scan: { size: 200, version: 'test' } }),
+    media('unknown', { type: 'video', created: 400 }),
+  ];
+  const h = await setup(rows);
+  const calls = [];
+  h.app.mediaService.size = async m => {
+    calls.push(m.id);
+    if (m.id === 'unknown') throw Error('Metadata unavailable');
+    return m.id === 'old-big' ? 300 : 10;
+  };
+  const { createExplore } = makeLoader()('lib/pictopia/explore.ts');
+  const oldKey = 'collection:videos-large:legacy:explore';
+  await h.app.storage.setValue(oldKey, { ...createExplore(['unknown', 'new-small', 'scanned', 'old-big']), review: true });
+  await h.app.storage.setValue('photoCollection:videos-large', {
+    scope: 'videos-large', batches: [{ sessionKey: oldKey, mode: 'unseen' }], position: 0, openedAt: 1,
+  });
+  const state = await h.collectionStore.open('videos-large');
+  const key = h.currentBatch(state).sessionKey;
+  assert.notEqual(key, oldKey);
+  assert.deepEqual((await h.exploreStoreFor(key).load()).ids, ['old-big', 'scanned', 'new-small', 'unknown']);
+  assert.deepEqual((await h.app.storage.getValue(oldKey)).ids, ['unknown', 'new-small', 'scanned', 'old-big']);
+  assert.equal((await h.app.storage.get('old-big')).size, 300);
+  assert.equal((await h.app.storage.get('new-small')).decision, 'keep');
+  assert.equal((await h.app.storage.get('unknown')).size, undefined);
+  assert.ok(!calls.includes('scanned'));
+  assert.equal(h.currentBatch(await h.collectionStore.open('videos-large')).sessionKey, key);
+  assert.deepEqual(h.p.requests, []);
+  h.db.close();
+});
+
+test('largest videos ranks the entire library before limiting a batch', async () => {
+  const rows = Array.from({ length: 510 }, (_, i) => media(`v${i}`, { type: 'video', created: 1000 - i }));
+  const h = await setup(rows);
+  h.app.mediaService.size = async m => Number(m.id.slice(1)) + 1;
+  const state = await h.collectionStore.open('videos-large');
+  const ids = (await h.exploreStoreFor(h.currentBatch(state).sessionKey).load()).ids;
+  assert.equal(ids.length, 120);
+  assert.equal(ids[0], 'v509');
+  assert.equal(ids[119], 'v390');
+  h.db.close();
+});

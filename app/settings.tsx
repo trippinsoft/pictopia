@@ -1,3 +1,6 @@
+import { useLifetimeTest } from "@/components/pictopia/use-lifetime-test";
+import { lifetimeTestStore } from "@/services/lifetime-testing";
+import { defaultLifetimeTest, TEST_SUBSCRIPTIONS, TEST_PERCENTAGES, TEST_COUNTS, TEST_AWARDS, testQualifies } from "@/lib/pictopia/lifetime-testing";
 import { ScreenHeader } from "@/components/pictopia/navigation-header";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { AppState, Linking, Platform, Pressable, ScrollView, Switch, View } from "react-native";
@@ -9,7 +12,7 @@ import { usePictopia } from "@/components/pictopia/provider";
 import { useLift } from "@/components/pictopia/playful";
 import { AdventureCover } from "@/components/pictopia/adventure-art";
 import { useTheme } from "@/theming/ThemeProvider";
-import { PASTELS, savedPastel, type PastelId } from "@/theming/pastels";
+import { PASTELS, nightColors, savedPastel, type PastelId } from "@/theming/pastels";
 import { mediaService } from "@/services/media";
 import { openLegal, manageSubscription } from "@/lib/pictopia/links";
 import { REMINDER_TIMES, reminderTimeLabel } from "@/lib/pictopia/reminders";
@@ -65,6 +68,49 @@ function Chips<T extends string | number | undefined>({ label, options, value, o
   );
 }
 
+function LifetimeTestingPanel({ action }: { action: (work: () => Promise<unknown>) => Promise<void> }) {
+  const app = usePictopia();
+  const simulation = useLifetimeTest();
+  const [result, setResult] = useState<string>();
+  if (!lifetimeTestStore.authorized) return null;
+  const s = simulation ?? defaultLifetimeTest;
+  const subscriptionLabels = { free: "Free", trial: "Trial", paid: "Active paid", "canceled-active": "Canceled · active", expired: "Expired" };
+  const awardLabels = { "not-earned": "Not earned", eligible: "Eligible", earned: "Earned" };
+  return <View className="gap-3 border-t border-border px-4 py-4">
+    <Text accessibilityRole="header" className="text-h4 text-foreground">Pictopia+ for Life testing</Text>
+    <Text className="text-caption text-primary">{simulation ? "Simulation active" : "Actual device state"} · test builds only</Text>
+    <Text className="text-caption leading-5 text-muted-foreground">Temporary scenarios drive Progress, The Big Picture, the lifetime achievement and premium access. Full access and a successful scan are assumed. No photos, purchases or real awards change. Reloading clears this simulation.</Text>
+    <Text className="text-body text-foreground">Subscription status</Text>
+    <Chips label="Test subscription status" options={TEST_SUBSCRIPTIONS.map(value => ({ value, label: subscriptionLabels[value] }))} value={simulation?.subscription} onChange={subscription => lifetimeTestStore.change({ subscription })} />
+    <Text className="text-body text-foreground">Big Picture progress</Text>
+    <Chips label="Test Big Picture progress" options={TEST_PERCENTAGES.map(value => ({ value, label: `${value}%` }))} value={simulation?.percent} onChange={percent => lifetimeTestStore.change({ percent })} />
+    <Text className="text-body text-foreground">Eligible library count</Text>
+    <Chips label="Test eligible library count" options={TEST_COUNTS.map(value => ({ value, label: value.toLocaleString() }))} value={simulation?.count} onChange={count => lifetimeTestStore.change({ count })} />
+    <Text className="text-body text-foreground">Lifetime award</Text>
+    <Chips label="Test lifetime award" options={TEST_AWARDS.map(value => ({ value, label: awardLabels[value] }))} value={simulation?.award} onChange={award => lifetimeTestStore.change({ award })} />
+    <Text className="text-caption text-muted-foreground">Eligible stages a completion check; it grants access only after the check passes. Earned directly previews an existing award. These controls take priority over Subscription mode above.</Text>
+    {simulation ? <Text accessibilityLiveRegion="polite" className="text-caption text-foreground">{s.count.toLocaleString()} photos · {s.percent}% explored · {testQualifies(s) ? "Qualifies for completion" : "Completion requirements not met"} · {app.pro ? "Premium access on" : "Free access"}</Text> : null}
+    <TestAction title="Complete 15,000 photos & earn for Life" onPress={() => { setResult(undefined); lifetimeTestStore.scenario(); }} />
+    <TestAction title="Run completion check" onPress={() => setResult(lifetimeTestStore.complete() ? "Simulated lifetime access earned. Expire the subscription next to verify it stays active." : "Needs active paid access, 100% explored and at least 10,000 photos.")} />
+    <TestAction title="Expire subscription after award" onPress={() => { lifetimeTestStore.change({ subscription: "expired" }); setResult("Subscription expired. An earned lifetime award keeps premium access active."); }} />
+    {result ? <Text accessibilityRole="alert" className="text-caption text-foreground">{result}</Text> : null}
+    <TestAction title="Open real Progress screen" onPress={() => router.push("/(tabs)/progress")} />
+    <TestAction title="Reset all overrides to actual device state" onPress={() => void action(async () => {
+      await app.setDevOverride({ mode: "auto", reviewLimit: undefined });
+      lifetimeTestStore.reset(); setResult(undefined);
+    })} />
+  </View>;
+}
+function TestAction({ title, onPress }: { title: string; onPress: () => void }) {
+  return <Pressable accessibilityRole="button" onPress={onPress} className="min-h-12 justify-center rounded-xl bg-background px-3 py-3 active:opacity-70"><Text className="text-h6 text-primary">{title}</Text></Pressable>;
+}
+
+const APPEARANCES = [
+  { value: "system", label: "System", icon: "SunMoon" },
+  { value: "light", label: "Light", icon: "Sun" },
+  { value: "dark", label: "Dark", icon: "Moon" },
+] as const;
+
 const MODES: { value: DevSubscriptionMode; label: string }[] = [
   { value: "auto", label: "Automatic" },
   { value: "free", label: "Free" },
@@ -116,6 +162,7 @@ function DeveloperTools({ action }: { action: (work: () => Promise<unknown>) => 
         <Text className="text-body text-primary">Reset today’s usage</Text>
         <Text className="text-caption text-muted-foreground">Photos, discards and deletions are kept</Text>
       </Pressable>
+      <LifetimeTestingPanel action={action} />
     </Group>
   );
 }
@@ -176,14 +223,14 @@ export default function Settings() {
           accessibilityRole="button"
           onPress={() => (app.pro && app.entitlementSource !== "developer" ? void action(() => manageSubscription(app.entitlement?.managementURL)) : router.push("/paywall"))}
           style={lift}
-          className="mt-4 flex-row items-center gap-3 rounded-[20px] bg-primary px-4 py-4 active:opacity-90"
+          className="mt-4 flex-row items-center gap-3 rounded-[20px] bg-feature px-4 py-4 active:opacity-90"
         >
           <View className="h-11 w-11 items-center justify-center rounded-full bg-sun">
-            <Icon name="Sparkles" size={20} className="text-foreground" />
+            <Icon name="Sparkles" size={20} className="text-sun-ink" />
           </View>
           <View className="flex-1">
-            <Text className="text-h3 text-primary-foreground">{app.entitlementSource === "lifetime" ? "Pictopia+ for Life" : app.pro ? "Pictopia+ · Active" : "Pictopia+"}</Text>
-            <Text className="text-caption text-primary-foreground/80">
+            <Text className="text-h3 text-feature-foreground">{app.entitlementSource === "lifetime" ? "Pictopia+ for Life" : app.pro ? "Pictopia+ · Active" : "Pictopia+"}</Text>
+            <Text className="text-caption text-feature-foreground/80">
               {app.entitlementSource === "lifetime"
                 ? "Permanent access · Manage store billing"
                 : app.pro && app.entitlementSource === "developer"
@@ -195,7 +242,7 @@ export default function Settings() {
                 : "Unlimited daily swipes"}
             </Text>
           </View>
-          <Icon name="ChevronRight" size={18} className="text-primary-foreground" />
+          <Icon name="ChevronRight" size={18} className="text-feature-foreground" />
         </Pressable>
         {Platform.OS !== "web" && (
           <Pressable accessibilityRole="button" onPress={() => void action(app.restorePurchases)} className="min-h-11 items-center justify-center">
@@ -206,6 +253,25 @@ export default function Settings() {
         <View style={lift} className="mt-4 overflow-hidden rounded-[20px] bg-card"><Row title="Invite a friend" onPress={() => router.push("/referrals")} last><Icon name="Handshake" size={20} className="text-foreground" /></Row></View>
         <Text accessibilityRole="header" className="mb-2.5 mt-4 text-h3 text-foreground">Theme</Text>
         <View style={lift} className="gap-4 rounded-[20px] bg-card px-3 pb-4 pt-3.5">
+          <View accessibilityRole="radiogroup" accessibilityLabel="Appearance" className="flex-row gap-1 rounded-full bg-background p-1">
+            {APPEARANCES.map(o => {
+              const on = app.prefs.appearance === o.value;
+              return (
+                <Pressable
+                  key={o.value}
+                  accessibilityRole="radio"
+                  accessibilityLabel={o.label}
+                  accessibilityState={{ checked: on }}
+                  aria-checked={on}
+                  onPress={() => void action(() => app.updatePrefs({ appearance: o.value }))}
+                  className={`min-h-10 flex-1 flex-row items-center justify-center gap-1.5 rounded-full ${on ? "bg-primary" : ""} active:opacity-80`}
+                >
+                  <Icon name={o.icon} size={16} className={on ? "text-primary-foreground" : "text-muted-foreground"} />
+                  <Text className={`text-h6 ${on ? "text-primary-foreground" : "text-muted-foreground"}`}>{o.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
           <View className="relative flex-row items-center gap-2.5 rounded-[14px] bg-background p-2.5">
             <View className="flex-1 gap-1">
               <Text className="text-h4 text-foreground">Where to today?</Text>
@@ -218,6 +284,7 @@ export default function Settings() {
           <View accessibilityRole="radiogroup" accessibilityLabel="Theme colour" className="flex-row flex-wrap justify-between gap-y-3.5">
             {PASTELS.map((p) => {
               const on = savedPastel(app.prefs.theme) === p.id;
+              const night = theme.name === "dark" ? nightColors(p) : undefined;
               return (
                 <Pressable
                   key={p.id}
@@ -228,7 +295,7 @@ export default function Settings() {
                   className="w-[19%] items-center gap-1.5"
                 >
                   <View
-                    style={{ backgroundColor: p.swatch, boxShadow: on ? `0px 0px 0px 3px #fff, 0px 0px 0px 5px ${theme.colors.foreground}` : `inset 0px 0px 0px 1px ${p.tint}` }}
+                    style={{ backgroundColor: night?.border ?? p.swatch, boxShadow: on ? `0px 0px 0px 3px ${night ? theme.colors.card : "#fff"}, 0px 0px 0px 5px ${theme.colors.foreground}` : `inset 0px 0px 0px 1px ${night?.muted ?? p.tint}` }}
                     className="h-12 w-12 items-center justify-center rounded-full"
                   >
                     {on && <Icon name="Check" size={20} className="text-foreground" />}

@@ -174,3 +174,13 @@ The review interaction uses the original 1.0.21 live feed: marked photos leave s
 - Lifetime access retains direct Expo IAP and existing Supabase, with platform-scoped restore identities and disabled award gates; local photo audits remain untrusted candidates and no expired-Google recovery workaround is introduced.
 
 - Pictopia+ for Life uses current paid-subscription eligibility and local Big Picture consistency checks; historical-payment eligibility is removed and signed earned awards remain permanent.
+
+- Pictopia+ for Life scenarios use development-only memory state and an isolated server test harness; production never accepts simulated entitlements.
+- The newest-first full-library collection is labeled All Photos; Screenshot Sweep displays its count without a size estimate.
+- Largest videos resolves missing file-size metadata before ranking the whole library, places unknown sizes last, and refreshes legacy ordering without removing saved history.
+- iOS review sharing resolves its presenter after export and recovers from cancellation, preparation timeout and refused presentation without leaving a stuck share lock.
+- The 100% completion/lifetime simulation is available in opted-in Staging builds under Settings → Developer tools, with Production still excluded.
+- Explore: Recents (newest 100 items of any kind) replaced All Photos beside Favorites; All Photos moved to a row under Surprise Me. Progress dropped the cleared-size footnote.
+- 2026-11-15: Duplicate Hunt returned to Explore (Pictopia+), rebuilt on on-device preview prints with a set grid and thumbnail-crossfade review.
+- Duplicate Hunt shows look-alike sets in batches of 50; reviewed sets make way for new ones on the next visit (owner's suggestion, for a calmer, faster screen).
+- 2026-11-15: Dark mode launched for everyone (Settings › Theme: System / Light / Dark, default System); The Big Picture becomes a night scene in dark mode.

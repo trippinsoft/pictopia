@@ -20,6 +20,7 @@ export type ArtName =
   | "whereWasThis"
   | "whichFirst"
   | "memoryMatch"
+  | "duplicates"
   | "finish"
   | "gameResult"
   | "spring"
@@ -407,6 +408,37 @@ const SCENES: Record<ArtName, Scene> = {
       {sparkle(96, 112, 2.6, c.sun)}
     </G>
   ),
+
+  // Duplicate Hunt: two identical prints on the table, the copy peeking from behind the
+  // original, and a magnifying glass catching the match; twin sparkles echo the pair.
+  duplicates: (c) => {
+    const twin = (x: number, y: number, rot: number) => (
+      <G transform={`rotate(${rot} ${x + 20} ${y + 24})`}>
+        <Rect x={x + 1.5} y={y + 3} width="40" height="48" rx="4" fill={c.ink} opacity="0.13" />
+        <Rect x={x} y={y} width="40" height="48" rx="4" fill={c.paper} />
+        <Rect x={x + 4} y={y + 4} width="32" height="30" rx="1.5" fill={c.canvasBlue} />
+        <Circle cx={x + 28} cy={y + 12} r="4" fill={c.sun} />
+        <Path d={`M${x + 4} ${y + 34} Q${x + 15} ${y + 18} ${x + 26} ${y + 28} Q${x + 31} ${y + 23} ${x + 36} ${y + 27} V${y + 34}Z`} fill={c.moss} />
+        <Rect x={x + 6} y={y + 39} width="14" height="2.5" rx="1" fill={c.sandDeep} opacity={0.5} />
+      </G>
+    );
+    return (
+      <G>
+        {sky(c.canvasPeach)}
+        <Ellipse cx="58" cy="116" rx="42" ry="5" fill={c.ink} opacity="0.07" />
+        {twin(18, 54, -8)}
+        {twin(52, 60, 6)}
+        <Circle cx="80" cy="62" r="17" fill={c.paper} opacity={0.35} />
+        <Path d="M70 54 A12 12 0 0 1 82 49" stroke={c.paper} strokeWidth="2.6" strokeLinecap="round" fill="none" opacity={0.9} />
+        <Circle cx="80" cy="62" r="17" fill="none" stroke={c.ink} strokeWidth="4" />
+        <Line x1="92.5" y1="74.5" x2="106" y2="88" stroke={c.terracotta} strokeWidth="7" strokeLinecap="round" />
+        <Line x1="92.5" y1="74.5" x2="95.5" y2="77.5" stroke={c.ink} strokeWidth="7" strokeLinecap="round" />
+        {sparkle(20, 34, 4.2, c.sun)}
+        {sparkle(31, 28, 4.2, c.sun)}
+        {sparkle(104, 118, 2.8, c.terracotta)}
+      </G>
+    );
+  },
 
   // A path winding up to a little flag: you made it.
   finish: (c) => (

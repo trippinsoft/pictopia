@@ -110,11 +110,9 @@ test("review exits, endings and the paywall keep their contracts", () => {
   assert.equal((queue.match(/deleteQueue\(/g) ?? []).length, 1);
 });
 
-test("Duplicate Hunt stays closed for release, advises without pre-marking, and guards marking a whole group", () => {
+test("Duplicate Hunt is in Explore, advises without pre-marking, and guards marking a whole set", () => {
   const features = makeLoader()("lib/pictopia/features.ts");
-  assert.equal(features.RELEASED.duplicateHunt, false, "not released until verified on devices");
-  assert.equal(features.featureOpen("duplicateHunt", undefined), false);
-  assert.equal(features.featureOpen("duplicateHunt", { duplicateHunt: true }), true, "a developer can open it for device testing");
+  assert.equal(features.RELEASED.duplicateHunt, true);
   const tags = features.keeperTags([
     { id: "a", width: 4032, height: 3024, sharpness: 80 },
     { id: "b", width: 1920, height: 1080, sharpness: 120 },
@@ -123,15 +121,14 @@ test("Duplicate Hunt stays closed for release, advises without pre-marking, and 
   assert.deepEqual(features.keeperTags([{ id: "a", width: 10, height: 10 }, { id: "b", width: 10, height: 10 }]), {}, "identical copies get no tag");
   assert.equal(features.marksEverything(["a", "b", "c"], new Set(["a", "b"]), "c"), true);
   assert.equal(features.marksEverything(["a", "b", "c"], new Set(["a"]), "c"), false);
-  const hunt = read("app/duplicate-hunt.tsx");
-  assert.match(hunt, /repository\.setDecision\(/, "marks go through the guarded queue decision");
-  assert.doesNotMatch(hunt, /deleteQueue|deleteMarked/, "Duplicate Hunt never deletes by itself");
-  // Duplicate Hunt is dropped from Explore entirely — no "Coming soon" placeholder, no
-  // feature-flag gating. The screen and catalog entry stay for backward compatibility and the
-  // developer Lab. (The only `duplicate-hunt` left in Explore is a type-level Exclude.)
+  const review = read("app/duplicate-group.tsx");
+  assert.match(review, /repository\.setDecision\(/, "discards go through the guarded queue decision");
+  assert.match(review, /marksEverything\(/, "discarding a whole set asks first");
+  for (const file of ["app/duplicate-hunt.tsx", "app/duplicate-group.tsx", "services/lookalikes.ts"])
+    assert.doesNotMatch(read(file), /deleteQueue|deleteMarked/, "Duplicate Hunt never deletes by itself");
   const explore = read("app/(tabs)/explore.tsx");
-  assert.doesNotMatch(explore, /featureOpen|Coming soon/);
-  assert.doesNotMatch(explore, /begin\("duplicate-hunt"\)|"\/duplicate-hunt"/);
+  assert.doesNotMatch(explore, /Coming soon/);
+  assert.match(explore, /openPlus\(\(\) => router\.push\("\/duplicate-hunt"\)\)/, "a Pictopia+ tile opens it");
 });
 
 test("albums use the platform's word for them", () => {

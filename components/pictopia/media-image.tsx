@@ -27,6 +27,7 @@ export function MediaImage({
   network,
   quietFailure = false,
   allowRetry = false,
+  thumbnail = false,
 }: {
   media?: Media;
   uri?: string;
@@ -48,6 +49,9 @@ export function MediaImage({
   quietFailure?: boolean;
   /** Retry controls belong only to full review surfaces, never nested thumbnail buttons. */
   allowRetry?: boolean;
+  /** Small tiles: the platform's cached 160 px thumbnail instead of a display-size copy, so
+   * grids of many photos stay light on memory. Falls back to the normal path if missing. */
+  thumbnail?: boolean;
 }) {
   const { theme } = useTheme();
   const [foreground, setForeground] = useState(AppState.currentState === "active");
@@ -86,6 +90,10 @@ export function MediaImage({
     // Resolution uses the complete asset ID and local metadata, never the ph:// host.
     // The latter is truncated by the SDK's PhotoKit image loader for /L0/... IDs.
     const resolve = async () => {
+      if (thumbnail && media) {
+        try { return await reviewMedia.thumbnail(media); }
+        catch { if (controller.signal.aborted) throw Error("Aborted"); }
+      }
       if (nativeVideo && media) {
         // Full review surfaces show the video's own frame at display size and true shape, so
         // the poster lines up with playback; small thumbnails keep the cheap cached version.
@@ -143,7 +151,7 @@ export function MediaImage({
       setFailed(true); report.current?.("failed");
     });
     return () => { controller.abort(); clearTimeout(timer); generation.current++; };
-  }, [key, download, networkAllowed, allowRetry]);
+  }, [key, download, networkAllowed, allowRetry, thumbnail]);
   useEffect(() => { if (!active) setDownload(false); }, [active]);
   // A photo that failed before it was shown (often one not yet fetched from iCloud) tries
   // again the moment it is. A load that is still running, or already done, is left alone.

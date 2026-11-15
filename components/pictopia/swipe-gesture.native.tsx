@@ -17,6 +17,7 @@ export function SwipeGesture({
       Gesture.Pan()
         .enabled(enabled)
         // Horizontal intent activates the swipe; clear vertical movement is left to scrolling.
+        .maxPointers(1)
         .activeOffsetX([-10, 10])
         .failOffsetY([-24, 24])
         .onUpdate((e) => {

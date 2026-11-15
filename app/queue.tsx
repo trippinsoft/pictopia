@@ -192,7 +192,7 @@ export default function Discarded() {
         contentContainerStyle={listStyle}
         renderSectionHeader={({ section }) => <Text className="mb-2 mt-4 text-headline text-foreground">{`${section.title} · ${section.data.reduce((n, r) => n + r.length, 0)}`}</Text>}
         renderItem={({ item: row }) => <View className="mb-2 flex-row gap-2">
-          {row.map(m => <Pressable key={m.id} accessibilityRole="button" accessibilityLabel={`Discarded ${m.type === "video" ? "video" : "photo"}. Tap to restore it`} accessibilityHint="Press and hold to view it full screen" onPress={() => void keep(m.id)} onLongPress={() => router.push({ pathname: "/preview", params: { id: m.id } })} className="aspect-square flex-1 overflow-hidden rounded-2xl bg-card active:opacity-70">
+          {row.map(m => <Pressable key={m.id} accessibilityRole="button" accessibilityLabel={`Discarded ${m.type === "video" ? "video" : "photo"}. Tap to restore it`} accessibilityHint="Press and hold to view it full screen" onPress={() => void keep(m.id)} onLongPress={() => router.push({ pathname: "/preview", params: { id: m.id, from: "discarded" } })} className="aspect-square flex-1 overflow-hidden rounded-2xl bg-card active:opacity-70">
             <MediaImage media={m} className="flex-1" />
             {m.type === "video" && <View className="absolute left-1.5 top-1.5 rounded-full bg-black/50 p-1"><Icon name="Play" size={13} className="text-white" /></View>}
           </Pressable>)}

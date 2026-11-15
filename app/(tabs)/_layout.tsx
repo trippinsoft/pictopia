@@ -4,6 +4,7 @@ import Icon, { IconName } from "@/lib/icons/LucideIcon";
 import { useTheme } from "@/theming/ThemeProvider";
 export default function TabLayout() {
   const { theme } = useTheme();
+  const outline = theme.colors.sunDeep ?? theme.colors.stage;
   return (
     <Tabs
       screenOptions={{
@@ -33,18 +34,18 @@ export default function TabLayout() {
           options={{
             title: t.title,
             ...(t.hidden ? { href: null } : {}),
-            // Gold interiors with black outlines, without a background pill.
+            // Gold interiors with dark gold outlines, without a background pill.
             tabBarIcon: ({ color, focused }) => (
               <View className="h-7 w-14 items-center justify-center">
                 {focused ? <View className="absolute">
                   <Icon name={t.icon} size={21}
-                    color={t.icon === "ChartNoAxesColumn" ? theme.colors.stage : theme.colors.sun}
+                    color={t.icon === "ChartNoAxesColumn" ? outline : theme.colors.sun}
                     fill={t.icon === "ChartNoAxesColumn" ? "none" : theme.colors.sun}
                     strokeWidth={t.icon === "ChartNoAxesColumn" ? 5 : 2} />
                 </View> : null}
                 <View className="absolute">
                   <Icon name={t.icon} size={21}
-                    color={focused ? t.icon === "ChartNoAxesColumn" ? theme.colors.sun : theme.colors.stage : color}
+                    color={focused ? t.icon === "ChartNoAxesColumn" ? theme.colors.sun : outline : color}
                     strokeWidth={focused && t.icon === "ChartNoAxesColumn" ? 3 : 2} />
                 </View>
               </View>

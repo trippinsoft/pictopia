@@ -1,3 +1,4 @@
+import { useLifetimeTest } from "@/components/pictopia/use-lifetime-test";
 import { useMemo } from "react";
 import { Platform, View } from "react-native";
 import { router } from "expo-router";
@@ -16,6 +17,7 @@ import { plural } from "@/lib/pictopia/text";
 /** The Big Picture: the whole photo library as one picture, one rectangle per year, revealed tile by
  * tile as photos are explored anywhere in Pictopia. Tap a year to look closer. */
 export default function MemoryWall() {
+  const simulation = useLifetimeTest();
   const app = usePictopia();
   const { model, percent, progress, snapshot, error, initialLoading } = useMemoryWall();
   const { peek, peeking, start } = usePeek();
@@ -27,6 +29,7 @@ export default function MemoryWall() {
   const allDone = !!model && model.photos > 0 && model.remaining === 0;
   return (
     <Page title="The Big Picture" fallback="/(tabs)/progress">
+      {simulation ? <Text className="text-caption text-primary">Simulated library · test builds only</Text> : null}
       {!model ? (
         error ? (
           <View className="gap-3 pt-4"><Text className="text-body text-destructive">The Big Picture couldn’t be loaded.</Text><Button onPress={() => void progressResource.refresh()}>Try again</Button></View>

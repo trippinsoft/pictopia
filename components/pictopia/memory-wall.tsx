@@ -4,30 +4,31 @@ import Svg, { Line, Path, Rect as SvgRect, SvgXml } from "react-native-svg";
 import Animated, { useAnimatedStyle, type SharedValue } from "react-native-reanimated";
 import { Icon, Text } from "./ui";
 import { useTheme } from "@/theming/ThemeProvider";
-import { worldArt } from "@/theming/illustration";
+import { worldArt, worldPalette } from "@/theming/illustration";
 import { worldSvg } from "@/lib/pictopia/memory-wall-art";
 import { coverPaths, gapLines, UNDATED, WALL_H, WALL_W, yearComplete, yearLabel, type Rect, type WallModel, type WallYear } from "@/lib/pictopia/memory-wall";
 import { wallPercent } from "@/lib/pictopia/library-progress";
 
 const FULL: Rect = { x: 0, y: 0, w: WALL_W, h: WALL_H };
-const SHADES = [worldArt.tile1, worldArt.tile2, worldArt.tile3, worldArt.tile4];
 const intersects = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
-/** The illustration (one SvgXml layer, drawn once per window). */
-const Art = memo(function Art({ view }: { view: Rect }) {
-  const xml = useMemo(() => worldSvg(view), [view]);
+/** The illustration (one SvgXml layer, drawn once per window), at night in dark mode. */
+const Art = memo(function Art({ view, dark }: { view: Rect; dark: boolean }) {
+  const xml = useMemo(() => worldSvg(view, dark), [view, dark]);
   return <SvgXml xml={xml} width="100%" height="100%" />;
 });
 
 /** Unexplored tiles as five paths, faded out by Peek without touching progress. */
-const Cover = memo(function Cover({ model, view, tileSize, peek }: { model: WallModel; view: Rect; tileSize: number; peek?: SharedValue<number> }) {
+const Cover = memo(function Cover({ model, view, tileSize, peek, dark }: { model: WallModel; view: Rect; tileSize: number; peek?: SharedValue<number>; dark: boolean }) {
+  const w = worldPalette(dark);
+  const shades = [w.tile1, w.tile2, w.tile3, w.tile4];
   const paths = useMemo(() => coverPaths(model, tileSize, (y) => intersects(y.rect, view)), [model, tileSize, view]);
   const style = useAnimatedStyle(() => ({ opacity: 1 - (peek?.value ?? 0) }));
   return (
     <Animated.View pointerEvents="none" style={[fill, style]}>
       <Svg width="100%" height="100%" viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`} preserveAspectRatio="xMidYMid slice">
-        {!!paths.grout && <Path d={paths.grout} fill={worldArt.tileGrout} />}
-        {paths.shades.map((d, i) => (d ? <Path key={i} d={d} fill={SHADES[i]} /> : null))}
+        {!!paths.grout && <Path d={paths.grout} fill={w.tileGrout} />}
+        {paths.shades.map((d, i) => (d ? <Path key={i} d={d} fill={shades[i]} /> : null))}
       </Svg>
     </Animated.View>
   );
@@ -52,6 +53,7 @@ export function WallCanvas({ model, view = FULL, tileSize, labels = true, highli
   gap?: number;
 }) {
   const { theme } = useTheme();
+  const dark = theme.name === "dark";
   const card = theme.colors.card ?? "#FFFFFF";
   const ink = theme.colors.foreground ?? worldArt.ink;
   const [width, setWidth] = useState(0);
@@ -63,8 +65,8 @@ export function WallCanvas({ model, view = FULL, tileSize, labels = true, highli
   const pct = (r: Rect) => ({ left: `${((r.x - view.x) / view.w) * 100}%`, top: `${((r.y - view.y) / view.h) * 100}%`, width: `${(r.w / view.w) * 100}%`, height: `${(r.h / view.h) * 100}%` }) as const;
   return (
     <View onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width)} style={{ aspectRatio: view.w / view.h }} className="w-full overflow-hidden rounded-[15px]">
-      <View pointerEvents="none" style={fill}><Art view={view} /></View>
-      <Cover model={model} view={view} tileSize={tileSize} peek={peek} />
+      <View pointerEvents="none" style={fill}><Art view={view} dark={dark} /></View>
+      <Cover model={model} view={view} tileSize={tileSize} peek={peek} dark={dark} />
       <View pointerEvents="none" style={fill}>
         <Svg width="100%" height="100%" viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`} preserveAspectRatio="xMidYMid slice">
           {monthLines && selected?.blocks.map((b) => <SvgRect key={b.key} x={b.rect.x} y={b.rect.y} width={b.rect.w} height={b.rect.h} fill="none" stroke={card} strokeWidth={0.6 / Math.max(scale / 3, 1)} opacity={0.8} />)}

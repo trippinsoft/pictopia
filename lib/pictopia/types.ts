@@ -38,6 +38,8 @@ export interface Media {
   firstSeenAt?: number;
   scan?: Analysis;
   scanError?: string;
+  /** Duplicate Hunt's print from the small on-device preview (`lib/pictopia/lookalikes.ts`). */
+  look?: import("./lookalikes").MediaLook;
 }
 export interface Analysis {
   hash?: string;

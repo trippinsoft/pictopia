@@ -61,7 +61,7 @@ export function TabHeader({ title, referrals = false }: { title?: string; referr
         ) : (
           <View className="min-w-0 flex-1">
             <Wordmark large />
-            <Text className="-mt-0.5 text-muted-foreground" style={styles.tagline}>The happier place for your photos</Text>
+            <Text className="-mt-0.5 text-muted-foreground" style={styles.tagline}>The happy place for your photos</Text>
           </View>
         )}
         <View className="flex-row items-center gap-2">

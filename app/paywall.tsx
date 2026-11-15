@@ -1,3 +1,4 @@
+import { lifetimeTestStore } from "@/services/lifetime-testing";
 import React, { useEffect, useState } from "react";
 import { View, Pressable, Platform } from "react-native";
 import { router } from "expo-router";
@@ -36,6 +37,7 @@ export default function Paywall() {
     else router.replace("/(tabs)/home");
   }
   async function buy() {
+    if (lifetimeTestStore.snapshot()) { setError("Reset the lifetime simulation before making a real purchase."); return; }
     setWorking(true);
     setError("");
     try {

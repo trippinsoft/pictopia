@@ -1,159 +1,180 @@
-import { NavigationBack } from "@/components/pictopia/navigation-header";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, Modal, Pressable, View } from "react-native";
+import { ScreenHeader } from "@/components/pictopia/navigation-header";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { FlatList, Pressable, View } from "react-native";
 import { router, Stack, useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { StatusBar } from "expo-status-bar";
-import { AdventureTheme } from "@/components/pictopia/adventure-theme";
 import { Button, Icon, Loading, Text } from "@/components/pictopia/ui";
+import { Illustration } from "@/components/pictopia/illustration";
 import { MediaImage } from "@/components/pictopia/media-image";
+import { useLift } from "@/components/pictopia/playful";
 import { usePictopia } from "@/components/pictopia/provider";
-import { keeperTags, marksEverything } from "@/lib/pictopia/features";
-import { sizeText } from "@/lib/pictopia/review-flow";
 import { plural } from "@/lib/pictopia/text";
-import type { Group, Media } from "@/lib/pictopia/types";
-import { repository, storage } from "@/services/repository";
+import { BATCH_SIZE, lookalikeStore, type Batch, type GroupView, type LookalikeIndex, type ScanProgress } from "@/services/lookalikes";
 
-interface Page { group: Group; items: Media[] }
-
-/** Duplicate Hunt (Pro): one page per group of identical or similar photos, side by side with
- * date, resolution and size. The "Sharpest"/"Largest" tag is advice; nothing is pre-marked.
- * Marks go to the same deletion queue and Ready to delete as every review. */
+/** Duplicate Hunt (Pictopia+): every set of look-alike photos as a card with its count.
+ * Tapping a set opens it in the look-alike review. Finding them reads only the small
+ * previews already on this phone; nothing is uploaded, downloaded or decided. */
 export default function DuplicateHunt() {
   const app = usePictopia();
-  const [pages, setPages] = useState<Page[]>();
-  const [height, setHeight] = useState(0);
-  const [index, setIndex] = useState(0);
-  const [history, setHistory] = useState<string[]>([]);
-  const [viewing, setViewing] = useState<Media>();
-  const [confirm, setConfirm] = useState<{ page: Page; id: string }>();
+  const lift = useLift(3);
+  const [batch, setBatch] = useState<Batch>();
+  const [waiting, setWaiting] = useState(0);
+  const [progress, setProgress] = useState<ScanProgress>();
+  const [hunting, setHunting] = useState(false);
+  const [summary, setSummary] = useState<{ printed: number; unreadable: number }>();
   const [error, setError] = useState<string>();
-  const load = useCallback(async () => {
-    const groups = (await storage.getValue<Group[]>("groups")) ?? [];
-    const out: Page[] = [];
-    for (const group of groups) {
-      const items = (await Promise.all(group.ids.slice(0, 4).map(id => storage.get(id)))).filter((m): m is Media => !!m?.active && !m.deletedAt);
-      if (items.length >= 2) out.push({ group, items });
-    }
-    setPages(out);
-  }, []);
-  useFocusEffect(useCallback(() => {
-    if (!app.pro) return;
-    void load().catch(() => setError("Your groups couldn’t load. Please try again."));
-  }, [app.pro, app.revision, load]));
+  const [attempt, setAttempt] = useState(0);
+  const [building, setBuilding] = useState(false);
+  const latest = useRef<LookalikeIndex>(undefined);
   useEffect(() => { if (app.ready && !app.pro) router.replace("/paywall"); }, [app.ready, app.pro]);
-  const marked = useMemo(() => new Set((pages ?? []).flatMap(p => p.items.filter(m => m.decision === "delete").map(m => m.id))), [pages]);
-  async function setMark(id: string, on: boolean) {
-    setError(undefined);
-    try {
-      await repository.setDecision(id, on ? "delete" : undefined);
-      setPages(old => old?.map(p => ({ ...p, items: p.items.map(m => m.id === id ? { ...m, decision: on ? "delete" : undefined } : m) })));
-      setHistory(old => on ? [...old, id] : old.filter(other => other !== id));
-      void app.refresh();
-    } catch (e) { setError(e instanceof Error ? e.message : "That couldn’t be saved. Please try again."); }
-  }
-  function toggle(page: Page, m: Media) {
-    if (m.decision === "delete") return void setMark(m.id, false);
-    if (marksEverything(page.items.map(i => i.id), marked, m.id)) return setConfirm({ page, id: m.id });
-    void setMark(m.id, true);
-  }
-  const exit = () => (router.canGoBack() ? router.back() : router.replace("/(tabs)/explore"));
-  const scanning = app.scan.status === "running";
-  return <AdventureTheme enabled><SafeAreaView className="flex-1 bg-background">
-    <StatusBar style="light" />
-    <Stack.Screen options={{ title: "Duplicate Hunt", headerShown: false, gestureEnabled: false }} />
-    <View className="mx-auto w-full max-w-3xl flex-1">
-      <View className="flex-row items-center justify-between px-4 pb-2 pt-2">
-        <NavigationBack label="Back from Duplicate Hunt" onPress={exit} />
-        <View className="flex-1 items-center">
-          <Text accessibilityRole="header" className="text-headline text-foreground">Duplicate Hunt</Text>
-          {!!pages?.length && <Text className="text-caption text-muted-foreground">{`Group ${Math.min(index + 1, pages.length)} of ${pages.length}`}</Text>}
-        </View>
-        <Pressable accessibilityRole="button" accessibilityLabel={`Discarded, ${plural(app.stats.pending, "item")} waiting to delete`} onPress={() => router.push("/queue")} className="h-12 w-12 items-center justify-center rounded-full bg-card/90 active:opacity-70">
-          <Icon name="Trash2" size={22} className="text-foreground" />
-          {app.stats.pending > 0 && <View className="absolute -right-1 -top-1 h-5 min-w-5 items-center justify-center rounded-full bg-sun px-1"><Text className="text-[12px] font-bold text-primary-foreground">{app.stats.pending}</Text></View>}
-        </Pressable>
-      </View>
-      {!!error && <Text accessibilityRole="alert" className="mx-4 mb-2 rounded-2xl bg-card px-4 py-2 text-body text-foreground">{error}</Text>}
-      {!app.pro || !pages ? <Loading /> : !pages.length ? <View className="flex-1 items-center justify-center gap-3 px-8">
-        <View className="h-16 w-16 items-center justify-center rounded-full bg-sun"><Icon name="ScanSearch" size={28} className="text-primary-foreground" /></View>
-        <Text className="text-center text-display text-foreground">{app.scan.status === "complete" ? "No look-alikes found" : "Find your look-alikes"}</Text>
-        <Text className="text-center text-body leading-6 text-muted-foreground">{app.scan.status === "complete" ? "No identical or near-identical photos turned up among the photos Pictopia can read." : "Pictopia compares your photos on this phone. Nothing is uploaded, and iCloud originals aren’t downloaded."}</Text>
-        {scanning ? <Text className="text-body text-sun">{`Scanning… ${app.scan.processed.toLocaleString()} of ${app.scan.total.toLocaleString()}`}</Text>
-          : <View className="w-full max-w-xs"><Button onPress={() => void app.scanLibrary().then(load).catch(e => setError(e instanceof Error ? e.message : String(e)))}>{app.scan.status === "paused" ? "Resume scan" : app.scan.status === "complete" ? "Scan again" : "Scan my library"}</Button></View>}
-        {scanning && <Pressable accessibilityRole="button" onPress={app.pauseScan} className="min-h-12 justify-center"><Text className="text-button text-foreground">Pause</Text></Pressable>}
-      </View> : <View className="min-h-0 flex-1" onLayout={e => setHeight(e.nativeEvent.layout.height)}>
-        {height > 0 && <FlatList
-          data={pages}
-          keyExtractor={p => p.group.id}
-          pagingEnabled
-          snapToInterval={height}
-          decelerationRate="fast"
-          showsVerticalScrollIndicator={false}
-          getItemLayout={(_d, i) => ({ length: height, offset: height * i, index: i })}
-          onMomentumScrollEnd={e => setIndex(Math.round(e.nativeEvent.contentOffset.y / height))}
-          onScroll={e => setIndex(Math.round(e.nativeEvent.contentOffset.y / height))}
-          scrollEventThrottle={64}
-          renderItem={({ item: page }) => <GroupPage page={page} height={height} onToggle={m => toggle(page, m)} onView={setViewing} />}
-        />}
-      </View>}
-      <View className="flex-row items-center justify-between px-4 pb-3 pt-2">
-        <Pressable accessibilityRole="button" accessibilityLabel={history.length ? "Undo the last mark" : "Undo, nothing to undo yet"} disabled={!history.length} onPress={() => void setMark(history[history.length - 1], false)} className={`h-12 flex-row items-center gap-2 rounded-full bg-card/90 px-4 ${history.length ? "" : "opacity-45"}`}>
-          <Icon name="Undo2" size={20} className="text-sun" /><Text className="text-button text-sun">Undo</Text>
-        </Pressable>
-        {app.stats.pending > 0 && <Pressable accessibilityRole="button" onPress={() => router.push("/queue")} className="h-12 flex-row items-center gap-2 rounded-full bg-sun px-4"><Text className="text-button text-primary-foreground">{`Review ${app.stats.pending}`}</Text></Pressable>}
-      </View>
+
+  const build = useCallback(async (index: LookalikeIndex) => {
+    const next = await lookalikeStore.batch(index);
+    setBatch(next); setWaiting(next.waiting);
+  }, []);
+
+  // The batch is built once per visit and then stays exactly where it is. A first hunt shows
+  // only its progress; later visits check new photos quietly, and anything new waits for the
+  // next visit rather than moving cards around on screen.
+  const pro = app.ready && app.pro;
+  useEffect(() => {
+    if (!pro) return;
+    let alive = true;
+    const onProgress = (p: ScanProgress) => { if (alive) setProgress(p); };
+    void (async () => {
+      const saved = await lookalikeStore.saved().catch(() => undefined);
+      if (!alive) return;
+      if (saved) { latest.current = saved; setSummary(saved); await build(saved).catch(() => setBatch({ views: [], reviewed: new Set(), waiting: 0 })); }
+      if (!alive || !lookalikeStore.available) { if (alive && !saved) setBatch({ views: [], reviewed: new Set(), waiting: 0 }); return; }
+      if (!saved) setHunting(true);
+      setError(undefined);
+      try {
+        const result = await lookalikeStore.scan(onProgress);
+        if (!alive) return;
+        latest.current = result.index;
+        setSummary(result.index);
+        if (!saved) await build(result.index);
+      } catch {
+        if (alive) { setError("Pictopia couldn’t finish looking. Your photos are untouched."); setBatch(old => old ?? { views: [], reviewed: new Set(), waiting: 0 }); }
+      } finally {
+        if (alive) { setHunting(false); setProgress(undefined); }
+      }
+    })();
+    return () => { alive = false; lookalikeStore.unlisten(onProgress); };
+  }, [pro, attempt, build]);
+
+  // Coming back from a set: same cards, same order; only their photos and checks update.
+  const current = useRef(batch); current.current = batch;
+  const returned = useRef(false);
+  useFocusEffect(useCallback(() => {
+    if (!returned.current) { returned.current = true; return; }
+    const shown = current.current;
+    if (!shown?.views.length) return;
+    let alive = true;
+    void lookalikeStore.refresh(shown.views).then(fresh => { if (alive) setBatch(fresh); }).catch(() => {});
+    return () => { alive = false; };
+  }, []));
+
+  const nextBatch = async () => {
+    if (!latest.current || building) return;
+    setBuilding(true);
+    try { await build(latest.current); } finally { setBuilding(false); }
+  };
+  const views = batch?.views;
+  const done = views ? views.filter(v => batch?.reviewed.has(v.group.id)).length : 0;
+  const allDone = !!views?.length && done === views.length;
+  const subtitle = !views?.length ? undefined
+    : allDone ? "All done in this batch."
+    : `${done} of ${views.length} sets reviewed${waiting ? ` · ${waiting.toLocaleString()} more after these` : ""}`;
+  const data = views ? [...views, ...Array<null>((COLUMNS - (views.length % COLUMNS)) % COLUMNS).fill(null)] : [];
+  return <SafeAreaView edges={["top", "left", "right"]} className="flex-1 bg-background">
+    <Stack.Screen options={{ title: "Duplicate Hunt", headerShown: false }} />
+    <View className="mx-auto w-full max-w-lg flex-1">
+      <View className="px-5"><ScreenHeader title="Duplicate Hunt" subtitle={hunting ? undefined : subtitle} fallback="/(tabs)/explore" /></View>
+      {!!error && <Pressable accessibilityRole="button" onPress={() => setAttempt(n => n + 1)} className="mx-5 mb-2 min-h-12 justify-center"><Text accessibilityRole="alert" className="text-body text-destructive">{`${error} Tap to try again.`}</Text></Pressable>}
+      {!app.pro ? <Loading /> : hunting && !views ? <Hunting progress={progress} /> : !views ? <Loading /> : !views.length ? <EmptyState scanning={hunting} available={lookalikeStore.available} unreadable={summary?.unreadable ?? 0} /> : <FlatList
+        data={data}
+        keyExtractor={(v, i) => v?.group.id ?? `spacer-${i}`}
+        numColumns={COLUMNS}
+        columnWrapperStyle={columnStyle}
+        contentContainerStyle={listStyle}
+        initialNumToRender={18}
+        ListHeaderComponent={allDone ? <View style={lift} className="mb-1 items-center gap-2 rounded-[18px] bg-card px-4 py-4">
+          <Text className="text-center text-h4 text-foreground">{waiting ? "Nice work — that’s this batch!" : "You’ve been through every set!"}</Text>
+          {waiting ? <Button disabled={building} onPress={() => void nextBatch()}>{building ? "Gathering…" : `Show the next ${Math.min(BATCH_SIZE, waiting)} sets`}</Button>
+            : <Text className="text-center text-caption text-muted-foreground">New look-alikes show up here as you take more photos.</Text>}
+        </View> : null}
+        ListFooterComponent={<View className="h-6" />}
+        renderItem={({ item }) => item ? <GroupCard view={item} reviewed={!!batch?.reviewed.has(item.group.id)} lift={lift} /> : <View className="flex-1" />}
+      />}
     </View>
-    <Modal visible={!!viewing} animationType="fade" onRequestClose={() => setViewing(undefined)}>
-      <AdventureTheme enabled><SafeAreaView className="flex-1 bg-background">
-        <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setViewing(undefined)} className="m-4 h-12 w-12 items-center justify-center rounded-full bg-card"><Icon name="X" size={22} className="text-foreground" /></Pressable>
-        {viewing && <MediaImage media={viewing} fit="contain" className="flex-1" showLoading />}
-        {viewing && <Text className="p-4 text-center text-caption text-muted-foreground">{details(viewing)}</Text>}
-      </SafeAreaView></AdventureTheme>
-    </Modal>
-    <Modal visible={!!confirm} transparent animationType="fade" onRequestClose={() => setConfirm(undefined)}>
-      <AdventureTheme enabled><View className="flex-1 items-center justify-center bg-black/70 px-6">
-        <View className="w-full max-w-sm rounded-[24px] bg-card p-6">
-          <Text className="text-display text-foreground">{`Mark all ${confirm?.page.items.length ?? ""}?`}</Text>
-          <Text className="my-3 text-body leading-6 text-muted-foreground">None of these would be left once you delete. They stay in your library until you delete them from Discarded.</Text>
-          <Button danger onPress={() => { if (confirm) void setMark(confirm.id, true); setConfirm(undefined); }}>Mark all</Button>
-          <Pressable accessibilityRole="button" onPress={() => setConfirm(undefined)} className="mt-1 min-h-12 items-center justify-center"><Text className="text-button text-foreground">Keep one</Text></Pressable>
-        </View>
-      </View></AdventureTheme>
-    </Modal>
-  </SafeAreaView></AdventureTheme>;
+  </SafeAreaView>;
 }
 
-function GroupPage({ page, height, onToggle, onView }: { page: Page; height: number; onToggle(m: Media): void; onView(m: Media): void }) {
-  const tags = keeperTags(page.items.map(m => ({ id: m.id, width: m.width, height: m.height, size: m.size ?? m.scan?.size, sharpness: m.scan?.sharpness })));
-  const two = page.items.length === 2;
-  return <View style={{ height }} className="justify-center px-3">
-    <Text className="mb-3 text-center text-caption text-muted-foreground">{page.group.kind === "exact" ? `${page.items.length} identical copies` : `${page.items.length} similar shots`}</Text>
-    <View className="flex-row flex-wrap justify-center gap-2">
-      {page.items.map(m => {
-        const on = m.decision === "delete";
-        return <View key={m.id} className="w-[48.5%] overflow-hidden rounded-2xl bg-card">
-          <Pressable accessibilityRole="button" accessibilityLabel={`View this ${page.group.kind === "exact" ? "copy" : "shot"} larger. ${details(m)}`} onPress={() => onView(m)} className={two ? "aspect-[3/4]" : "aspect-square"}>
-            <MediaImage media={m} fit="cover" className={`flex-1 ${on ? "opacity-40" : ""}`} />
-            {tags[m.id] && <View className="absolute left-2 top-2 rounded-full bg-grass px-2 py-0.5"><Text className="text-[11px] font-bold text-white">{tags[m.id]}</Text></View>}
-            {on && <View className="absolute inset-0 items-center justify-center"><View className="rounded-full bg-black/60 px-3 py-1"><Text className="text-caption text-white">Marked</Text></View></View>}
-          </Pressable>
-          <View className="flex-row items-center gap-1 p-2">
-            <Text numberOfLines={2} className="flex-1 text-[11px] leading-4 text-muted-foreground">{details(m)}</Text>
-            <Pressable accessibilityRole="button" accessibilityLabel={on ? "Keep this one" : "Mark this one for deletion"} onPress={() => onToggle(m)} className={`h-10 w-10 items-center justify-center rounded-full ${on ? "bg-sun" : "bg-secondary"}`}>
-              <Icon name={on ? "RotateCcw" : "Trash2"} size={18} className={on ? "text-primary-foreground" : "text-foreground"} />
-            </Pressable>
-          </View>
-        </View>;
-      })}
+/** The first hunt: one calm screen with honest progress, never a list that keeps changing. */
+function Hunting({ progress }: { progress?: ScanProgress }) {
+  const began = useRef<{ at: number; done: number }>(undefined);
+  if (progress && !began.current && progress.done > 0) began.current = { at: Date.now(), done: progress.done };
+  const fraction = progress?.total ? Math.min(1, progress.done / progress.total) : 0;
+  let left: string | undefined;
+  if (progress && began.current && progress.done > began.current.done) {
+    const rate = (progress.done - began.current.done) / Math.max(1, Date.now() - began.current.at);
+    const minutes = Math.ceil((progress.total - progress.done) / rate / 60_000);
+    left = minutes <= 1 ? "Less than a minute left" : `About ${minutes} minutes left`;
+  }
+  return <View className="flex-1 items-center justify-center gap-3 px-8 pb-16">
+    <View className="h-36 w-36 overflow-hidden rounded-[28px]"><Illustration name="duplicates" square style={fill} /></View>
+    <Text accessibilityRole="header" className="mt-2 text-center text-h2 text-foreground">Hunting for look-alikes</Text>
+    <Text className="text-center text-body leading-6 text-muted-foreground">Pictopia is comparing small previews of your photos on this device. Your sets appear here all at once when it’s done.</Text>
+    <View accessibilityLiveRegion="polite" className="mt-3 w-full max-w-xs gap-2">
+      <View className="h-2 overflow-hidden rounded-full bg-card"><View className="h-full rounded-full bg-sun" style={{ width: `${fraction * 100}%` }} /></View>
+      <Text className="text-center text-caption text-muted-foreground" style={tabular}>{progress ? `${progress.done.toLocaleString()} of ${progress.total.toLocaleString()} photos${left ? ` · ${left}` : ""}` : "Getting ready…"}</Text>
     </View>
+    <Text className="mt-2 text-center text-caption text-muted-foreground">You can leave — the hunt keeps going and picks up where it left off.</Text>
   </View>;
 }
-function details(m: Media) {
-  const size = m.size ?? m.scan?.size;
-  return [
-    new Date(m.created).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }),
-    m.width && m.height ? `${m.width}×${m.height}` : undefined,
-    size ? sizeText(size) : undefined,
-  ].filter(Boolean).join(" · ");
+
+function EmptyState({ scanning, available, unreadable }: { scanning: boolean; available: boolean; unreadable: number }) {
+  const [title, body] = !available
+    ? ["Update Pictopia to hunt", "Duplicate Hunt needs the newest version of the app. Update Pictopia, then come back here."]
+    : scanning
+      ? ["Checking for look-alikes", "Pictopia is checking your newest photos on this device."]
+      : ["No look-alikes found", `Your library has no duplicate or near-identical photos right now.${unreadable ? ` ${plural(unreadable, "photo")} couldn’t be read on this device yet.` : ""}`];
+  return <View className="flex-1 items-center justify-center gap-3 px-8 pb-16">
+    <View className="h-36 w-36 overflow-hidden rounded-[28px]"><Illustration name="duplicates" square style={fill} /></View>
+    <Text accessibilityRole="header" className="mt-2 text-center text-h2 text-foreground">{title}</Text>
+    <Text className="text-center text-body leading-6 text-muted-foreground">{body}</Text>
+  </View>;
 }
+
+/** A set: up to four of its photos as small thumbnails, its count, and how far it's sorted. */
+const GroupCard = memo(function GroupCard({ view, reviewed, lift }: { view: GroupView; reviewed: boolean; lift: object }) {
+  const { group, items, discarded } = view;
+  const best = items.find(m => m.id === group.best) ?? items[0];
+  const tiles = [best, ...items.filter(m => m !== best)].slice(0, 4);
+  const sorted = reviewed || (discarded > 0 && discarded >= items.length - 1);
+  const date = new Date(best.created).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  const kind = group.kind === "copies" ? "Copies" : "Similar";
+  return <Pressable accessibilityRole="button" accessibilityLabel={`${group.kind === "copies" ? "Identical copies" : "Similar shots"}, ${plural(items.length, "photo")}, ${date}${discarded ? `, ${discarded} discarded` : ""}${reviewed ? ", reviewed" : ""}`}
+    onPress={() => router.push({ pathname: "/duplicate-group", params: { group: group.id } })} className="flex-1 active:opacity-90">
+    <View style={lift} className={`flex-1 overflow-hidden rounded-[16px] bg-card ${reviewed ? "opacity-60" : ""}`}>
+      <View className="aspect-square flex-row flex-wrap gap-[3px] p-1">
+        {tiles.map(m => <View key={m.id} className={`overflow-hidden rounded-[8px] bg-muted ${tiles.length === 2 ? "h-full w-[48.5%]" : tiles.length === 3 && m === best ? "h-full w-[48.5%]" : "h-[48.5%] w-[48.5%]"}`}>
+          <MediaImage media={m} thumbnail className={`flex-1 ${m.decision === "delete" ? "opacity-40" : ""}`} />
+        </View>)}
+        <View className={`absolute bottom-2 right-2 h-7 min-w-7 items-center justify-center rounded-full border-2 border-muted-foreground px-1.5 ${sorted ? "bg-grass" : "bg-sun"}`}>
+          {sorted ? <Icon name="Check" size={14} strokeWidth={3} className="text-muted-foreground" /> : <Text className="text-[13px] font-bold text-muted-foreground" style={tabular}>{items.length}</Text>}
+        </View>
+      </View>
+      <View className="px-2 pb-2 pt-0.5">
+        <Text numberOfLines={1} className="text-caption font-semibold text-foreground">{date}</Text>
+        <Text numberOfLines={1} className="text-[11px] text-muted-foreground">{reviewed ? (discarded ? `Reviewed · ${discarded} discarded` : "Reviewed") : discarded ? `${kind} · ${discarded} discarded` : kind}</Text>
+      </View>
+    </View>
+  </Pressable>;
+}, (a, b) => a.reviewed === b.reviewed && a.view.group.id === b.view.group.id && a.view.discarded === b.view.discarded && a.view.items.length === b.view.items.length);
+const tabular = { fontVariant: ["tabular-nums" as const] };
+const COLUMNS = 3;
+const columnStyle = { gap: 10 };
+const fill = { flex: 1 };
+const listStyle = { paddingHorizontal: 16, paddingBottom: 32, gap: 10 };

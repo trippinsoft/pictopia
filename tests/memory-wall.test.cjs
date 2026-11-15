@@ -82,6 +82,15 @@ test("the artwork renders as one SVG with every colour defined", () => {
   assert.match(worldSvg({ x: 10, y: 20, w: 150, h: 128 }), /viewBox="10 20 150 128"/);
 });
 
+test("dark mode draws the same world at night with every colour defined", () => {
+  const night = worldMarkup(true);
+  assert.ok(night.length > worldMarkup().length, "night adds moon, stars and lights");
+  assert.ok(!/undefined|NaN/.test(night), "no missing colours or coordinates");
+  assert.ok(night.includes("nightSky"));
+  assert.ok(!worldMarkup().includes("nightSky"), "daytime picture is unchanged");
+  assert.match(worldSvg({ x: 0, y: 0, w: 150, h: 128 }, true), /nightSky/);
+});
+
 test("phone storage: deletions keep progress, outside removals and videos drop out, undated stays", async () => {
   const db = new DatabaseSync(":memory:"), app = await boot(db, platform());
   const rows = Array.from({ length: 100 }, (_, i) => media(`p${i}`, { firstSeenAt: i < 60 ? 1 : undefined, month: "2025-06" }));

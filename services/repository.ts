@@ -156,6 +156,7 @@ export const repository = {
                 screenshot: m.screenshot || old.screenshot,
                 scan: old.modified === m.modified ? old.scan : undefined,
                 scanError: old.modified === m.modified ? old.scanError : undefined,
+                look: old.modified === m.modified ? old.look : undefined,
               }
             // Editing dimensions or correcting a capture date does not make a library ID
             // unexplored again. Decision/analysis invalidation retains its existing rules.

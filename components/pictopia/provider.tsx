@@ -1,3 +1,5 @@
+import { useLifetimeTest } from "./use-lifetime-test";
+import { lifetimeTestStore } from "@/services/lifetime-testing";
 import { isLifetimeEligible } from "@/lib/pictopia/lifetime-plus";
 import { lifetimePlusStore } from "@/services/lifetime-plus";
 import { checkLifetimeCompletion } from "@/services/lifetime-completion";
@@ -287,16 +289,17 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
     });
     return () => { stop(); clearInterval(refresh); foreground.remove(); };
   }, []);
-  const resolved = resolveEntitlement(entitlement, devOverride, devOverrideStore.authorized, clock, lifetime);
+  const simulation = useLifetimeTest();
+  const resolved = resolveEntitlement(entitlement, devOverride, devOverrideStore.authorized, clock, lifetime, simulation);
   useEffect(() => {
-    if (ready && isLifetimeEligible(lifetime, clock) && !busy && scan.status === "complete" &&
+    if (!simulation && ready && isLifetimeEligible(lifetime, clock) && !busy && scan.status === "complete" &&
       permission?.granted && !permission.limited && AppState.currentState === "active") {
       void checkLifetimeCompletion().catch(() => {});
     }
-  }, [ready, lifetime, busy, scan.status, permission?.granted, permission?.limited, revision, clock]);
+  }, [simulation, ready, lifetime, busy, scan.status, permission?.granted, permission?.limited, revision, clock]);
   /** Fresh resolution from saved state, for long-running work that must stop if Pictopia+ ends. */
   const proNow = async () =>
-    resolveEntitlement((await storage.getValue<Entitlement>("entitlement")) ?? null, await devOverrideStore.load(), devOverrideStore.authorized, Date.now(), lifetimePlusStore.snapshot()).pro;
+    resolveEntitlement((await storage.getValue<Entitlement>("entitlement")) ?? null, await devOverrideStore.load(), devOverrideStore.authorized, Date.now(), lifetimePlusStore.snapshot(), lifetimeTestStore.snapshot()).pro;
   async function start(c: Collection, minutes: SessionMinutes = 5) {
     if (!ready) return;
     if (session && !session.complete && session.collection === c) return;
@@ -471,6 +474,7 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
       analyzer.cancel?.();
     },
     restorePurchases: async () => {
+      if (lifetimeTestStore.snapshot()) throw Error("Reset the lifetime simulation before restoring real purchases.");
       const e = await purchaseService.restore();
       await saveEnt(e);
       await lifetimePlusStore.sync({ restore: true });

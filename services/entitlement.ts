@@ -16,6 +16,10 @@ export const DEV_TOOLS = devToolsAuthorized({
   dev: typeof __DEV__ !== "undefined" && __DEV__ === true,
 });
 
+// Share the same explicit non-production gate as the rest of Developer tools so
+// downloaded Staging builds can exercise completion without a development server.
+export const LIFETIME_TEST_TOOLS = DEV_TOOLS;
+
 type Listener = (override: DevOverride) => void;
 const listeners = new Set<Listener>();
 

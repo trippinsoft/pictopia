@@ -23,7 +23,8 @@ import { DEFAULT_FREE_SWIPES } from "@/lib/pictopia/daily";
 import { exploreCounts, exploreFeed, lastExploreDiscard, type ExploreAction } from "@/lib/pictopia/explore";
 import { limitCopy, monthYear, reviewProgressLabel } from "@/lib/pictopia/review-flow";
 import { explorationPercent } from "@/lib/pictopia/library-progress";
-import { displayMediaSize } from "@/lib/pictopia/storage-size";
+import { displayMediaSize, knownMediaSize } from "@/lib/pictopia/storage-size";
+import { bytes } from "@/lib/pictopia/logic";
 import { plural } from "@/lib/pictopia/text";
 import { mediaService } from "@/services/media";
 import { repository, serialize, storage } from "@/services/repository";
@@ -259,6 +260,8 @@ export function AdventureReview({ id, collection, finishContent, onContinue, dat
   }, [originalPlace, atEnd, allowance.stopBefore, sequence.length]);
   const contextProgress = reviewProgressLabel(atEnd ? Math.max(0, sequence.length - 1) : originalPlace, sequence.length);
   const label = current ? monthYear(current.created) : undefined;
+  // Largest videos: each video's size, measured when the platform reports it, else estimated.
+  const sizeLabel = id === "videos-large" && current?.type === "video" ? `${knownMediaSize(current) === undefined ? "≈ " : ""}${bytes(displayMediaSize(current))}` : undefined;
   const dateStrip = dateNavigation?.({ disabled: busy || pending || flying > 0 || finishing.current, flush: () => feed.current?.flush() });
   // Date switches must keep the full header while the saved review loads; the
   // compact loading header otherwise lifts the date strip and drops it again.
@@ -321,6 +324,7 @@ export function AdventureReview({ id, collection, finishContent, onContinue, dat
           </View> : allowance.error ? <View className="flex-1 items-center justify-center gap-4 px-8"><Text className="text-center text-body text-foreground">Couldn’t check your daily free reviews. Your saved review is safe.</Text><Button onPress={() => void allowance.reload()}>Try again</Button></View> : !allowance.ready ? <Loading /> : <ExploreFeed ref={feed} session={session} media={media} change={change} getSession={getSession} flight={flight} canReview={allowance.canReview} stopBefore={allowance.stopBefore} limitPage={limitPage} endPage={endPage} onEnd={finish}
             onPage={(index, total) => { setAtEnd(index >= total); if (index < total) setSelected(sequence[index]); }} onScrollPosition={position => line.current?.setPosition(position)} onScrollActive={(target, ready) => { setSelected(target); setAvailable(ready); }} onBusy={setBusy} onAvailability={setAvailable} onError={setTransitionError} onRestore={restore} onCountUnavailable={countUnavailable} onPhotoUnavailable={checkGone} onUndone={allowance.refund}
             onBrowse={() => guidance.complete("browse")} onDiscard={() => guidance.complete("discard")} />}
+          {!!sizeLabel && !empty && !atEnd && <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" className="absolute left-3 top-2 flex-row items-center gap-1 rounded-[9px] bg-black/50 px-2.5 py-1"><Icon name="HardDrive" size={13} className="text-white" /><Text className="text-caption text-white" style={{ fontVariant: ["tabular-nums"] }}>{sizeLabel}</Text></View>}
           {!!label && !empty && !atEnd && <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" className="absolute right-3 top-2 rounded-[9px] bg-black/50 px-2.5 py-1"><Text className="text-caption text-white">{label}</Text></View>}
           {/* Over the photos, never above them: inserting it would resize every page mid-scroll. */}
           {!!(error || loadError || transitionError) && <Pressable accessibilityRole="button" accessibilityLabel="Retry loading saved review" onPress={() => { setTransitionError(undefined); void reload(); }} className="absolute left-4 right-4 top-12 rounded-2xl bg-card/95 px-4 py-2"><Text accessibilityRole="alert" className="text-body text-foreground">{error || loadError || transitionError}</Text></Pressable>}

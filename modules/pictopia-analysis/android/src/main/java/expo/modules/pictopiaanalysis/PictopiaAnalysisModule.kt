@@ -29,6 +29,9 @@ class PictopiaAnalysisModule : Module() {
     AsyncFunction("verifyLifetimeSignature") { payload: String, signature: String, publicKey: String ->
       PictopiaLifetime.verify(payload, signature, publicKey)
     }
+    AsyncFunction("lookalikePrints") Coroutine { ids: List<String> ->
+      withContext(Dispatchers.IO) { PictopiaLookalike.prints(appContext.reactContext ?: error("Context unavailable"), ids) }
+    }
     AsyncFunction("reviewFavorite") Coroutine { id: String ->
       withContext(Dispatchers.IO) { PictopiaReview.favorite(appContext.reactContext ?: error("Context unavailable"), id) }
     }

@@ -1,4 +1,5 @@
 import { isLifetimeAward, type VerifiedLifetime } from "./lifetime-plus";
+import { testPaid, type LifetimeTest } from "./lifetime-testing";
 import type { Entitlement } from "./types";
 import { entitlementActive } from "./logic";
 
@@ -62,8 +63,9 @@ export interface ResolvedEntitlement {
   mode: DevSubscriptionMode;
 }
 
-export function resolveEntitlement(store: Entitlement | null, override: DevOverride | null | undefined, authorized: boolean, now = Date.now(), lifetime: VerifiedLifetime | null = null): ResolvedEntitlement {
+export function resolveEntitlement(store: Entitlement | null, override: DevOverride | null | undefined, authorized: boolean, now = Date.now(), lifetime: VerifiedLifetime | null = null, simulation: LifetimeTest | null = null): ResolvedEntitlement {
   const storePro = entitlementActive(store, now);
+  if (authorized && simulation) return { pro: simulation.award === "earned" || testPaid(simulation) || simulation.subscription === "trial", source: "developer", storePro, mode: "auto" };
   const mode = authorized ? validOverride(override).mode : "auto";
   if (mode === "auto" && isLifetimeAward(lifetime)) return { pro: true, source: "lifetime", storePro, mode };
   if (mode === "auto") return { pro: storePro, source: "store", storePro, mode };

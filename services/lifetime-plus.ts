@@ -1,3 +1,4 @@
+import { lifetimeTestStore } from "./lifetime-testing";
 import { digestStringAsync, CryptoDigestAlgorithm } from "expo-crypto";
 import { storage, serialize } from "./repository";
 import { rewardCredential } from "./referrals";
@@ -26,6 +27,7 @@ export const lifetimePlusStore = {
     return current;
   },
   sync(options?: { restore?: boolean; payment?: boolean; completion?: LocalCompletionAudit }): Promise<void> {
+    if (lifetimeTestStore.snapshot()) return Promise.resolve();
     // Signing and store credentials must be configured before release.
     if (!process.env.EXPO_PUBLIC_LIFETIME_PLUS_PUBLIC_KEY) return Promise.resolve();
     if (pending) return options?.restore || options?.payment || options?.completion
@@ -41,6 +43,7 @@ export const lifetimePlusStore = {
         // StoreKit's ownership refresh can prompt; reserve it for an explicit Restore.
         const verifyPayment = options?.restore || options?.payment || options?.completion || Date.now() - lastEvidenceAt >= 15 * 60000;
         const evidence = verifyPayment ? await purchaseService.evidence(options?.restore === true) : null;
+        if (lifetimeTestStore.snapshot()) return;
         const response = await fetch(`${url}/functions/v1/lifetime-plus`, {
           method: "POST", headers: { apikey: key, "Content-Type": "application/json", "x-installation-token": await rewardCredential() },
           body: JSON.stringify({ evidence, ...(options?.completion ? { completion: options.completion } : {}) }), signal: controller.signal,
@@ -48,6 +51,7 @@ export const lifetimePlusStore = {
         if (!response.ok) throw Error("Couldn’t verify lifetime status. Your saved award is unchanged.");
         if (verifyPayment) lastEvidenceAt = Date.now();
         const receipt: unknown = await response.json();
+        if (lifetimeTestStore.snapshot()) return;
         if (receipt === null) {
           await serialize(async () => {
             if (isLifetimeAward(current)) return;
@@ -60,6 +64,7 @@ export const lifetimePlusStore = {
         const value = await validate(receipt);
         if (!value) throw Error("Lifetime verification could not be confirmed.");
         await serialize(async () => {
+          if (lifetimeTestStore.snapshot()) return;
           if (isLifetimeAward(current) && !isLifetimeAward(value)) return;
           await storage.setValue(KEY, receipt);
           current = value;

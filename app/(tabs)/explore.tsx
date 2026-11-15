@@ -17,7 +17,8 @@ import type { Media } from "@/lib/pictopia/types";
 import { albumService } from "@/services/albums";
 import { albumsLabel } from "@/lib/pictopia/albums";
 import type { AlbumSummary } from "@/services/albums.types";
-import { collectionStore } from "@/services/collections";
+import { collectionStore, RECENTS_LIMIT } from "@/services/collections";
+import { lookalikeStore } from "@/services/lookalikes";
 
 type Choices = Awaited<ReturnType<typeof adventureStore.choices>>;
 interface AlbumTile extends AlbumSummary { percent?: number; progressLoaded?: boolean }
@@ -39,10 +40,12 @@ export default function Explore() {
   const [parked, setParked] = useState<AdventureSlot[]>([]);
   const [recent, setRecent] = useState<Media>();
   const [recentCount, setRecentCount] = useState<number>();
+  const [recents, setRecents] = useState<{ total: number; cover?: Media }>();
   const [albums, setAlbums] = useState<AlbumTile[]>();
   const [videos, setVideos] = useState<{ total: number; explored: number; cover?: Media }>();
-  const [screenshots, setScreenshots] = useState<{ total: number; bytes: number }>();
+  const [screenshots, setScreenshots] = useState<{ total: number }>();
   const [favorites, setFavorites] = useState<{ total: number; cover?: Media }>();
+  const [lookalikes, setLookalikes] = useState<number>();
   const [busy, setBusy] = useState<string>();
   const [message, setMessage] = useState<string>();
   const [retry, setRetry] = useState(0);
@@ -60,9 +63,14 @@ export default function Explore() {
         if (!alive) return;
         setChoices(c); setParked(waiting); setRecent(latest); setMessage(undefined);
         void storage.count({ type: "photo" }).then(({ total }) => { if (alive) setRecentCount(total); }).catch(() => {});
+        void storage.query({ order: "newest", limit: RECENTS_LIMIT + 50 }).then(rows => {
+          const live = rows.filter(m => !m.deletedAt).slice(0, RECENTS_LIMIT);
+          if (alive) setRecents({ total: live.length, cover: live[0] });
+        }).catch(() => { if (alive) setRecents({ total: 0 }); });
         void storage.count({ type: "photo", screenshot: true }).then(totals => {
           if (alive) setScreenshots(totals);
         }).catch(() => {});
+        void lookalikeStore.saved().then(index => { if (alive) setLookalikes(index?.groups.length); }).catch(() => {});
         void Promise.all([
           storage.count({ type: "photo", favorite: true }),
           storage.query({ type: "photo", order: "newest", favorite: true, limit: 1 }),
@@ -117,7 +125,6 @@ export default function Explore() {
   const surprise = unfinished("surprise-me");
   const screenshotSlot = unfinished("screenshot-sweep");
   const screenshotsAvailable = !!choices?.screenshots || (screenshots?.total ?? 0) > 0;
-  const bytes = (n: number) => n < 1073741824 ? `${Math.round(n / 1048576)} MB` : `${(n / 1073741824).toFixed(1)} GB`;
   const openPlus = (go: () => void) => app.pro ? go() : router.push("/paywall");
 
   return (
@@ -150,15 +157,20 @@ export default function Explore() {
               badge={busy === "on-this-day" ? "Preparing…" : "Today"}
               onPress={() => void begin("on-this-day")}
             />
-            {/* Recents + Favorites — two squares side by side, both personal-library views. */}
+            {/* Recents + Favorites — two squares side by side, both personal-library views.
+                 Both always render (a placeholder while loading), so the row never vanishes. */}
             <View className="mt-3 flex-row gap-3">
-              <ExploreTile
-                square lift={lift}
-                title="Recent photos"
-                hint={recentCount !== undefined ? `${recentCount.toLocaleString()} photos` : "Newest first"}
-                art={{ cover: recent, icon: "Image" }}
-                onPress={() => router.push({ pathname: "/collection-review", params: { scope: "recent" } })}
-              />
+              {recents?.total ? (
+                <ExploreTile
+                  square lift={lift}
+                  title="Recents"
+                  hint={`Your latest ${recents.total.toLocaleString()} · photos, videos & screenshots`}
+                  art={{ cover: recents.cover, icon: "Clock" }}
+                  onPress={() => router.push({ pathname: "/collection-review", params: { scope: "recents" } })}
+                />
+              ) : (
+                <ExploreTile square lift={lift} title="Recents" hint={recents ? "Nothing new yet" : "Checking…"} art={{ icon: "Clock" }} disabled />
+              )}
               {favorites?.total ? (
                 <ExploreTile
                   square lift={lift}
@@ -184,6 +196,14 @@ export default function Explore() {
             ) : (
               <ExploreTile lift={lift} title="Surprise Me" hint="Not enough variety yet — try after reviewing a few more months." art={{ illustration: "detour" }} disabled />
             )}
+            {/* All Photos — the whole library, newest first. */}
+            <ExploreTile
+              lift={lift}
+              title="All Photos"
+              hint={recentCount !== undefined ? `${recentCount.toLocaleString()} photos · newest first` : "Every photo, newest first"}
+              art={{ cover: recent, icon: "Image" }}
+              onPress={() => router.push({ pathname: "/collection-review", params: { scope: "recent" } })}
+            />
 
             {/* Screenshot Sweep + Largest videos — two squares side by side. No "Clean up"
                  heading: the whole app is cleanup, so a section for it reads as redundant. */}
@@ -192,7 +212,7 @@ export default function Explore() {
                 <ExploreTile
                   square lift={lift}
                   title="Screenshot Sweep"
-                  hint={screenshots ? `${screenshots.total.toLocaleString()} screenshots${screenshots.bytes > 0 ? ` · ${bytes(screenshots.bytes)}` : ""}` : "Oldest first"}
+                  hint={screenshots ? `${screenshots.total.toLocaleString()} screenshots` : "Oldest first"}
                   art={{ illustration: "screenshots" }}
                   plus={!app.pro}
                   badge={busy === "screenshot-sweep" ? "Preparing…" : app.pro ? place(screenshotSlot) : undefined}
@@ -214,6 +234,16 @@ export default function Explore() {
                 <ExploreTile square lift={lift} title="Largest videos" hint={videos ? "No videos yet" : "Looking…"} art={{ icon: "HardDrive" }} plus={!app.pro} disabled />
               )}
             </View>
+
+            {/* Duplicate Hunt — sets of look-alike photos, each opened side by side. */}
+            <ExploreTile
+              lift={lift}
+              title="Duplicate Hunt"
+              hint={lookalikes ? `${lookalikes.toLocaleString()} ${lookalikes === 1 ? "set" : "sets"} of look-alikes found` : "Find copies and near-identical shots"}
+              art={{ illustration: "duplicates" }}
+              plus={!app.pro}
+              onPress={() => openPlus(() => router.push("/duplicate-hunt"))}
+            />
 
             {/* Videos */}
             <SectionTitle>Videos</SectionTitle>

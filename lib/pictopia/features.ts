@@ -1,8 +1,8 @@
 /** Features that ship in the code but stay closed in production until they are verified on
  * real devices. A developer can open one for on-device testing from the Adventure Lab. */
 export const RELEASED = {
-  /** Exact/near-duplicate scanning and keeper suggestions need checks on iPhone and Android. */
-  duplicateHunt: false,
+  /** Duplicate Hunt: look-alike sets from small on-device previews, in Explore. */
+  duplicateHunt: true,
 } as const;
 export type FeatureFlag = keyof typeof RELEASED;
 export type DeveloperFlags = Partial<Record<FeatureFlag, boolean>>;

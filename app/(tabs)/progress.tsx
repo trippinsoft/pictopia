@@ -1,6 +1,6 @@
 import { LifetimePlusRow } from "@/components/pictopia/lifetime-plus-row";
 import { useState } from "react";
-import { Modal, Platform, Pressable, ScrollView, View } from "react-native";
+import { Modal, Pressable, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Button, Icon, Text } from "@/components/pictopia/ui";
@@ -191,13 +191,6 @@ export default function Progress() {
             );
           })}
         </View>
-
-        {/* Cleanup footnote — explains the headline number honestly */}
-        {progress && progress.deleted > 0 && (
-          <Text className="mt-4 px-1 text-caption leading-5 text-muted-foreground">
-            Cleared from known file sizes of deletions your phone confirmed{progress.unknownSizes ? `; ${progress.unknownSizes} without a known size` : ""}. {Platform.OS === "ios" ? "iOS frees the space once Recently Deleted is emptied." : "Your phone may keep deleted items in its trash for a while."}
-          </Text>
-        )}
 
         {/* Take a break — Pit Stops live here as a reward */}
         <SectionTitle>Take a break</SectionTitle>

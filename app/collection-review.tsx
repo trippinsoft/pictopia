@@ -46,7 +46,8 @@ export default function CollectionRoute() {
   const name = collectionTitle(scope, state?.title ?? (typeof title === "string" ? title : undefined));
   if (!state || state.scope !== scope) return <Page fallback="/(tabs)/explore" title={name}>{error ? <><Text className="mb-5 text-body text-destructive">{error}</Text><Button onPress={() => void open()}>Try again</Button></> : <Loading />}</Page>;
   const batch = currentBatch(state);
-  const more = !!summary && summary.remaining > 0;
+  // Recents is one fixed set of the newest items; there is no further batch to open.
+  const more = scope !== "recents" && !!summary && summary.remaining > 0;
   return <AdventureReview key={batch.sessionKey} id={scope} collection={{ sessionKey: batch.sessionKey, title: name, progress: summary }} onContinue={more ? () => void next() : undefined}
     finishContent={actions => <CollectionFinish {...actions} scope={scope} name={name} busy={busy} error={error} onNext={more ? () => void next() : undefined} onAll={() => void next(true)} />} />;
 }

@@ -39,11 +39,15 @@ public class PictopiaAnalysisModule: Module {
     AsyncFunction("cancelReviewDisplay") { (token: String) in self.review.cancelDisplay(token) }.runOnQueue(.main)
     AsyncFunction("reviewThumbnail") { (id: String, version: String, promise: Promise) in self.review.thumbnail(id, version: version, promise: promise) }
     AsyncFunction("shareReviewAsset") { (id: String, promise: Promise) in
-      self.review.share(id, presenter: self.appContext?.utilities?.currentViewController(), promise: promise)
+      self.review.share(id, presenter: { self.appContext?.utilities?.currentViewController() }, promise: promise)
     }.runOnQueue(.main)
     AsyncFunction("cancelReviewShare") { self.review.cancelShare() }.runOnQueue(.main)
     AsyncFunction("canScan") { () -> Bool in
       return !ProcessInfo.processInfo.isLowPowerModeEnabled && ProcessInfo.processInfo.thermalState.rawValue < ProcessInfo.ThermalState.serious.rawValue
+    }
+    // Duplicate Hunt: prints from small local previews, off the main thread, never downloading.
+    AsyncFunction("lookalikePrints") { (ids: [String], promise: Promise) in
+      self.queue.async { promise.resolve(PictopiaLookalike.prints(ids)) }
     }
     AsyncFunction("getMetadata") { (ids: [String]) -> [[String: Any]] in
       let assets = PHAsset.fetchAssets(withLocalIdentifiers: ids, options: nil)

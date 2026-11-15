@@ -8,7 +8,7 @@ import { Illustration, artForKind, type ArtName } from "./illustration";
 export const ART_THEMES = {
   timeMachine: "timeMachine",
   onThisDay: "onThisDay",
-  duplicates: "memoryMatch",
+  duplicates: "duplicates",
   capsule: "capsule",
   screenshots: "screenshots",
   detour: "detour",

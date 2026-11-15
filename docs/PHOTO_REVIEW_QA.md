@@ -41,3 +41,5 @@ The Home empty-library screen opened at 375×667 in light mode with no console e
 8. Check the larger Home covers and review layout on small/standard iPhones, Android 7–10 and 11+, landscape, older hardware, both app appearances and reduced motion. Inspect paging/zoom/flight frame performance with several photographs in the air at once, the original-order rail while scrolling and restoring, and the trash tray carousel with portrait and landscape originals.
 
 These checks have not been performed on devices. Browser screenshots and host storage tests do not establish native performance, authorization, sharing or favorites correctness.
+
+Native share release checks: share a local photo and video, cancel and immediately share again; repeat with an iCloud original, navigate away during preparation, and retry after failed/slow preparation. Verify a share sheet appears above the current review screen on iPhone and iPad, no stuck busy error occurs, and the shared file remains available until dismissal. These require a new iOS build; host tests only cover repeat-tap locking, progress, retry and ignoring late completion in the React controls.

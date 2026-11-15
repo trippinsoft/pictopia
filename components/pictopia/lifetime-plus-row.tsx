@@ -1,3 +1,6 @@
+import { useLifetimeTest } from "./use-lifetime-test";
+import { lifetimeTestStore } from "@/services/lifetime-testing";
+import { testAchievementVisible } from "@/lib/pictopia/lifetime-testing";
 import { useEffect, useState } from "react";
 import { AppState, Modal, Pressable, ScrollView, View } from "react-native";
 import { Text, Icon, Button } from "./ui";
@@ -11,6 +14,7 @@ import { manageSubscription } from "@/lib/pictopia/links";
 /** Current paid subscribers and already-earned lifetime members only. */
 export function LifetimePlusRow() {
   const app = usePictopia();
+  const simulation = useLifetimeTest();
   const { progress } = useLibraryProgress();
   const [membership, setMembership] = useState(lifetimePlusStore.snapshot);
   const [open, setOpen] = useState(false);
@@ -29,16 +33,17 @@ export function LifetimePlusRow() {
   }, [membership]);
   useEffect(() => lifetimePlusStore.subscribe(() => setMembership(lifetimePlusStore.snapshot())), []);
   // In particular, app.pro and developer overrides are never evidence of payment.
-  if (!membership || !showLifetimeAchievement(membership, now)) return null;
-  const earned = isLifetimeAward(membership);
+  if (simulation ? !testAchievementVisible(simulation) : !membership || !showLifetimeAchievement(membership, now)) return null;
+  const earned = simulation ? simulation.award === "earned" : isLifetimeAward(membership);
   const count = (progress?.accessible ?? 0) + (progress?.deleted ?? 0);
   const remaining = Math.max(0, (progress?.accessible ?? 0) - (progress?.accessibleExplored ?? 0));
-  const full = app.permission?.granted === true && !app.permission.limited;
-  const scanned = app.scan.status === "complete" && app.scan.skipped === 0;
-  const date = earned && membership.awardedAt ? new Date(membership.awardedAt).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }) : null;
+  const full = !!simulation || app.permission?.granted === true && !app.permission.limited;
+  const scanned = !!simulation || app.scan.status === "complete" && app.scan.skipped === 0;
+  const awardedAt = simulation ? simulation.awardedAt : membership?.awardedAt;
+  const date = earned && awardedAt ? new Date(awardedAt).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }) : null;
   async function check() {
     setSyncing(true); setError(undefined);
-    try { await lifetimePlusStore.sync(); }
+    try { if (simulation) { if (!lifetimeTestStore.complete()) setError("Test completion needs an active paid subscription, 100% progress and at least 10,000 photos."); } else await lifetimePlusStore.sync(); }
     catch (e) { setError((e as Error).message); }
     finally { setSyncing(false); }
   }
@@ -57,16 +62,17 @@ export function LifetimePlusRow() {
             <Text className="text-center text-h2 text-foreground">Pictopia+ for Life</Text>
             {date ? <Text className="text-center text-caption text-muted-foreground">Awarded {date}</Text> : null}
           </View>
+          {simulation ? <Text className="text-caption text-primary">Simulated · no real award or billing changes</Text> : null}
           <Text className="text-body text-foreground">{earned ? "You earned permanent Pictopia+ access. Your award stays active when a subscription expires or is canceled." : "Complete The Big Picture with at least 10,000 distinct eligible photos while your paid Pictopia+ subscription is active. Any paid plan qualifies, and the lifetime award is free. Photos successfully deleted through Pictopia count too. A free trial alone does not qualify."}</Text>
           {!earned ? <View className="gap-2">
             <Text className="text-caption text-muted-foreground">Active paid subscription verified</Text>
             <Text className="text-caption text-muted-foreground">{count.toLocaleString()} library photos · {remaining.toLocaleString()} still unexplored</Text>
             <Text className="text-caption text-muted-foreground">Full photo-library access: {full ? "Allowed" : "Required"}</Text>
             <Text className="text-caption text-muted-foreground">Complete library scan: {scanned ? "Complete" : "Required, with no skipped items"}</Text>
-            <Text className="text-caption text-muted-foreground">{app.libraryReliable ? "Lifetime access is awarded automatically after the completion check succeeds." : "Waiting for a reliable library refresh."}</Text>
+            <Text className="text-caption text-muted-foreground">{simulation || app.libraryReliable ? "Lifetime access is awarded automatically after the completion check succeeds." : "Waiting for a reliable library refresh."}</Text>
           </View> : <>
             <Text accessibilityRole="alert" className="text-body text-foreground">Your paid subscription may still renew and is no longer needed for Pictopia+. This award does not cancel billing. Manage it with your store.</Text>
-            <Button secondary onPress={() => { void manageSubscription(app.entitlement?.managementURL).catch(e => setError((e as Error).message)); }}>Manage subscription</Button>
+            <Button secondary disabled={!!simulation} onPress={() => { void manageSubscription(app.entitlement?.managementURL).catch(e => setError((e as Error).message)); }}>Manage subscription</Button>
           </>}
           <Text className="text-caption text-muted-foreground">Saved awards work offline on this installation. Same-store restoration depends on available purchase records; reinstall recovery cannot be guaranteed. Awards do not transfer between Apple and Google.</Text>
           {error ? <Text accessibilityRole="alert" className="text-caption text-destructive">{error}</Text> : null}

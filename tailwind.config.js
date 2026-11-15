@@ -27,6 +27,10 @@ module.exports = {
           DEFAULT: 'hsl(var(--primary) / <alpha-value>)',
           foreground: 'hsl(var(--primaryForeground) / <alpha-value>)',
         },
+        feature: {
+          DEFAULT: 'hsl(var(--feature) / <alpha-value>)',
+          foreground: 'hsl(var(--featureForeground) / <alpha-value>)',
+        },
         secondary: {
           DEFAULT: 'hsl(var(--secondary) / <alpha-value>)',
           foreground: 'hsl(var(--secondaryForeground) / <alpha-value>)',

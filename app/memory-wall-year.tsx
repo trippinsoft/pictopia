@@ -1,3 +1,5 @@
+import { lifetimeTestStore } from "@/services/lifetime-testing";
+import { useLifetimeTest } from "@/components/pictopia/use-lifetime-test";
 import { Pressable, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Button, Loading, Page, Text } from "@/components/pictopia/ui";
@@ -13,9 +15,10 @@ const MONTHS = Array.from({ length: 12 }, (_, i) => new Date(2000, i, 1));
 const monthName = (m: number, style: "long" | "narrow" = "long") => MONTHS[m - 1].toLocaleDateString(undefined, { month: style });
 
 /** Reviewing stays month by month (there is no whole-year review): months open their own review. */
-const openScope = (scope: string) => router.push({ pathname: "/collection-review", params: { scope } });
+const openScope = (scope: string) => { if (!lifetimeTestStore.snapshot()) router.push({ pathname: "/collection-review", params: { scope } }); };
 
 export default function MemoryWallYear() {
+  const simulation = useLifetimeTest();
   const { year: param } = useLocalSearchParams<{ year?: string }>();
   const { model, error, initialLoading } = useMemoryWall();
   const { peek, peeking, start } = usePeek();
@@ -23,6 +26,7 @@ export default function MemoryWallYear() {
   const title = param === UNDATED ? "Undated photos" : param ?? "The Big Picture";
   return (
     <Page title={title} fallback="/memory-wall">
+      {simulation ? <Text className="text-caption text-primary">Simulated library · no test photos to open</Text> : null}
       {!model ? (
         <View className="pt-8">{error ? <Text className="text-body text-destructive">This year couldn’t be loaded.</Text> : initialLoading ? <Loading /> : null}</View>
       ) : !year ? (

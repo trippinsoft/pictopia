@@ -1,3 +1,5 @@
+import { useLifetimeTest } from "./use-lifetime-test";
+import { lifetimeTestStore } from "@/services/lifetime-testing";
 import { useEffect, useState } from "react";
 import { Modal, ScrollView, View } from "react-native";
 import { Button, Icon, Text } from "./ui";
@@ -10,18 +12,22 @@ const KEY = "lifetimePlusNotice:v1";
 /** The acknowledgement is local UI state; it never grants access. */
 export function LifetimeAwardNotice() {
   const app = usePictopia();
+  const simulation = useLifetimeTest();
   const [award, setAward] = useState(lifetimePlusStore.snapshot);
   const [visible, setVisible] = useState(false);
   const [error, setError] = useState<string>();
   useEffect(() => lifetimePlusStore.subscribe(() => setAward(lifetimePlusStore.snapshot())), []);
   useEffect(() => {
     let active = true;
+    setVisible(false);
+    if (simulation) { setVisible(simulation.award === "earned" && !simulation.acknowledged); return; }
     if (isLifetimeAward(award)) void storage.getValue<number>(KEY).then(seen => {
       if (active && seen !== award?.awardedAt) setVisible(true);
     }).catch(() => { if (active) setVisible(true); });
     return () => { active = false; };
-  }, [award]);
+  }, [award, simulation]);
   async function done() {
+    if (simulation) { lifetimeTestStore.acknowledge(); setVisible(false); return; }
     try { await storage.setValue(KEY, award?.awardedAt); setVisible(false); }
     catch { setError("Couldn’t save your acknowledgement. Your lifetime award is unchanged."); }
   }
@@ -31,7 +37,8 @@ export function LifetimeAwardNotice() {
         <View className="h-16 w-16 items-center justify-center rounded-full bg-sun-soft"><Icon name="Medal" size={32} className="text-foreground" /></View>
         <Text className="text-center text-h2 text-foreground">You earned Pictopia+ for Life</Text>
         <Text className="text-center text-body text-foreground">Your permanent access is active. Your paid subscription may still renew and is no longer needed. This award does not cancel billing.</Text>
-        <Button secondary onPress={() => { void manageSubscription(app.entitlement?.managementURL).catch(e => setError((e as Error).message)); }}>Manage subscription</Button>
+        {simulation ? <Text className="text-center text-caption text-primary">Simulated award · nothing saved to your real membership</Text> : null}
+        <Button secondary disabled={!!simulation} onPress={() => { void manageSubscription(app.entitlement?.managementURL).catch(e => setError((e as Error).message)); }}>Manage subscription</Button>
         {error ? <Text accessibilityRole="alert" className="text-caption text-destructive">{error}</Text> : null}
         <Button onPress={() => void done()}>Got it</Button>
       </ScrollView>

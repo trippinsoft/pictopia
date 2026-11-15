@@ -1,3 +1,5 @@
+import { useLifetimeTest } from "./use-lifetime-test";
+import { testProgress } from "@/lib/pictopia/lifetime-testing";
 import { useCallback, useState } from "react";
 import { AppState } from "react-native";
 import { useFocusEffect } from "expo-router";
@@ -17,7 +19,8 @@ export function useLibraryProgress() {
     const subscription = AppState.addEventListener("change", value => { if (value === "active") refresh(); });
     return () => { unsubscribe(); subscription.remove(); };
   }, [app.ready, app.libraryReliable, app.revision]));
-  const progress = state.value?.progress;
+  const simulation = useLifetimeTest();
+  const progress = simulation ? testProgress(simulation) : state.value?.progress;
   return {
     progress, snapshot: state.value, error: state.error, refreshing: state.refreshing,
     initialLoading: !state.value && !state.error,

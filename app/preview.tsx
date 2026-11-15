@@ -56,17 +56,19 @@ export function Video({ uri, autoplay, onReady }: { uri: string; autoplay: boole
   );
 }
 export default function Preview() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
   const app = usePictopia();
   const downloadGeneration = useRef(0), retrieval = useRef<AbortController | undefined>(undefined);
   useEffect(() => () => { downloadGeneration.current++; retrieval.current?.abort(); }, [id]);
   useFocusEffect(useCallback(() => () => { downloadGeneration.current++; retrieval.current?.abort(); setDownloading(false); }, []));
   useEffect(() => { const sub = AppState.addEventListener("change", state => { if (state !== "active") { downloadGeneration.current++; retrieval.current?.abort(); setDownloading(false); } }); return () => sub.remove(); }, []);
   const [loadedId, setLoadedId] = useState<string>();
-  const allowance = useAllowance(undefined, id ? [id] : [], id, app.pro, loadedId === id);
+  const [m, setM] = useState<Media>();
+  // Discarded items were already reviewed: viewing one again never spends or needs a free review.
+  const discarded = from === "discarded" || m?.decision === "delete";
+  const allowance = useAllowance(undefined, id ? [id] : [], id, app.pro || discarded, loadedId === id);
   usePhotoEncounter(id, loadedId === id && allowance.canReview(id), undefined, undefined, app.setError);
-  const [m, setM] = useState<Media>(),
-    [uri, setUri] = useState<string>(),
+  const [uri, setUri] = useState<string>(),
     [error, setError] = useState(""),
     [details, setDetails] = useState(false),
     [motion, setMotion] = useState(false),
@@ -162,7 +164,7 @@ export default function Preview() {
           </View>} />
         </View>
         <View className="flex-1 overflow-hidden">
-          {!allowance.ready ? <Loading /> : allowance.error || (id && !allowance.canReview(id)) ? <Empty icon="Sparkles" title={allowance.error ? "Couldn’t check daily reviews" : `You’ve explored ${allowance.limit ?? DEFAULT_FREE_SWIPES} items today`} description="Your photos and pending marks are safe. Come back tomorrow or explore with Pictopia+." action={<View className="w-full items-center gap-4">{!allowance.error && <ResetCountdown />}<Button onPress={() => allowance.error ? void allowance.reload() : router.push("/paywall")}>{allowance.error ? "Try again" : "Explore with Pictopia+"}</Button></View>} /> : error ? (
+          {!discarded && !allowance.ready ? <Loading /> : !discarded && (allowance.error || (id && !allowance.canReview(id))) ? <Empty icon="Sparkles" title={allowance.error ? "Couldn’t check daily reviews" : `You’ve explored ${allowance.limit ?? DEFAULT_FREE_SWIPES} items today`} description="Your photos and pending marks are safe. Come back tomorrow or explore with Pictopia+." action={<View className="w-full items-center gap-4">{!allowance.error && <ResetCountdown />}<Button onPress={() => allowance.error ? void allowance.reload() : router.push("/paywall")}>{allowance.error ? "Try again" : "Explore with Pictopia+"}</Button></View>} /> : error ? (
             <Empty
               icon="CloudOff"
               title={m?.type === "video" ? "Video unavailable" : "This photo isn’t available locally"}

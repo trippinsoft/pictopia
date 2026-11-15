@@ -9,6 +9,9 @@ final class PictopiaReview {
   private let queue = DispatchQueue(label: "pictopia.review.thumbnails", qos: .userInitiated)
   private var shareGeneration = 0 // main queue only
   private var sharing = false
+  private weak var shareSheet: UIActivityViewController?
+  private var finishShare: ((String, String?) -> Void)?
+  private var exportingShareFolders = Set<URL>()
 
   static func asset(_ id: String) throws -> PHAsset {
     let access = PHPhotoLibrary.authorizationStatus(for: .readWrite)
@@ -219,10 +222,16 @@ final class PictopiaReview {
       }
     }
   }
-  func cancelShare() { shareGeneration += 1 }
-  func share(_ id: String, presenter: UIViewController?, promise: Promise) {
+  func cancelShare() {
+    let finish = finishShare
+    if let sheet = shareSheet, sheet.presentingViewController != nil {
+      sheet.dismiss(animated: true) { finish?("cancelled", nil) }
+    } else {
+      finish?("cancelled", nil)
+    }
+  }
+  func share(_ id: String, presenter: @escaping () -> UIViewController?, promise: Promise) {
     guard !sharing else { promise.reject("SHARE_BUSY", "A share is already open."); return }
-    guard let presenter = presenter else { promise.reject("SHARE_UNAVAILABLE", "Sharing is not available right now."); return }
     do {
       let asset = try Self.asset(id)
       let resources = PHAssetResource.assetResources(for: asset)
@@ -232,28 +241,55 @@ final class PictopiaReview {
       let base = FileManager.default.temporaryDirectory.appendingPathComponent("pictopia-share", isDirectory: true)
       try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
       // Remove exports left by a terminated process, never an active share.
-      for old in (try? FileManager.default.contentsOfDirectory(at: base, includingPropertiesForKeys: nil)) ?? [] { try? FileManager.default.removeItem(at: old) }
+      for old in (try? FileManager.default.contentsOfDirectory(at: base, includingPropertiesForKeys: nil)) ?? [] where !exportingShareFolders.contains(old) { try? FileManager.default.removeItem(at: old) }
       let folder = base.appendingPathComponent(UUID().uuidString, isDirectory: true)
       try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
       let file = folder.appendingPathComponent((resource.originalFilename as NSString).lastPathComponent)
+      shareGeneration += 1
       let token = shareGeneration
       sharing = true
+      exportingShareFolders.insert(folder)
+      // Every terminal path settles the promise and releases the lock exactly once.
+      let finish: (String, String?) -> Void = { result, error in
+        guard self.sharing, token == self.shareGeneration else { return }
+        self.sharing = false
+        self.shareSheet = nil
+        self.finishShare = nil
+        if !self.exportingShareFolders.contains(folder) { try? FileManager.default.removeItem(at: folder) }
+        if let error = error { promise.reject("SHARE_FAILED", error) } else { promise.resolve(result) }
+      }
+      finishShare = finish
+      DispatchQueue.main.asyncAfter(deadline: .now() + 120) {
+        guard token == self.shareGeneration, self.shareSheet == nil else { return }
+        finish("cancelled", "The original took too long to prepare. Check your connection and try sharing again.")
+      }
       let options = PHAssetResourceRequestOptions(); options.isNetworkAccessAllowed = true
       PHAssetResourceManager.default().writeData(for: resource, toFile: file, options: options) { error in
         DispatchQueue.main.async {
-          guard error == nil, token == self.shareGeneration, presenter.viewIfLoaded?.window != nil else {
-            try? FileManager.default.removeItem(at: folder); self.sharing = false
-            if error != nil { promise.reject("SHARE_UNAVAILABLE", "The original could not be downloaded for sharing.") } else { promise.resolve("cancelled") }
+          self.exportingShareFolders.remove(folder)
+          guard self.sharing, token == self.shareGeneration else {
+            try? FileManager.default.removeItem(at: folder)
             return
           }
-          let sheet = UIActivityViewController(activityItems: [file], applicationActivities: nil)
-          sheet.popoverPresentationController?.sourceView = presenter.view
-          sheet.popoverPresentationController?.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.maxY - 1, width: 1, height: 1)
-          sheet.completionWithItemsHandler = { _, completed, _, error in
-            try? FileManager.default.removeItem(at: folder); self.sharing = false
-            if error != nil { promise.reject("SHARE_FAILED", "Sharing could not finish.") } else { promise.resolve(completed ? "shared" : "cancelled") }
+          guard error == nil else { finish("cancelled", "The original could not be downloaded for sharing. Please try again."); return }
+          // Resolve the current controller after export, which may take time in iCloud.
+          guard var host = presenter() else { finish("cancelled", "Sharing is not available right now. Please try again."); return }
+          while let presented = host.presentedViewController, !presented.isBeingDismissed { host = presented }
+          guard host.viewIfLoaded?.window != nil, !host.isBeingDismissed, !host.isBeingPresented else {
+            finish("cancelled", "Sharing couldn’t open during a screen transition. Please try again."); return
           }
-          presenter.present(sheet, animated: true)
+          let sheet = UIActivityViewController(activityItems: [file], applicationActivities: nil)
+          self.shareSheet = sheet
+          sheet.popoverPresentationController?.sourceView = host.view
+          sheet.popoverPresentationController?.sourceRect = CGRect(x: host.view.bounds.midX, y: host.view.bounds.maxY - 1, width: 1, height: 1)
+          sheet.completionWithItemsHandler = { _, completed, _, error in
+            DispatchQueue.main.async { finish(completed ? "shared" : "cancelled", error == nil ? nil : "Sharing could not finish. Please try again.") }
+          }
+          host.present(sheet, animated: true)
+          // UIKit can refuse presentation without calling the activity completion handler.
+          DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            if sheet.presentingViewController == nil { finish("cancelled", "The share sheet couldn’t open. Please try again.") }
+          }
         }
       }
     } catch { sharing = false; promise.reject("SHARE_UNAVAILABLE", error.localizedDescription) }

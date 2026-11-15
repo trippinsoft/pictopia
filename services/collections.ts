@@ -4,21 +4,27 @@ import { meaningfulReview } from "@/lib/pictopia/adventures";
 import { createExplore } from "@/lib/pictopia/explore";
 import type { Media, Query } from "@/lib/pictopia/types";
 import { albumService } from "./albums";
+import { mediaService } from "./media";
+import { knownMediaSize } from "@/lib/pictopia/storage-size";
 
-/** `album:<id>` is an iOS album or an Android folder; `videos-large` is videos, largest first;
+/** `recents` is the newest `RECENTS_LIMIT` items of any kind (photos, videos, screenshots),
+ * always shown in full; `recent` is the older name for All Photos (photos only, newest first).
+ * `album:<id>` is an iOS album or an Android folder; `videos-large` is videos, largest first;
  * `favorites` is the photos the user has marked as favourites in Photos (iOS) or MediaStore. */
-export type PhotoCollection = "recent" | "screenshots" | "favorites" | "videos" | "videos-large" | "unknown" | `month:${string}` | `year:${string}` | `album:${string}`;
+export type PhotoCollection = "recents" | "recent" | "screenshots" | "favorites" | "videos" | "videos-large" | "unknown" | `month:${string}` | `year:${string}` | `album:${string}`;
 export const COLLECTION_BATCH = 120;
+export const RECENTS_LIMIT = 100;
 interface Batch { sessionKey: string; mode: "unseen" | "all"; cursor?: { created: number; id: string }; }
-export interface CollectionReview { scope: PhotoCollection; batches: Batch[]; position: number; openedAt: number; /** Albums: the name shown when opened. */ title?: string }
+export interface CollectionReview { scope: PhotoCollection; batches: Batch[]; position: number; openedAt: number; sizeOrderVersion?: number; /** Albums: the name shown when opened. */ title?: string }
 const INDEX = "photoCollections:v1";
 const metaKey = (scope: PhotoCollection) => `photoCollection:${scope}`;
 export const currentBatch = (state: CollectionReview) => state.batches[state.position];
 export function isPhotoCollection(value: string): value is PhotoCollection {
-  return value === "recent" || value === "screenshots" || value === "favorites" || value === "videos" || value === "videos-large" || value === "unknown" || /^album:.+/.test(value) || /^month:\d{4}-(0[1-9]|1[0-2])$/.test(value) || /^year:\d{4}$/.test(value);
+  return value === "recents" || value === "recent" || value === "screenshots" || value === "favorites" || value === "videos" || value === "videos-large" || value === "unknown" || /^album:.+/.test(value) || /^month:\d{4}-(0[1-9]|1[0-2])$/.test(value) || /^year:\d{4}$/.test(value);
 }
 export function collectionTitle(scope: PhotoCollection, title?: string) {
-  if (scope === "recent") return "Recent Photos";
+  if (scope === "recents") return "Recents";
+  if (scope === "recent") return "All Photos";
   if (scope === "screenshots") return "Screenshots";
   if (scope === "favorites") return "Favorites";
   if (scope === "videos") return "Videos";
@@ -33,7 +39,7 @@ export function collectionQuery(scope: PhotoCollection): Query {
   if (scope === "videos") return { type: "video", order: "oldest" };
   if (scope === "videos-large") return { type: "video", order: "size" };
   // Album members come from the platform's album, not a stored column.
-  if (scope.startsWith("album:")) return { ids: [] };
+  if (scope.startsWith("album:") || scope === "recents") return { ids: [] };
   if (scope === "favorites") return { type: "photo", order: "newest", favorite: true };
   return { type: "photo", order: scope === "recent" ? "newest" : "oldest", ...(scope === "screenshots" ? { screenshot: true } : scope === "unknown" ? { month: "unknown" } : scope.startsWith("month:") ? { month: scope.slice(6) } : scope.startsWith("year:") ? { year: scope.slice(5) } : {}) };
 }
@@ -48,13 +54,37 @@ const albumId = (scope: PhotoCollection) => scope.startsWith("album:") ? scope.s
 async function listRows(scope: PhotoCollection) {
   const album = albumId(scope);
   if (album) return albumRows(album);
+  if (scope === "recents") return recentRows();
   if (scope !== "videos-large") return undefined;
   const rows: Media[] = [];
   for (let offset = 0; ; offset += 500) {
-    const page = await storage.query({ type: "video", order: "size", limit: 500, offset });
+    // Enumerate by date: a size index can omit assets whose size is still unknown.
+    const page = await storage.query({ type: "video", order: "newest", limit: 500, offset });
     rows.push(...page.filter(m => !m.deletedAt));
-    if (page.length < 500) return rows;
+    if (page.length < 500) break;
   }
+  // Read metadata only, with bounded concurrency; never download/export a video for size.
+  // Callers build inside the repository serializer, preserving concurrent media decisions.
+  for (let offset = 0; offset < rows.length; offset += 8) {
+    const updates: Media[] = [];
+    await Promise.all(rows.slice(offset, offset + 8).map(async (m) => {
+      if (knownMediaSize(m) !== undefined) return;
+      const size = await mediaService.size(m).catch(() => undefined);
+      if (size === undefined || !Number.isFinite(size) || size <= 0) return;
+      const latest = await storage.get(m.id);
+      if (!latest || latest.modified !== m.modified || latest.deletedAt || !latest.active) return;
+      m.size = size;
+      updates.push({ ...latest, size });
+    }));
+    if (updates.length) await storage.put(updates);
+  }
+  // Unknown sizes follow measured sizes; date is only a tie-breaker.
+  return rows.sort((a, b) => (knownMediaSize(b) ?? -1) - (knownMediaSize(a) ?? -1) || b.created - a.created || b.id.localeCompare(a.id));
+}
+/** The newest items of every kind, as they are in the library right now. */
+async function recentRows() {
+  const page = await storage.query({ order: "newest", limit: RECENTS_LIMIT + 50 });
+  return page.filter(m => !m.deletedAt).slice(0, RECENTS_LIMIT);
 }
 /** An album's members that Pictopia knows, in the album's own order (newest first). Read
  * live, so photos added or removed outside Pictopia are always reflected. */
@@ -101,14 +131,14 @@ async function build(scope: PhotoCollection, saved?: CollectionReview, mode: "un
   const sessionKey = `collection:${scope}:${Date.now()}-${Math.random().toString(36).slice(2)}:explore`;
   const session = { ...createExplore(rows.map(m => m.id)), review: true, instructionsDismissed: true, ...(rows.length ? {} : { finished: true }) };
   const batch: Batch = { sessionKey, mode, cursor: after };
-  const state: CollectionReview = { scope, batches: [...(saved?.batches ?? []), batch], position: saved?.batches.length ?? 0, openedAt: Date.now(), ...(saved?.title ? { title: saved.title } : {}) };
+  const state: CollectionReview = { scope, batches: [...(saved?.batches ?? []), batch], position: saved?.batches.length ?? 0, openedAt: Date.now(), ...(scope === "videos-large" ? { sizeOrderVersion: 1 } : {}), ...(saved?.title ? { title: saved.title } : {}) };
   await storage.put([], { [sessionKey]: session });
   return remember(state);
 }
 export const collectionStore = {
   async summary(scope: PhotoCollection) {
     if (scope === "videos" || scope === "videos-large") return storage.videoProgress();
-    const list = albumId(scope) ? await listRows(scope) : undefined;
+    const list = albumId(scope) || scope === "recents" ? await listRows(scope) : undefined;
     if (list) {
       const rows = list;
       const explored = rows.filter(m => !!m.firstSeenAt).length;
@@ -123,6 +153,8 @@ export const collectionStore = {
     return serialize(async () => {
       const stored = await storage.getValue<CollectionReview>(metaKey(scope));
       const saved = stored && title && stored.title !== title ? { ...stored, title } : stored;
+      // Preserve old snapshots/Undo, but open a fresh correctly ranked batch once.
+      if (saved && scope === "videos-large" && saved.sizeOrderVersion !== 1) return build(scope, saved);
       if (!saved && title) return build(scope, undefined).then(state => remember({ ...state, title }));
       if (saved) {
         const session = await exploreStoreFor(currentBatch(saved).sessionKey).load();
@@ -133,9 +165,14 @@ export const collectionStore = {
           // but let this collection open the photos it can now access instead.
           await storage.setValue(currentBatch(saved).sessionKey, { ...session, finished: true, activeId: null });
         }
-        if ((await this.summary(scope)).remaining === 0) return remember({ ...saved, openedAt: Date.now() });
+        if (scope === "recents") {
+          // A finished Recents reopens as-is only while it still holds the newest items.
+          const shown = new Set(session?.ids ?? []);
+          const latest = (await recentRows()).filter(m => m.decision !== "delete");
+          if (latest.length && latest.every(m => shown.has(m.id))) return remember({ ...saved, openedAt: Date.now() });
+        } else if ((await this.summary(scope)).remaining === 0) return remember({ ...saved, openedAt: Date.now() });
       }
-      return build(scope, saved);
+      return build(scope, saved, scope === "recents" ? "all" : "unseen");
     });
   },
   async next(scope: PhotoCollection, all = false) {

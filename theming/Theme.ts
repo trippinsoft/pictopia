@@ -40,6 +40,9 @@ export interface Theme {
     stageForeground?: string;
     /** Playful Adventure: soft shadow under stickers and cards, set by the chosen pastel. */
     tint?: string;
+    /** The one large highlighted card (Pictopia+ in Settings): navy by day, lifted indigo at night. */
+    feature?: string;
+    featureForeground?: string;
     /** Streak flame and progress highlights (fills). */
     sun?: string;
     sunSoft?: string;
@@ -47,6 +50,8 @@ export interface Theme {
     sunPastel?: string;
     /** Text on `sunPastel`. */
     sunInk?: string;
+    /** Dark gold outline around gold marks (the selected tab icon). */
+    sunDeep?: string;
     /** The "or" medallion and pending-deletion icon (fills). */
     tomato?: string;
     /** Progress bars and completion ticks (fills). */

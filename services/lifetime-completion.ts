@@ -1,3 +1,4 @@
+import { lifetimeTestStore } from "./lifetime-testing";
 import { Platform } from "react-native";
 import { lifetimePlusStore } from "./lifetime-plus";
 import { isLifetimeEligible } from "@/lib/pictopia/lifetime-plus";
@@ -11,6 +12,7 @@ let pending: Promise<void> | undefined;
 let lastAttempt = 0;
 /** Local consistency check; Supabase rechecks current paid subscription before awarding. */
 export function checkLifetimeCompletion(): Promise<void> {
+  if (lifetimeTestStore.snapshot()) return Promise.resolve();
   if (Platform.OS === "web" || !isLifetimeEligible(lifetimePlusStore.snapshot())) return Promise.resolve();
   if (pending) return pending;
   if (Date.now() - lastAttempt < 60000) return Promise.resolve();
