@@ -1,39 +1,19 @@
 import { ScrollView, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Path } from 'react-native-svg';
 import { Button, Text } from '@/components/pictopia/ui';
 import { Wordmark } from '@/components/pictopia/playful';
-import { ThemeProvider, useTheme } from '@/theming/ThemeProvider';
-import { welcomeThemes, welcomeWaves } from '@/theming/welcome';
 import { openLegal } from '@/lib/pictopia/links';
 import { PROBLEM_COPY } from '@/lib/pictopia/onboarding';
 import { ProblemPile } from './problem';
 
-/** The opening: the problem first (a pile of memories that keeps growing), then the promise. */
+/** The opening: the problem first (a pile of memories that keeps growing), then the promise.
+ * Uses the app's own theme and page background, like every other onboarding screen. */
 export function Welcome({ onStart }: { onStart: () => void }) {
-  const { theme } = useTheme();
-  return (
-    <ThemeProvider scoped initialThemeName={theme.name === 'dark' ? 'dark' : 'light'} themes={welcomeThemes}>
-      <WelcomeContent onStart={onStart} />
-    </ThemeProvider>
-  );
-}
-
-function WelcomeContent({ onStart }: { onStart: () => void }) {
-  const { theme } = useTheme();
   const { width, height } = useWindowDimensions();
-  const waves = welcomeWaves[theme.name === 'dark' ? 'dark' : 'light'];
   const artworkSize = Math.min(width - 40, 320, Math.max(200, height * 0.4));
 
   return (
     <View className="flex-1 overflow-hidden bg-background">
-      <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" className="absolute inset-x-0 bottom-0 h-52">
-        <Svg width="100%" height="100%" viewBox="0 0 400 200" preserveAspectRatio="none">
-          <Path d="M0 30 C80 -10 136 106 232 75 S340 55 400 84 V200 H0Z" fill={waves.lavender} />
-          <Path d="M0 148 C146 158 230 22 400 24 V200 H0Z" fill={waves.lime} />
-          <Path d="M0 120 C100 97 193 146 310 200 H0Z" fill={waves.aqua} />
-        </Svg>
-      </View>
       <SafeAreaView className="flex-1" edges={['top', 'bottom', 'left', 'right']}>
         <ScrollView bounces={false} contentContainerClassName="mx-auto w-full max-w-md flex-grow justify-center px-5 py-6">
           <View className="items-center gap-3">

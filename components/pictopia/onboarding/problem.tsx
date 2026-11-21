@@ -29,7 +29,7 @@ const clamp = (v: number) => { "worklet"; return Math.min(1, Math.max(0, v)); };
 const seg = (t: number, a: number, b: number) => { "worklet"; return clamp((t - a) / (b - a)); };
 const out = (x: number) => { "worklet"; return 1 - Math.pow(1 - x, 3); };
 const inOut = (x: number) => { "worklet"; return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
-const dropAt = (i: number) => 0.03 + i * 0.05;
+const dropAt = (i: number) => { "worklet"; return 0.03 + i * 0.05; };
 
 function PileCard({ card, i, t, w, h, pw, ph }: { card: Card; i: number; t: SharedValue<number>; w: number; h: number; pw: number; ph: number }) {
   const fanX = card.keep >= 0 ? w * 0.5 + FAN[card.keep] * 4 * (w / 320) : 0;

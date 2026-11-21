@@ -3,6 +3,7 @@ import { AccessibilityInfo, AppState, Platform, Pressable, View } from "react-na
 import { useFocusEffect } from "expo-router";
 import Animated, { FadeOut, useReducedMotion } from "react-native-reanimated";
 import { Icon, Text } from "./ui";
+import { tourTarget } from "./tour-targets";
 import { useTheme } from "@/theming/ThemeProvider";
 import { reviewMedia } from "@/services/review-media";
 import type { FavoriteState } from "@/services/review-media.types";
@@ -60,7 +61,8 @@ export function ReviewActions({ media, disabled, queued, legacy, highlighted, on
   const native = Platform.OS !== "web";
   return <View className="flex-row items-center gap-2.5">
     {(queued || legacy) && <Pressable accessibilityRole="button" accessibilityLabel="Restore this photograph" disabled={disabled} onPress={onRestore} className="h-12 flex-row items-center gap-1.5 rounded-full bg-card/90 px-4 active:opacity-70"><Icon name="RotateCcw" size={18} className="text-foreground" /><Text className="text-button text-foreground">Restore</Text></Pressable>}
-    {native && <Pressable accessibilityRole="button" accessibilityLabel={favorite?.value ? "Remove from Favorites" : "Add to Favorites"} accessibilityState={{ selected: favorite?.value, disabled: disabled || working || !media }} disabled={disabled || working || !media} onPress={() => void act("favorite")} className={`h-12 w-12 items-center justify-center rounded-full bg-card/90 active:opacity-70 ${highlighted ? "border-2 border-sun" : ""}`}>
+    {/* `tourTarget` only lets the heart tip find this button on screen; it never moves it. */}
+    {native && <Pressable ref={tourTarget("favorite")} accessibilityRole="button" accessibilityLabel={favorite?.value ? "Remove from Favorites" : "Add to Favorites"} accessibilityState={{ selected: favorite?.value, disabled: disabled || working || !media }} disabled={disabled || working || !media} onPress={() => void act("favorite")} className={`h-12 w-12 items-center justify-center rounded-full bg-card/90 active:opacity-70 ${highlighted ? "border-2 border-sun" : ""}`}>
       <Icon name="Heart" size={22} fill={favorite?.value ? theme.colors.destructive : "none"} className={favorite?.value ? "text-destructive" : "text-foreground"} />
     </Pressable>}
     {native && <Pressable accessibilityRole="button" accessibilityLabel={sharing ? "Preparing original for sharing" : "Share original photograph"} accessibilityState={{ busy: sharing, disabled: disabled || working || !media }} disabled={disabled || working || !media} onPress={() => void act("share")} className="h-12 w-12 items-center justify-center rounded-full bg-card/90 active:opacity-70"><Icon name="Share" size={21} className="text-foreground" /></Pressable>}

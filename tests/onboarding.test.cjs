@@ -163,3 +163,10 @@ test("the tour card never covers a spotlight, on small and large phones", () => 
     }
   }
 });
+
+test("the tour's card is never hidden while waiting for a layout event (iOS sends none when nothing changed)", () => {
+  const src = require("node:fs").readFileSync(require("node:path").join(__dirname, "../components/pictopia/home-tour.tsx"), "utf8");
+  assert.doesNotMatch(src, /opacity:\s*cardH\s*===\s*undefined/, "card visibility must not depend on a measured height");
+  assert.match(src, /key=\{step\}/, "each step mounts its own card, so its first layout always reports");
+  assert.match(src, /measured\.step === step/, "a new step's card waits only for its own spotlight, which always arrives");
+});

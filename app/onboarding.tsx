@@ -23,7 +23,7 @@ import { trackOnboarding } from "@/services/analytics";
 import { ONBOARDING_STEPS, librarySizeBucket, stepSeconds, type OnboardingStepName } from "@/lib/pictopia/onboarding-analytics";
 
 const STORY: Record<"scroll" | "swipe" | "space", { kicker?: string; title: string; body: string; demo: () => ReactElement }> = {
-  scroll: { kicker: "There’s a better way", title: "Scroll your photos. Swipe the clutter.", body: "Enjoy your memories one after another, like a feed.", demo: ScrollDemo },
+  scroll: { kicker: "There’s a better way", title: "Scroll your photos.\nSwipe the clutter.", body: "Enjoy your memories one after another,\nlike a feed.", demo: ScrollDemo },
   swipe: { title: "Swipe away what you don’t need", body: "Nothing is deleted until you say so.", demo: SwipeDemo },
   space: { title: "Watch the space add up", body: "Delete in one go, free up space, and earn streaks and badges.", demo: SpaceDemo },
 };
@@ -150,7 +150,7 @@ export default function Onboarding() {
         <View className="gap-7">
           <Demo />
           <View className="gap-2.5">
-            {story.kicker ? <Text className="text-center text-h4 text-tomato">{story.kicker}</Text> : null}
+            {story.kicker ? <Text className="text-center text-h3 text-tomato">{story.kicker}</Text> : null}
             <Text accessibilityRole="header" className="text-center text-h1 text-foreground">{story.title}</Text>
             <Text className="text-center text-body leading-6 text-muted-foreground">{story.body}</Text>
           </View>

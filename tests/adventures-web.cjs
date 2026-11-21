@@ -61,7 +61,7 @@ const fs = require("node:fs");
     await page.mouse.move(cx, cy);
     await page.mouse.wheel(0, feed.height);
     await see(`2 of ${total}`);
-    await see("Swipe sideways to mark");
+    await see("Swipe sideways to discard");
     pass("Scrolling browses and moves the coach to its second tip");
 
     await page.waitForTimeout(500);
@@ -73,7 +73,7 @@ const fs = require("node:fs");
     };
     await flick();
     await page.getByLabel(/^Trash, 1 photograph marked/).waitFor();
-    if (await page.getByText("Swipe sideways to mark", { exact: true }).count()) throw Error("The coach should finish after a real swipe");
+    if (await page.getByText("Swipe sideways to discard", { exact: true }).count()) throw Error("The coach should finish after a real swipe");
     await shot("review-marked");
     pass("A sideways flick marks a photo, fills the trash and ends the coach");
 
