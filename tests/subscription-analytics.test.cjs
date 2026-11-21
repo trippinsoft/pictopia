@@ -21,6 +21,7 @@ function harness(shared = { ledger: undefined }) {
     } },
     "./analytics": { trackSubscriptionAnalytics(event, props) { h.events.push([event, policy.sanitizeSubscriptionProperties(props)]); } },
     "./store-subscription-analytics": { storeSubscriptionAnalytics: {
+      canVerifyTransactions: true,
       async history() { return h.baseline ?? []; },
       async snapshot() { return { verified: true, current: h.current }; },
       async transaction() { return h.verified; },
@@ -32,7 +33,7 @@ function harness(shared = { ledger: undefined }) {
   return h;
 }
 function store(h) {
-  const s = { active: [], available: [], listeners: {}, requestError: null, eligible: true };
+  const s = { active: [], available: [], listeners: {}, requestError: null, eligible: true, notifications: [], permission: "granted" };
   s.iap = {
     async initConnection() { return true; },
     async fetchProducts() { return ["weekly", "annual"].map(kind => ({
@@ -49,18 +50,37 @@ function store(h) {
     isUserCancelledError(e) { return e?.code === "user-cancelled"; },
   };
   s.service = makeLoader({ ...h.mocks,
-    "react-native": { Platform: { OS: "ios" } }, "expo-iap": s.iap,
+    "react-native": { Platform: { OS: "ios", Version: "18.0" } }, "expo-iap": s.iap,
+    "./notifications": { notificationService: {
+      async permission() { return s.permission; },
+      async scheduleOnce(reminder) { s.notifications.push(reminder); },
+    } },
     "./subscription-analytics": { subscriptionAnalytics: h.analytics },
   })("services/purchases.native.ts").purchaseService;
   return s;
 }
-async function begin(s, id = PRO_PRODUCTS.weekly) {
+async function begin(s, id = PRO_PRODUCTS.weekly, options) {
   await s.service.init(() => {});
   await s.service.offers();
-  const result = s.service.purchase(id);
+  const result = s.service.purchase(id, options);
   await tick();
   return { result };
 }
+test("onboarding schedules once for a new verified trial only when notifications are on", async () => {
+  for (const scenario of ["trial", "notifications off", "already owned", "paid"]) {
+    const h = harness(), s = store(h);
+    h.verified = transaction({ storeEnvironment: "production", purchasedAt: NOW, expiresAt: NOW + 3 * DAY,
+      ...(scenario === "paid" ? { purchaseType: "paid", state: "active_paid" } : {}) });
+    if (scenario === "notifications off") s.permission = "denied";
+    if (scenario === "already owned") h.baseline = [h.verified.fingerprint];
+    const { result } = await begin(s, PRO_PRODUCTS.weekly, { remindBeforeTrialEnds: true });
+    await complete(s, h);
+    await result;
+    await complete(s, h);
+    assert.equal(s.notifications.length, scenario === "trial" ? 1 : 0, scenario);
+    if (scenario === "trial") assert.equal(s.notifications[0].at, NOW + 2 * DAY);
+  }
+});
 async function complete(s, h, id = PRO_PRODUCTS.weekly) {
   s.active = [{ productId: id, isActive: true, expirationDateIOS: Date.now() + DAY }];
   h.current = h.verified;

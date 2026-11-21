@@ -2,7 +2,7 @@ import { storage, serialize } from "./repository";
 import { deletionBlocked, exploreStoreFor, visibleIds } from "./explore";
 import { adventureSize, meaningfulReview } from "@/lib/pictopia/adventures";
 import { isSweepScreenshot } from "@/lib/pictopia/photo-eligibility";
-import { createExplore } from "@/lib/pictopia/explore";
+import { createExplore, migrateExplore, reduceExplore } from "@/lib/pictopia/explore";
 import type { Media, Query } from "@/lib/pictopia/types";
 import { albumService } from "./albums";
 import { mediaService } from "./media";
@@ -21,6 +21,7 @@ interface Batch {
   cursor?: { created: number; id: string };
   hasMore?: boolean;
   replayStart?: number;
+  browse?: true;
 }
 export interface CollectionReview { scope: PhotoCollection; batches: Batch[]; position: number; continuePosition?: number; openedAt: number; sizeOrderVersion?: number; /** Albums: the name shown when opened. */ title?: string }
 const INDEX = "photoCollections:v1";
@@ -29,8 +30,9 @@ export const currentBatch = (state: CollectionReview) => state.batches[state.pos
 export function isPhotoCollection(value: string): value is PhotoCollection {
   return value === "recents" || value === "recent" || value === "screenshots" || value === "favorites" || value === "videos" || value === "videos-large" || value === "unknown" || /^album:.+/.test(value) || /^month:\d{4}-(0[1-9]|1[0-2])$/.test(value) || /^year:\d{4}$/.test(value);
 }
-export const canReviewAgain = (scope: PhotoCollection) =>
-  scope === "recent" || scope === "videos" || scope === "videos-large" || scope === "screenshots";
+const isSortedCollection = (scope: PhotoCollection) =>
+  scope === "recent" || scope === "videos" || scope === "videos-large";
+export const canReviewAgain = (scope: PhotoCollection) => isSortedCollection(scope) || scope === "screenshots";
 
 export function collectionTitle(scope: PhotoCollection, title?: string) {
   if (scope === "recents") return "Recents";
@@ -111,7 +113,7 @@ async function albumRows(id: string) {
 }
 async function build(
   scope: PhotoCollection, saved?: CollectionReview, mode: Batch["mode"] = "unseen",
-  cursor?: Batch["cursor"], replayStart?: number,
+  cursor?: Batch["cursor"], replayStart?: number, browse?: { resumeId?: string },
 ) {
   const blocked = await deletionBlocked();
   const limit = scope === "screenshots" && replayStart !== undefined ? adventureSize("screenshots") : COLLECTION_BATCH;
@@ -122,9 +124,12 @@ async function build(
   let hasMore = false;
   let after = cursor;
   const add = async (page: Media[]) => {
-    const visible = new Set(await visibleIds(page.filter(included).map(m => m.id)));
-    for (const item of page) {
-      if (!visible.has(item.id)) continue;
+    const candidates = page.filter(included);
+    // The sorted shelves can open from the synced index, like Recents. The viewer
+    // resolves permission and availability as each item loads.
+    const visible = browse ? undefined : new Set(await visibleIds(candidates.map(m => m.id)));
+    for (const item of candidates) {
+      if (visible && !visible.has(item.id)) continue;
       if (rows.length === limit) { hasMore = true; break; }
       rows.push(item);
       after = { created: item.created, id: item.id };
@@ -158,15 +163,28 @@ async function build(
   }
   const startingSequence = replayStart === saved?.batches.length && replayStart !== undefined;
   const switchingToUnseen = mode === "unseen" && saved && currentBatch(saved).replayStart !== undefined;
+  if (!rows.length && saved && browse && !startingSequence) {
+    const batches = saved.batches.map((batch, i) => i === saved.position ? { ...batch, hasMore: false } : batch);
+    return remember({ ...saved, batches, openedAt: Date.now() });
+  }
   if (!rows.length && saved && !startingSequence && !switchingToUnseen && (!repeatable(scope) || !!cursor)) {
     return remember({ ...saved, openedAt: Date.now() });
   }
+  return saveBatch(scope, rows, saved, mode, after, lookAhead ? hasMore : undefined, replayStart, browse);
+}
+
+function saveBatch(
+  scope: PhotoCollection, rows: Media[], saved: CollectionReview | undefined,
+  mode: Batch["mode"], cursor?: Batch["cursor"], hasMore?: boolean, replayStart?: number, browse?: { resumeId?: string },
+) {
   const sessionKey = `collection:${scope}:${Date.now()}-${Math.random().toString(36).slice(2)}:explore`;
-  const session = { ...createExplore(rows.map(m => m.id)), review: true, instructionsDismissed: true, ...(rows.length ? {} : { finished: true }) };
-  const batch: Batch = { sessionKey, mode, cursor: after, ...(lookAhead ? { hasMore } : {}), ...(replayStart !== undefined ? { replayStart } : {}) };
+  const ids = rows.map(m => m.id);
+  const session = { ...createExplore(ids), review: true, instructionsDismissed: true, ...(rows.length ? {} : { finished: true }) };
+  if (browse?.resumeId && ids.includes(browse.resumeId)) session.activeId = browse.resumeId;
+  const batch: Batch = { sessionKey, mode, cursor, ...(browse ? { browse: true } : {}), ...(hasMore !== undefined ? { hasMore } : {}), ...(replayStart !== undefined ? { replayStart } : {}) };
   const position = saved?.batches.length ?? 0;
   const state: CollectionReview = { ...saved, scope, batches: [...(saved?.batches ?? []), batch], position, openedAt: Date.now(), ...(scope === "videos-large" ? { sizeOrderVersion: 1 } : {}) };
-  if (canReviewAgain(scope) && mode === "unseen") state.continuePosition = position;
+  if (browse || (canReviewAgain(scope) && mode === "unseen")) state.continuePosition = position;
   return remember(state, session);
 }
 export const collectionStore = {
@@ -205,19 +223,51 @@ export const collectionStore = {
         position: stored.continuePosition ?? stored.position,
         ...(title ? { title } : {}),
       } : undefined;
-      // Preserve old snapshots/Undo, but open a fresh correctly ranked batch once.
-      if (saved && scope === "videos-large" && saved.sizeOrderVersion !== 1) return build(scope, saved);
+      if (isSortedCollection(scope)) {
+        const batch = saved && currentBatch(saved);
+        const previous = batch && await storage.getValue<Parameters<typeof migrateExplore>[0]>(batch.sessionKey);
+        const session = previous && migrateExplore(previous);
+        if (saved && batch?.browse && session?.ids.length && (!session.finished || batch.hasMore)) {
+          if (!session.finished) {
+            const rows = await storage.query({ ids: session.ids, limit: session.ids.length });
+            if (rows.some(m => !m.deletedAt)) return remember({ ...saved, openedAt: Date.now() });
+          }
+          if (batch.hasMore) {
+            const next = await build(scope, saved, "all", batch.cursor, batch.replayStart, {});
+            if (currentBatch(next).sessionKey !== batch.sessionKey) return next;
+          }
+        }
+        // The old unseen-only snapshots stay on disk. Carry over the previous
+        // position if the item still belongs to the opening batch.
+        const resumeId = !batch?.browse && !session?.finished ? session?.activeId ?? undefined : undefined;
+        return build(scope, saved, "all", undefined, saved?.batches.length ?? 0, { resumeId });
+      }
+      if (scope === "recents") {
+        // Use the synced library index. The viewer checks access when it opens each asset.
+        // A full Photos lookup here would hold up every visit, including an unchanged batch.
+        const [latest, blocked, previous] = await Promise.all([
+          recentRows(),
+          deletionBlocked(),
+          saved ? storage.getValue<Parameters<typeof migrateExplore>[0]>(currentBatch(saved).sessionKey) : undefined,
+        ]);
+        const rows = latest.filter(m => m.decision !== "delete" && !blocked.has(m.id));
+        if (saved && previous && rows.length === previous.ids.length && rows.every((m, i) => m.id === previous.ids[i])) {
+          const session = migrateExplore(previous);
+          const resumed = reduceExplore(session, { type: "revisit" });
+          return remember({ ...saved, openedAt: Date.now() }, resumed !== session ? resumed : undefined);
+        }
+        return saveBatch(scope, rows, saved, "all");
+      }
       if (saved && currentBatch(saved).replayStart === undefined) {
         const session = await exploreStoreFor(currentBatch(saved).sessionKey).load();
-        if (scope === "recents") {
-          const latest = (await recentRows()).filter(m => m.decision !== "delete");
-          const visible = await visibleIds(latest.map(m => m.id));
-          if (session && visible.length === session.ids.length && visible.every((id, i) => session.ids[i] === id)) {
+        if (session && !session.finished) {
+          const rows = await storage.query({ ids: session.ids, type: collectionQuery(scope).type, limit: COLLECTION_BATCH });
+          const ids = rows.filter(m => !m.deletedAt).map(m => m.id);
+          const active = session.activeId;
+          if ((active && ids.includes(active) && (await visibleIds([active])).length) ||
+              (await visibleIds(ids.filter(id => id !== active))).length) {
             return remember({ ...saved, openedAt: Date.now() });
           }
-        } else if (session && !session.finished) {
-          const rows = await storage.query({ ids: session.ids, type: collectionQuery(scope).type, limit: COLLECTION_BATCH });
-          if ((await visibleIds(rows.filter(m => !m.deletedAt).map(m => m.id))).length) return remember({ ...saved, openedAt: Date.now() });
           // Losing access never earns exploration or cleanup. Keep the snapshot/history,
           // but let this collection open the photos it can now access instead.
           await storage.setValue(currentBatch(saved).sessionKey, { ...session, finished: true, activeId: null });
@@ -242,9 +292,9 @@ export const collectionStore = {
       const batch = currentBatch(saved);
       const following = saved.batches[saved.position + 1];
       if (!all && following && (!canReviewAgain(scope) || (batch.replayStart !== undefined && following.replayStart === batch.replayStart))) {
-        return remember({ ...saved, position: saved.position + 1, openedAt: Date.now() });
+        return remember({ ...saved, position: saved.position + 1, ...(following.browse ? { continuePosition: saved.position + 1 } : {}), openedAt: Date.now() });
       }
-      return build(scope, saved, all ? "all" : batch.mode, all ? undefined : batch.mode === "all" ? batch.cursor : undefined, batch.replayStart);
+      return build(scope, saved, all ? "all" : batch.mode, all ? undefined : batch.mode === "all" ? batch.cursor : undefined, batch.replayStart, batch.browse && !all ? {} : undefined);
     });
   },
   async previous(scope: PhotoCollection) {
@@ -262,7 +312,7 @@ export const collectionStore = {
       const position = state.continuePosition ?? state.position;
       const key = state.batches[position].sessionKey;
       const session = await storage.getValue<import("@/lib/pictopia/explore").ExploreSession>(key);
-      if (state.batches[position].replayStart === undefined && session && session.ids.length && meaningfulReview(session)) return { ...state, position, openedAt: Math.max(state.openedAt, (await storage.getValue<number>(`activity:${key}`)) ?? 0) };
+      if ((state.batches[position].browse || state.batches[position].replayStart === undefined) && session && session.ids.length && meaningfulReview(session)) return { ...state, position, openedAt: Math.max(state.openedAt, (await storage.getValue<number>(`activity:${key}`)) ?? 0) };
     }
     return undefined;
   },

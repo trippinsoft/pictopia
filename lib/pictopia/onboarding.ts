@@ -9,7 +9,7 @@ export const PROBLEM_COPY = {
   kicker: "Thousands of photos. So many memories.",
   headline: "Where do you even start?",
   body: "Cleaning up your photo library shouldn’t feel like a chore.",
-  action: "Show me how",
+  action: "Get started",
 } as const;
 /** The Pictopia+ showcase's four scenes, in the order they play. */
 export const PLUS_SCENES = [
@@ -21,12 +21,10 @@ export const PLUS_SCENES = [
 export type PlusScene = (typeof PLUS_SCENES)[number]["key"];
 export const PLUS_SCENE_MS = 3000;
 const DAY = 86400000;
-/** The trial timeline's middle step: the day before the charge for short trials (Picnic's 3
- * days: today → in 2 days → in 3 days), two days before for longer ones. Pictopia doesn't send
- * a trial-ending notification; people set their own reminder. */
+/** Three-day trials show a reminder on day two. Longer trials give two days' notice. */
 export const trialReminderDaysBefore = (trialDays: number) => (trialDays <= 3 ? 1 : 2);
 
-export type OnboardingStep = "welcome" | "scroll" | "swipe" | "space" | "access" | "reveal" | "planning" | "trial" | "ready";
+export type OnboardingStep = "welcome" | "scroll" | "swipe" | "space" | "access" | "reveal" | "trial" | "ready";
 export const STORY_STEPS: OnboardingStep[] = ["scroll", "swipe", "space"];
 
 export interface YearTotal { year: number; photos: number }
@@ -57,6 +55,15 @@ export function leadOffer(offers: readonly Offer[]) {
 export function trialTimeline(trialDays: number, now: number) {
   const reminderDay = Math.max(1, trialDays - trialReminderDaysBefore(trialDays));
   return { reminderDay, reminderBefore: trialDays - reminderDay, reminderAt: now + reminderDay * DAY, chargeAt: now + trialDays * DAY };
+}
+/** Use the signed end date. Sandbox trials may run on an accelerated clock. */
+export function trialReminderAt(trialDays: number, purchasedAt: number, expiresAt: number, sandbox: boolean, now: number): number | undefined {
+  const duration = expiresAt - purchasedAt;
+  if (trialDays <= 0 || !Number.isFinite(duration) || duration <= 0) return;
+  const { reminderBefore } = trialTimeline(trialDays, 0);
+  const day = sandbox ? Math.min(DAY, duration / trialDays) : DAY;
+  const at = Math.round(expiresAt - reminderBefore * day);
+  return at > Math.max(now, purchasedAt) && at < expiresAt ? at : undefined;
 }
 export function periodLabel(kind: Offer["kind"]) {
   return kind === "weekly" ? "week" : kind === "monthly" ? "month" : kind === "annual" ? "year" : "";

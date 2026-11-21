@@ -19,7 +19,6 @@ interface Props {
   explored: number; marked: number; unavailable: number; pending: boolean;
   scope?: { complete: boolean; explored: number; total: number };
   headlineOverride?: string; art?: ReactNode;
-  reviewAgain?: { busy?: boolean; onPress(): void };
   reviewError?: string;
   moreAfterCompletion?: boolean;
   more?: { label: string; busy?: boolean; onPress(): void };
@@ -36,7 +35,7 @@ interface Props {
 }
 /** The end of an adventure: how much of the set was reviewed, what was kept and discarded,
  * and the discards themselves, ready to delete or look through. */
-export function AdventureFinish({ adventure, title, photoIds, explored, marked, unavailable, pending, scope, more, reviewAgain, reviewError, moreAfterCompletion, headlineOverride, discarded = [], onContinueSegment, onBackToPhotos, onDeleteNow, onReview, onDone, headerContent }: Props) {
+export function AdventureFinish({ adventure, title, photoIds, explored, marked, unavailable, pending, scope, more, reviewError, moreAfterCompletion, headlineOverride, discarded = [], onContinueSegment, onBackToPhotos, onDeleteNow, onReview, onDone, headerContent }: Props) {
   const [facts, setFacts] = useState<Awaited<ReturnType<typeof adventureStore.segmentStatus>>>();
   const [ready, setReady] = useState(!adventure), [error, setError] = useState<string>();
   const [retry, setRetry] = useState(0), [busy, setBusy] = useState(false);
@@ -100,8 +99,7 @@ export function AdventureFinish({ adventure, title, photoIds, explored, marked, 
         <View className="gap-3">
           {discardedCount > 0 && onDeleteNow && <Button large danger icon="Trash2" disabled={pending} onPress={onDeleteNow}>{`Delete ${discardedCount} now`}</Button>}
           {hasMore && <Button large secondary={discardedCount > 0} disabled={busy || pending || more?.busy} onPress={() => void continueReview()}>{busy || more?.busy ? "Opening photos…" : moreLabel}</Button>}
-          {reviewAgain ? <Button large secondary={discardedCount > 0 || hasMore || !complete} disabled={busy || pending || reviewAgain.busy} onPress={reviewAgain.onPress}>Review Again</Button> : null}
-          <Button large secondary={discardedCount > 0 || hasMore || !!reviewAgain} onPress={onDone}>Done</Button>
+          <Button large secondary={discardedCount > 0 || hasMore} onPress={onDone}>Done</Button>
           {onBackToPhotos && <Pressable accessibilityRole="button" onPress={onBackToPhotos} className="min-h-12 items-center justify-center active:opacity-70">
             <Text className="text-button text-foreground">Back to photos</Text>
           </Pressable>}

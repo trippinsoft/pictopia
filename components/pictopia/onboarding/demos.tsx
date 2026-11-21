@@ -5,6 +5,7 @@ import { Icon, Text } from "@/components/pictopia/ui";
 import { Illustration, type ArtName } from "@/components/pictopia/illustration";
 import { BadgeArt } from "@/components/pictopia/badge-art";
 import { Sticker } from "@/components/pictopia/playful";
+import { onboardingNumber } from "@/theming/themes/light";
 
 const PHONE_W = 212;
 const PHONE_H = 300;
@@ -166,9 +167,9 @@ export function SpaceDemo() {
   return (
     <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ height: PHONE_H }} className="items-center justify-center">
       <PopIn delay={250}>
-        <Sticker rotate={-3} className="items-center gap-1 px-7 py-5">
-          <Icon name="HardDrive" size={26} className="text-grass" />
-          <Text className="text-display text-foreground">58 MB</Text>
+        <Sticker rotate={-3} className="w-72 max-w-full items-center gap-1 px-4 py-5">
+          <Icon name="HardDrive" size={32} className="text-grass" />
+          <Text className="text-foreground" style={onboardingNumber} numberOfLines={1} adjustsFontSizeToFit>58 MB</Text>
           <Text className="text-caption text-muted-foreground">cleared · example</Text>
         </Sticker>
       </PopIn>
@@ -184,3 +185,4 @@ export function SpaceDemo() {
     </View>
   );
 }
+

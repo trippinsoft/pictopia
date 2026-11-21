@@ -10,10 +10,9 @@ import { canReviewAgain, collectionStore, collectionTitle, currentBatch, isPhoto
 type Summary = Awaited<ReturnType<typeof collectionStore.summary>>;
 
 export default function CollectionRoute() {
-  const { scope, title, review } = useLocalSearchParams<{ scope?: string; title?: string; review?: string }>();
+  const { scope, title } = useLocalSearchParams<{ scope?: string; title?: string }>();
   const app = usePictopia();
   const [state, setState] = useState<CollectionReview>();
-  const [summary, setSummary] = useState<Summary>();
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const opening = useRef(false);
@@ -25,31 +24,22 @@ export default function CollectionRoute() {
     opening.current = true;
     setError(undefined);
     try {
-      const [opened, progress] = await Promise.all([
-        review === "again" && canReviewAgain(scope)
-          ? collectionStore.next(scope, true)
-          : collectionStore.open(scope, typeof title === "string" ? title : undefined),
-        collectionStore.summary(scope).catch(() => undefined),
-      ]);
-      setSummary(progress);
-      setState(opened);
+      setState(await collectionStore.open(scope, typeof title === "string" ? title : undefined));
     } catch { setError("This collection couldn’t be opened. Your saved place is safe."); }
     finally { opening.current = false; }
-  }, [valid, scope, title, review, app.ready, allowed]);
+  }, [valid, scope, title, app.ready, allowed]);
   useEffect(() => { void open(); }, [open]);
 
-  async function next(all = false) {
+  async function next() {
     if (!valid || !state || opening.current) return;
     opening.current = true;
     setBusy(true);
     setError(undefined);
     try {
       const key = currentBatch(state).sessionKey;
-      const value = await collectionStore.next(scope, all, key);
-      if (currentBatch(value).sessionKey !== key) {
-        setSummary(await collectionStore.summary(scope).catch(() => undefined));
-        setState(value);
-      } else setError("No more items are available right now. Try again after your library updates.");
+      const value = await collectionStore.next(scope, false, key);
+      setState(value);
+      if (currentBatch(value).sessionKey === key && !currentBatch(value).browse) setError("No more items are available right now. Try again after your library updates.");
     } catch { setError("This review couldn’t be opened. Please try again."); }
     finally { opening.current = false; setBusy(false); }
   }
@@ -60,16 +50,14 @@ export default function CollectionRoute() {
   if (!state || state.scope !== scope) return <Page fallback="/(tabs)/explore" title={name}>{error ? <><Text className="mb-5 text-body text-destructive">{error}</Text><Button onPress={() => void open()}>Try again</Button></> : <Loading />}</Page>;
 
   const batch = currentBatch(state);
-  const supportsAgain = canReviewAgain(scope);
+  const firstReviewOnly = canReviewAgain(scope);
   const isReplay = batch.replayStart !== undefined;
-  const again = supportsAgain ? { busy, onPress: () => void next(true) } : undefined;
   return <AdventureReview key={batch.sessionKey} id={scope}
-    collection={{ sessionKey: batch.sessionKey, title: name, progress: summary, firstReviewOnly: supportsAgain, replay: isReplay }}
-    showCompletionOnOpen={supportsAgain}
-    reviewAgain={isReplay ? undefined : again}
+    collection={{ sessionKey: batch.sessionKey, title: name, firstReviewOnly: firstReviewOnly, replay: isReplay }}
+    showCompletionOnOpen={firstReviewOnly}
     reviewError={error}
     finishContent={actions => <CollectionFinish {...actions} scope={scope} name={name} busy={busy}
-      error={error} reviewAgain={again} allMode={batch.mode === "all"} hasNext={batch.hasMore}
+      error={error} firstReviewOnly={firstReviewOnly} allMode={batch.mode === "all"} hasNext={batch.hasMore}
       onNext={() => void next()} />} />;
 }
 
@@ -81,10 +69,10 @@ const completionMessage: Partial<Record<PhotoCollection, string>> = {
 };
 
 function CollectionFinish({
-  scope, name, busy, error, reviewAgain, allMode, hasNext, onNext, ...actions
+  scope, name, busy, error, firstReviewOnly, allMode, hasNext, onNext, ...actions
 }: FinishActions & {
   scope: PhotoCollection; name: string; busy: boolean; error?: string;
-  reviewAgain?: { busy: boolean; onPress(): void };
+  firstReviewOnly: boolean;
   allMode: boolean; hasNext?: boolean; onNext(): void;
 }) {
   const app = usePictopia();
@@ -114,9 +102,8 @@ function CollectionFinish({
     libraryBefore={actions.libraryBefore}
     canUndo={actions.canUndo}
     pending={actions.pending || busy}
-    more={more ? { label: allMode ? "Review next batch" : reviewAgain ? "Continue Reviewing" : moreCollectionLabel(scope), busy, onPress: onNext } : undefined}
+    more={more ? { label: allMode ? "Review next batch" : firstReviewOnly ? "Continue Reviewing" : moreCollectionLabel(scope), busy, onPress: onNext } : undefined}
     moreAfterCompletion={allMode}
-    reviewAgain={summary.total ? reviewAgain : undefined}
     reviewError={error}
     onReview={actions.onReview}
     onDone={actions.onDone}

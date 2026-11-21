@@ -18,6 +18,9 @@ import {
 import { PurchaseService } from "./purchases.types";
 import { subscriptionAnalytics } from "./subscription-analytics";
 import { trackSubscriptionAnalytics } from "./analytics";
+import { notificationService } from "./notifications";
+import { storeSubscriptionAnalytics } from "./store-subscription-analytics";
+import { trialReminderAt } from "@/lib/pictopia/onboarding";
 import { offerProperties, type FailureReason } from "@/lib/pictopia/subscription-analytics";
 import type { Entitlement, Offer } from "@/lib/pictopia/types";
 import {
@@ -31,10 +34,12 @@ import {
 // Subscription access stays direct StoreKit 2 / Play Billing, without accounts.
 // Separate lifetime eligibility sends store evidence to the existing Supabase verifier.
 const os = Platform.OS === "ios" ? "ios" : "android";
+const [osMajor, osMinor = 0] = String(Platform.Version).split(".").map(Number);
+const supportsTrialReminders = os === "ios" && (osMajor > 17 || (osMajor === 17 && osMinor >= 2)) && storeSubscriptionAnalytics.canVerifyTransactions;
 const PACKAGE = "com.trippinsoft.pictopia";
 let connection: Promise<boolean> | null = null;
 let products: ProductSubscription[] = [];
-type Pending = { resolve(): void; reject(e: Error): void; baseline: string[] | null; analytics: boolean; failed?: boolean; handling?: boolean };
+type Pending = { resolve(): void; reject(e: Error): void; baseline: string[] | null; analytics: boolean; reminderTrialDays?: number; failed?: boolean; handling?: boolean };
 const waiting = new Map<string, Pending>();
 let offers: Offer[] = [];
 function failure(id: string, reason: FailureReason, pending?: Pending) {
@@ -61,6 +66,24 @@ function connect() {
 }
 const owned = (p: Purchase) => PRO_PRODUCT_IDS.includes(p.productId);
 
+async function scheduleTrialReminder(purchase: Purchase, pending: Pending) {
+  const { baseline, reminderTrialDays } = pending;
+  if (!baseline || !reminderTrialDays || await notificationService.permission() !== "granted") return;
+  const trial = await storeSubscriptionAnalytics.transaction(purchase.transactionId || purchase.id);
+  if (!trial?.verified || trial.productId !== purchase.productId || !trial.fingerprint || baseline.includes(trial.fingerprint) ||
+      trial.state !== "trial" || trial.purchaseType !== "trial" || trial.ownership !== "purchased" || trial.reason === "renewal" ||
+      (trial.storeEnvironment !== "production" && trial.storeEnvironment !== "sandbox") || !trial.expiresAt) return;
+  const at = trialReminderAt(reminderTrialDays, trial.purchasedAt, trial.expiresAt, trial.storeEnvironment === "sandbox", Date.now());
+  if (at === undefined) return;
+  await notificationService.scheduleOnce({
+    id: "pictopia-plus-trial-ending",
+    at,
+    title: "Your Pictopia+ trial ends soon",
+    body: "Check your App Store subscription before your trial ends.",
+    url: "/settings",
+  });
+}
+
 /** Finish (and on Android, acknowledge within Google's three days) every completed purchase.
  * Pending purchases grant nothing until the store reports them purchased. */
 async function settle(purchase: Purchase) {
@@ -86,6 +109,7 @@ async function check(): Promise<Entitlement> {
 }
 
 export const purchaseService: PurchaseService = {
+  supportsTrialReminders,
   async init(listener) {
     const updated = purchaseUpdatedListener((purchase) => {
       if (!owned(purchase)) return;
@@ -105,12 +129,13 @@ export const purchaseService: PurchaseService = {
       if (pending) pending.handling = true;
       void settle(purchase)
         .then(check)
-        .then((e) => {
+        .then(async (e) => {
           if (pending?.analytics && os === "ios") {
             if (e.active) void subscriptionAnalytics.completed(purchase.transactionId || purchase.id, purchase.productId, pending.baseline);
             else failure(purchase.productId, "verification_failed", pending);
           }
           listener(e);
+          if (e.active && pending?.reminderTrialDays) await scheduleTrialReminder(purchase, pending).catch(() => {});
           waiting.delete(purchase.productId);
           pending?.resolve();
         })
@@ -194,19 +219,20 @@ export const purchaseService: PurchaseService = {
     } catch { /* Missing native support is not paid evidence. */ }
     return { platform: "ios", transactions: tokens, ...(appJws ? { appJws } : {}) };
   },
-  async purchase(id) {
+  async purchase(id, options) {
     await connect();
     if (!PRO_PRODUCT_IDS.includes(id)) throw Error("This plan is unavailable.");
     const product = products.find((p) => p.id === id);
     if (!product) throw Error("This plan is unavailable. Refresh the plans and try again.");
     if (waiting.has(id)) throw Error("A purchase is already in progress.");
     const analytics = await subscriptionAnalytics.enabled();
-    const baseline = analytics && os === "ios" ? await subscriptionAnalytics.prepare() : null;
-    if (waiting.has(id)) throw Error("A purchase is already in progress.");
     const offer = offers.find(o => o.id === id);
+    const reminderTrialDays = supportsTrialReminders && options?.remindBeforeTrialEnds ? offer?.trialDays : undefined;
+    const baseline = os === "ios" && (analytics || reminderTrialDays) ? await subscriptionAnalytics.prepare() : null;
+    if (waiting.has(id)) throw Error("A purchase is already in progress.");
     if (analytics) trackSubscriptionAnalytics("purchase_started", { product_id: id, plan: offerKind(id) ?? "unknown", trial_eligibility: "unknown", ...(offer ? offerProperties(offer) : {}) });
     let pending!: Pending;
-    const done = new Promise<void>((resolve, reject) => { pending = { resolve, reject, baseline, analytics }; waiting.set(id, pending); });
+    const done = new Promise<void>((resolve, reject) => { pending = { resolve, reject, baseline, analytics, reminderTrialDays }; waiting.set(id, pending); });
     // Store listeners may reject before requestPurchase settles; attach a handler immediately.
     void done.catch(() => {});
     try {

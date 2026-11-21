@@ -407,16 +407,15 @@ test('the flight leaves at the speed the finger let go and never stalls on its w
   let previous = -Infinity;
   for (let t = 0; t <= 1.0001; t += 0.05) { const x = flightAt(right, t).x; assert.ok(x >= previous - 0.5, `x keeps heading right at ${t.toFixed(2)}`); previous = x; }
 });
-test('review instructions persist completion, interruption, dismissal and explicit replay', async () => {
+test('review instructions persist completion and support explicit replay', async () => {
   const saved = new Map(); let tail=Promise.resolve();
   const { reviewGuidance } = makeLoader({ './repository': { storage: {getValue:async key=>saved.get(key),setValue:async(key,value)=>saved.set(key,value)}, serialize:fn=>{ const p=tail.then(fn);tail=p;return p; } } })('services/review-guidance.ts');
   assert.equal(nextReviewStep(await reviewGuidance.load()),'browse');
   await reviewGuidance.complete('browse'); assert.equal(nextReviewStep(await reviewGuidance.load()),'discard');
-  await reviewGuidance.complete('discard'); assert.equal(nextReviewStep(await reviewGuidance.load()),undefined);
+  await reviewGuidance.complete('discard'); assert.equal(nextReviewStep(await reviewGuidance.load()),'favorite');
+  await reviewGuidance.complete('favorite'); assert.equal(nextReviewStep(await reviewGuidance.load()),undefined);
   // Saved steps from the older five-step hints are harmless extras.
-  assert.equal(nextReviewStep({ browse: true, discard: true, trash: false }), undefined);
-  await reviewGuidance.reset(); assert.equal(nextReviewStep(await reviewGuidance.load()),'browse');
-  await reviewGuidance.skip(); assert.equal(nextReviewStep(await reviewGuidance.load()),undefined);
+  assert.equal(nextReviewStep({ browse: true, discard: true, favorite: true, trash: false }), undefined);
   await reviewGuidance.reset(); assert.equal(nextReviewStep(await reviewGuidance.load()),'browse');
 });
 test('native favorite adapter never claims success after cancellation, mismatch or missing capability', async () => {

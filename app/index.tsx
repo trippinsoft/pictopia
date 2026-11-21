@@ -8,7 +8,7 @@ import { usePictopia } from "@/components/pictopia/provider";
 export default function Index() {
   const app = usePictopia();
   // Browsers always report access; there only a loaded library marks an existing user.
-  const existing = (Platform.OS !== "web" && !!app.permission?.granted) || app.stats.total > 0;
+  const existing = !app.prefs.onboardingStarted && ((Platform.OS !== "web" && !!app.permission?.granted) || app.stats.total > 0);
   const replay = app.devTools && app.prefs.replayOnboarding === true;
   const needsOnboarding = app.ready && (replay || (!app.prefs.onboarded && !existing));
   useEffect(() => {

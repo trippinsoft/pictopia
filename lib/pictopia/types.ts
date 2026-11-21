@@ -100,6 +100,8 @@ export interface Preferences {
   showReviewed: boolean;
   reverseSwipe: boolean;
   onboarded: boolean;
+  /** First-run access was requested but the final onboarding screen was not completed. */
+  onboardingStarted?: boolean;
   /** Pending onboarding replay in an authorized development or staging build. */
   replayOnboarding?: boolean;
   /** Local reminders (see lib/pictopia/reminders.ts). Only sent once the OS allows them. */

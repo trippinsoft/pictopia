@@ -6,13 +6,16 @@ import { MediaImage } from "@/components/pictopia/media-image";
 import { revealInterval, type YearTotal } from "@/lib/pictopia/onboarding";
 import type { Media } from "@/lib/pictopia/types";
 import { storage } from "@/services/repository";
+import { onboardingNumber } from "@/theming/themes/light";
 
 const COLORS = ["text-tomato", "text-grass", "text-tertiary", "text-primary"];
 const GRID = 4;
 
 /** The library reveal: each year of the user's own photos in turn, a few of that year's
  * photos, a per-year bar chart, then the whole library's total. */
-export function LibraryReveal({ years, total, photosCount, videos }: { years: YearTotal[]; total: number; photosCount: number; videos: number }) {
+export function LibraryReveal({ years, total, photosCount, videos, onCountShown }: {
+  years: YearTotal[]; total: number; photosCount: number; videos: number; onCountShown?: () => void;
+}) {
   const reduced = useReducedMotion();
   const [index, setIndex] = useState(reduced ? years.length : 0);
   const [photos, setPhotos] = useState<Record<number, Media[]>>({});
@@ -34,8 +37,10 @@ export function LibraryReveal({ years, total, photosCount, videos }: { years: Ye
     return () => clearTimeout(timer);
   }, [index, done, years.length]);
   useEffect(() => {
-    if (done) AccessibilityInfo.announceForAccessibility(`${total.toLocaleString()} photos and videos discovered. ${photosCount.toLocaleString()} photos, ${videos.toLocaleString()} videos.`);
-  }, [done, total, photosCount, videos]);
+    if (!done) return;
+    AccessibilityInfo.announceForAccessibility(`${total.toLocaleString()} photos and videos found. ${photosCount.toLocaleString()} photos, ${videos.toLocaleString()} videos.`);
+    onCountShown?.();
+  }, [done, total, photosCount, videos, onCountShown]);
   const max = useMemo(() => Math.max(1, ...years.map(y => y.photos)), [years]);
   const current = years[Math.min(index, years.length - 1)];
   const shown = done ? Object.values(photos).flat().slice(0, GRID) : current ? photos[current.year] ?? [] : [];
@@ -44,13 +49,13 @@ export function LibraryReveal({ years, total, photosCount, videos }: { years: Ye
       <View accessibilityLiveRegion="polite" className="h-32 items-center justify-center">
         {done || !current ? (
           <Animated.View key="total" entering={reduced ? undefined : FadeIn.duration(300)} style={{ alignItems: "center" }}>
-            <Text className="text-center text-display text-foreground" style={{ fontSize: 54, lineHeight: 62 }}>{total.toLocaleString()}</Text>
-            <Text className="text-center text-h4 text-muted-foreground">photos &amp; videos discovered</Text>
-          <Text className="mt-1 text-center text-caption text-muted-foreground">{`${photosCount.toLocaleString()} photos · ${videos.toLocaleString()} videos`}</Text>
+            <Text className="text-center text-foreground" style={onboardingNumber} numberOfLines={1} adjustsFontSizeToFit>{total.toLocaleString()}</Text>
+            <Text className="text-center text-h4 text-muted-foreground">photos &amp; videos found</Text>
+            <Text className="mt-1 text-center text-caption text-muted-foreground">{`${photosCount.toLocaleString()} photos · ${videos.toLocaleString()} videos`}</Text>
           </Animated.View>
         ) : (
           <Animated.View key={current.year} entering={reduced ? undefined : FadeIn.duration(180)} exiting={reduced ? undefined : FadeOut.duration(120)} style={{ alignItems: "center" }}>
-            <Text className={`text-center text-display ${COLORS[index % COLORS.length]}`} style={{ fontSize: 72, lineHeight: 80 }}>{current.year}</Text>
+            <Text className={`text-center ${COLORS[index % COLORS.length]}`} style={onboardingNumber}>{current.year}</Text>
             <Text className="text-center text-h4 text-muted-foreground">{current.photos.toLocaleString()} photos</Text>
           </Animated.View>
         )}

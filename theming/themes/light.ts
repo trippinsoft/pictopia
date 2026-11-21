@@ -64,3 +64,9 @@ const lightTheme: Theme = {
 };
 
 export default lightTheme;
+
+export const onboardingNumber = {
+  fontFamily: lightTheme.typography.display?.fontFamily,
+  fontSize: 64,
+  lineHeight: 70,
+};

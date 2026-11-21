@@ -39,6 +39,9 @@ test("onboarding leads with a trial offer, else yearly; the reminder lands two d
   const short = O.trialTimeline(3, now);
   assert.equal(short.reminderDay, 2);
   assert.equal(short.reminderBefore, 1);
+  assert.equal(O.trialReminderAt(3, now, short.chargeAt, false, now), short.reminderAt);
+  assert.equal(O.trialReminderAt(3, now, now + 180000, true, now), now + 120000);
+  assert.equal(O.trialReminderAt(3, now, short.chargeAt, false, short.reminderAt), undefined);
 });
 
 const jsx = (type, props) => ({ type, props });
@@ -76,13 +79,12 @@ test("replay starts at Welcome, reuses library access, and shows the offer to a 
     "react-native": { Platform: { OS: "web" }, View: "View", AppState: { addEventListener: () => ({ remove() {} }) } },
     "expo-router": { Stack: { Screen: "Screen" }, router: { replace: route => routes.push(route) } },
     "@/components/pictopia/provider": { usePictopia: () => app },
-    "@/components/pictopia/ui": { Button: "Button", Icon: "Icon", Text: "Text" },
+    "@/components/pictopia/ui": { Button: "Button", Icon: "Icon", Loading: "Loading", Text: "Text" },
     "@/components/pictopia/playful": { Postcard: "Postcard", OrBadge: "OrBadge" },
     "@/components/pictopia/onboarding/welcome": { Welcome: "Welcome" },
     "@/components/pictopia/onboarding/frame": { OnboardingFrame: "Frame" },
     "@/components/pictopia/onboarding/demos": { ScrollDemo: "ScrollDemo", SwipeDemo: "SwipeDemo", SpaceDemo: "SpaceDemo" },
     "@/components/pictopia/onboarding/reveal": { LibraryReveal: "Reveal" },
-    "@/components/pictopia/onboarding/planning": { Planning: "Planning" },
     "@/components/pictopia/onboarding/trial": { TrialOffer: "TrialOffer" },
     "@/components/pictopia/onboarding/celebrate": { Sunrays: "Sunrays", ConfettiBurst: "ConfettiBurst" },
     "@/services/media": { mediaService: { permission: async () => ({ granted: true }) } },
@@ -97,11 +99,19 @@ test("replay starts at Welcome, reuses library access, and shows the offer to a 
   byType("Welcome").props.onStart();
   for (let step = 0; step < 3; step++) press("Continue");
   press("Continue with current access");
-  assert.ok(byType("Reveal"));
+  const reveal = byType("Reveal");
+  assert.ok(reveal);
+  const continueButton = () => find(h.render(), node => node.type === "Button" && textOf(node) === "Continue");
+  assert.equal(continueButton().props.disabled, true);
+  reveal.props.onCountShown();
+  assert.equal(continueButton().props.disabled, false);
   press("Continue");
-  await new Promise(resolve => setImmediate(resolve));
-  byType("Planning").props.onDone();
+  byType("TrialOffer").props.onStep("plus_showcase");
+  byType("TrialOffer").props.onStep("trial_timeline");
+  byType("TrialOffer").props.onStep("trial_plans");
   byType("TrialOffer").props.onDone();
+  assert.ok(byType("Loading"));
+  await new Promise(resolve => setImmediate(resolve));
   assert.ok(find(h.render(), node => node.type === "Text" && textOf(node) === "Your Pictopia is ready!"));
   assert.equal(find(h.render(), node => node.type === "QuietAction"), undefined, "no Start / Look around choice");
   press("Let’s explore Pictopia");
@@ -109,9 +119,65 @@ test("replay starts at Welcome, reuses library access, and shows the offer to a 
   assert.deepEqual(saves, [{ onboarded: true, replayOnboarding: false }]);
   assert.deepEqual(routes, ["/(tabs)/home"]);
   const viewed = events.filter(([e]) => e === "onboarding_step_viewed").map(([, p]) => p.step);
-  assert.deepEqual(viewed, ["problem", "scroll", "swipe", "space", "access", "reveal", "planning", "ready"]);
+  assert.deepEqual(viewed, ["problem", "scroll", "swipe", "space", "access", "reveal", "plus_showcase", "trial_timeline", "trial_plans", "ready"]);
   assert.deepEqual(tours, ["onboarding"], "Home's tour is queued for the first Home visit");
   assert.deepEqual(events.at(-1), ["onboarding_completed", { outcome: "explore_home", pro: true, purchased_in_onboarding: false, recommendations: 0 }]);
+  h.unmount();
+});
+
+test("the trial screen redeems the lead offer and the bottom sheet can redeem the alternate plan", async () => {
+  const weekly = { id: "w", kind: "weekly", price: "$7.99", amount: 7.99, currency: "USD", trialDays: 3 };
+  const yearly = { id: "y", kind: "annual", price: "$29.99", amount: 29.99, currency: "USD", trialDays: 3 };
+  const steps = [], purchases = [];
+  const h = hooks("components/pictopia/onboarding/trial.tsx", "TrialOffer", {
+    "react/jsx-runtime": runtime,
+    "react-native": { Platform: { OS: "ios" }, View: "View", Pressable: "Pressable", Modal: "Modal", ScrollView: "ScrollView" },
+    "react-native-safe-area-context": { SafeAreaView: "SafeAreaView" },
+    "@/components/pictopia/ui": { Button: "Button", Icon: "Icon", Text: "Text" },
+    "@/components/pictopia/provider": { usePictopia: () => ({ ready: true, setEntitlement: async () => {} }) },
+    "@/components/pictopia/paywall": { PaywallHero: "PaywallHero", PaywallLinks: "PaywallLinks", PlanOptions: "PlanOptions", PlusIncluded: "PlusIncluded" },
+    "@/components/pictopia/use-paywall-analytics": { usePaywallAnalytics: () => () => {} },
+    "@/lib/pictopia/links": {},
+    "@/services/analytics": { trackOnboarding() {} },
+    "@/services/lifetime-testing": { lifetimeTestStore: { snapshot: () => null } },
+    "@/services/purchases": { purchaseService: {
+      supportsTrialReminders: true,
+      offers: async () => [weekly, yearly],
+      purchase: async (id, options) => { purchases.push([id, options]); return { active: true }; },
+    } },
+    "./frame": { OnboardingFrame: "Frame" },
+    "./plus-showcase": { PlusShowcase: "PlusShowcase" },
+  }, { onStep: step => steps.push(step), onDone: () => {} });
+  const getButton = (tree, title) => find(tree, node => node.type === "Button" && textOf(node) === title);
+  assert.ok(find(h.render(), node => node.type === "PlusShowcase"));
+  await new Promise(resolve => setImmediate(resolve));
+  getButton(h.render(), "Continue").props.onPress();
+  const timeline = h.render();
+  assert.match(textOf(timeline), /Try Pictopia\+ free for 3 days/);
+  assert.match(textOf(timeline), /In 2 days.*if notifications are on/s);
+  const redeem = "Redeem 3 day trial for $0.00";
+  assert.match(textOf(timeline.props.footer), /No payment due now.*\$7\.99\/week.*Redeem.*View all plans/s);
+  assert.doesNotMatch(textOf(timeline.props.footer), /Free for 3 days, then/);
+  assert.ok(find(timeline, node => node.type === "PlusIncluded"));
+  assert.equal(find(timeline, node => node.type === "Modal"), undefined);
+  getButton(timeline, redeem).props.onPress();
+  await new Promise(resolve => setImmediate(resolve));
+  find(h.render(), node => node.type === "Pressable" && textOf(node) === "View all plans").props.onPress();
+  const picker = find(h.render(), node => node.type === "Modal");
+  assert.equal(picker.props.visible, true);
+  assert.equal(find(picker, node => node.type === "PlusIncluded"), undefined);
+  assert.match(textOf(picker), /Free for 3 days, then \$7\.99 per week/);
+  const plans = find(picker, node => node.type === "PlanOptions");
+  assert.deepEqual(plans.props.plans.map(plan => plan.id), ["y", "w"]);
+  plans.props.onSelect("y");
+  const yearlyPicker = find(h.render(), node => node.type === "Modal");
+  assert.match(textOf(yearlyPicker), /then \$29\.99 per year/);
+  getButton(yearlyPicker, redeem).props.onPress();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(purchases, [["w", { remindBeforeTrialEnds: true }], ["y", { remindBeforeTrialEnds: true }]]);
+  assert.deepEqual(steps, ["plus_showcase", "trial_timeline", "trial_plans"]);
+  yearlyPicker.props.onRequestClose();
+  assert.equal(find(h.render(), node => node.type === "Modal"), undefined);
   h.unmount();
 });
 

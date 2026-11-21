@@ -3,9 +3,9 @@
  * size leaves the device only as a coarse range. */
 
 /** Bumped when the onboarding flow changes meaningfully, so funnels compare like with like. */
-export const ONBOARDING_VERSION = "2026-11-problem-plus";
+export const ONBOARDING_VERSION = "2026-11-trial-checkout";
 
-export const ONBOARDING_STEPS = ["problem", "scroll", "swipe", "space", "access", "reveal", "planning", "plus_showcase", "trial_reminder", "trial_plans", "ready"] as const;
+export const ONBOARDING_STEPS = ["problem", "scroll", "swipe", "space", "access", "reveal", "plus_showcase", "trial_timeline", "trial_plans", "ready"] as const;
 export type OnboardingStepName = (typeof ONBOARDING_STEPS)[number];
 
 export type OnboardingEvent =
@@ -33,7 +33,7 @@ const strings: Record<string, readonly string[]> = {
   outcome: ["explore_home"],
   tour_step: ["adventures", "explore", "timeline", "progress"],
   source: ["onboarding", "settings"],
-  closed_from: ["trial_plans", "plan_picker", "no_offers", "loading"],
+  closed_from: ["trial_timeline", "trial_plans", "plan_picker", "no_offers", "loading"],
   onboarding_version: [ONBOARDING_VERSION],
 };
 const booleans = ["replay", "resumed", "notifications", "picked", "pro", "purchased_in_onboarding", "trial_offered"];

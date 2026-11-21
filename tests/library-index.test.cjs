@@ -50,7 +50,7 @@ test('onboarding reveal displays total media and its photo/video breakdown, incl
       'react-native-reanimated':{__esModule:true,default:{View:'View'},useReducedMotion:()=>true},
     });
     try {const text=textOf(h.render({years:[],total:photosCount+videos,photosCount,videos}));
-      assert.ok(text.includes(String(photosCount+videos)));assert.match(text,/photos & videos discovered/);
+      assert.ok(text.includes(String(photosCount+videos)));assert.match(text,/photos & videos found/);
       assert.ok(text.includes(`${photosCount} photos · ${videos} videos`));
     } finally {h.unmount();}
   }

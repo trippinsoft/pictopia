@@ -53,7 +53,10 @@ export function exploreStoreFor(key: string) {
       if (!review) return session;
       const metadata = key.startsWith("adventure:") ? await storage.getValue<{ finishedAt?: number; kind?: string }>(key.slice(0, -8)) : undefined;
       const now = Date.now();
-      return reconcileReview(session, await Promise.all(session.ids.map(id => storage.get(id))), !!metadata?.finishedAt,
+      const rows = Platform.OS !== "web" && key.startsWith("collection:recents:") && session.ids.length
+        ? await storage.query({ ids: session.ids, includeInactive: true, limit: session.ids.length })
+        : await Promise.all(session.ids.map(id => storage.get(id)));
+      return reconcileReview(session, rows, !!metadata?.finishedAt,
         metadata?.kind === "day" ? m => capturedThisYear(m, now) : undefined);
     },
     /** A function action is built from the stored session inside the serialized write, so

@@ -110,6 +110,7 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
     [clock, setClock] = useState(Date.now());
   const syncRef = useRef<AbortController | null>(null),
     scanRef = useRef<AbortController | null>(null),
+    requestingPhotoPermission = useRef(false),
     alive = useRef(true),
     deletingRef = useRef(false),
     // True once a full sync has succeeded (or on web, where data loads on connect). After
@@ -161,7 +162,8 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
     const controller = new AbortController();
     syncRef.current = controller;
     try {
-      const p = await mediaService.permission(request);
+      requestingPhotoPermission.current = request && Platform.OS !== "web";
+      const p = await mediaService.permission(request).finally(() => { requestingPhotoPermission.current = false; });
       setPermission(p);
       if (!p.granted)
         throw Error("Photo access is off. Allow access in Settings to start cleaning.");
@@ -212,8 +214,7 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
   }
   useEffect(() => {
     alive.current = true;
-    let stopPurchases = () => {},
-      stopMedia = () => {};
+    let stopPurchases = () => {};
     storage
       .init()
       .then(async () => {
@@ -250,11 +251,6 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
           await recover();
           const permission = await mediaService.permission();
           if (permission.granted) void sync(false);
-          stopMedia = mediaService.listen(() => {
-            scanRef.current?.abort();
-            analyzer.cancel?.();
-            void sync(false);
-          });
         }
       })
       .catch(() =>
@@ -263,7 +259,7 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
     const subscription = AppState.addEventListener("change", (state) => {
       if (state !== "active") {
         scanRef.current?.abort();
-        syncRef.current?.abort();
+        if (!requestingPhotoPermission.current) syncRef.current?.abort();
       } else if (alive.current) {
         setClock(Date.now());
         void allowanceStore.refreshLimit().catch(() => {});
@@ -287,10 +283,18 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
       scanRef.current?.abort();
       subscription.remove();
       stopPurchases();
-      stopMedia();
       clearInterval(timer);
     };
   }, []);
+  useEffect(() => {
+    // Expo's iOS listener fetches assets as soon as it starts observing.
+    if (Platform.OS === "web" || !permission?.granted) return;
+    return mediaService.listen(() => {
+      scanRef.current?.abort();
+      analyzer.cancel?.();
+      void sync(false);
+    });
+  }, [permission?.granted]);
   const [lifetime, setLifetime] = useState(lifetimePlusStore.snapshot);
   useEffect(() => {
     const stop = lifetimePlusStore.subscribe(() => setLifetime(lifetimePlusStore.snapshot()));

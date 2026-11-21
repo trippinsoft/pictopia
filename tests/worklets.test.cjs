@@ -11,7 +11,6 @@ const FILES = [
   "components/pictopia/onboarding/plus-showcase.tsx",
   "components/pictopia/onboarding/celebrate.tsx",
   "components/pictopia/onboarding/demos.tsx",
-  "components/pictopia/onboarding/planning.tsx",
   "components/pictopia/home-tour.tsx",
   "components/pictopia/spotlight.tsx",
   "components/pictopia/review-hint.tsx",

@@ -253,30 +253,34 @@ test('Largest videos resumes its saved position independently of a size-ranked r
   assert.equal((await load('services/explore.ts').exploreStoreFor(normalKey).load()).activeId, 'video2');
   const oldest = await collectionStore.open('videos');
   const { ids } = await app.storage.getValue(h.currentBatch(oldest).sessionKey);
-  assert.deepEqual(ids, ['video0', 'video3'], 'Continue in All videos sees the same global history');
+  assert.deepEqual(ids, ['video0', 'video1', 'video2', 'video3'], 'previously seen videos stay in the sorted list');
   await exploreBatch(h, oldest);
   assert.equal((await collectionStore.summary('videos')).remaining, 0);
-  const all = await collectionStore.next('videos', true);
+  const all = await collectionStore.open('videos');
   assert.deepEqual((await app.storage.getValue(h.currentBatch(all).sessionKey)).ids, ['video0', 'video1', 'video2', 'video3']);
+  await exploreBatch(h, all);
   h.p.library.add('new-video');
   await app.repository.ingest([media('new-video', { type: 'video', size: 500 })], 2);
-  assert.deepEqual((await app.storage.getValue(h.currentBatch(await collectionStore.open('videos')).sessionKey)).ids, ['new-video']);
+  assert.deepEqual((await app.storage.getValue(h.currentBatch(await collectionStore.open('videos')).sessionKey)).ids, ['new-video', 'video0', 'video1', 'video2', 'video3']);
+  await exploreBatch(h, first);
+  const largestAgain = await collectionStore.open('videos-large');
+  assert.equal((await app.storage.getValue(h.currentBatch(largestAgain).sessionKey)).activeId, 'new-video');
   h.db.close();
 });
 
-test('All Photos replays every 120-item batch from newest first without adding unique or streak credit', async () => {
+test('All Photos browses every 120-item batch and reopens at the newest without adding unique or streak credit', async () => {
   const rows = Array.from({ length: 245 }, (_, i) => media(`p${String(i).padStart(3, '0')}`, { firstSeenAt: 1 }));
   const h = await setup(rows);
-  await h.collectionStore.open('recent');
-  let state = await h.collectionStore.next('recent', true);
+  let state = await h.collectionStore.open('recent');
   const visited = [];
   const before = await h.app.storage.progress();
-  for (const count of [120, 120, 5]) {
+  for (const [index, count] of [120, 120, 5].entries()) {
     assert.equal(h.currentBatch(state).hasMore, count === 120);
     const ids = await exploreBatch(h, state);
     assert.equal(ids.length, count);
     visited.push(...ids);
-    if (count === 120) state = await h.collectionStore.next('recent');
+    if (index === 0) state = await h.collectionStore.next('recent');
+    if (index === 1) state = await h.collectionStore.open('recent');
   }
   assert.deepEqual(visited, rows.map(m => m.id).reverse());
   assert.deepEqual(await h.app.storage.progress(), before);
@@ -284,7 +288,7 @@ test('All Photos replays every 120-item batch from newest first without adding u
   h.p.library.add('new-photo');
   await h.app.repository.ingest([media('new-photo', { created: rows[0].created + 1 })], 2);
   state = await h.collectionStore.open('recent');
-  assert.deepEqual(await exploreBatch(h, state), ['new-photo']);
+  assert.deepEqual(await exploreBatch(h, state), ['new-photo', ...visited.slice(0, 119)]);
   const day = await h.app.storage.getValue('dailyActivity:v1');
   assert.deepEqual(day.today.ids, ['new-photo']);
   assert.equal((await h.app.storage.progress()).explored, before.explored + 1);
@@ -394,6 +398,47 @@ test('Recents keeps its latest 100 mixed items and Favorites includes previously
   assert.deepEqual(await exploreBatch(h, await h.collectionStore.open('favorites')), ['m102']);
   assert.deepEqual(['recent', 'videos', 'videos-large', 'screenshots', 'recents', 'favorites', 'month:2025-06'].filter(h.canReviewAgain),
     ['recent', 'videos', 'videos-large', 'screenshots']);
+  h.db.close();
+});
+
+test('Recents opens from the synced index without an all-asset permission roundtrip', async () => {
+  const h = await setup([media('a'), media('b'), media('c')]);
+  const lookups = [];
+  h.p.onLookup = id => { lookups.push(id); throw Error('Photos is unavailable during open'); };
+  const state = await h.collectionStore.open('recents');
+  const key = h.currentBatch(state).sessionKey;
+  const store = h.exploreStoreFor(key);
+  await store.change(s => ({ type: 'page', id: s.activeId, revision: s.revision, toId: 'b', availableIds: s.ids }));
+  assert.equal(h.currentBatch(await h.collectionStore.open('recents')).sessionKey, key);
+  assert.equal((await store.load()).activeId, 'b');
+  await exploreBatch(h, state);
+  assert.equal(h.currentBatch(await h.collectionStore.open('recents')).sessionKey, key);
+  assert.equal((await store.load()).activeId, 'c');
+  assert.equal((await store.load()).finished, false);
+  h.p.library.add('newest');
+  await h.app.repository.ingest([media('newest', { created: Date.now() })], 2);
+  const updated = await h.collectionStore.open('recents');
+  assert.deepEqual((await h.exploreStoreFor(h.currentBatch(updated).sessionKey).load()).ids, ['newest', 'c', 'b', 'a']);
+  assert.deepEqual(lookups, []);
+  h.db.close();
+});
+
+test('opening All Photos migrates a saved unseen-only position without overwriting the old snapshot', async () => {
+  const h = await setup([media('a'), media('b'), media('c', { firstSeenAt: 1 })]);
+  const { createExplore } = makeLoader()('lib/pictopia/explore.ts');
+  const oldKey = 'collection:recent:old:explore';
+  await h.app.storage.put([], {
+    [oldKey]: { ...createExplore(['b', 'a']), activeId: 'a', review: true },
+    'photoCollection:recent': { scope: 'recent', position: 0, openedAt: 1, batches: [{ sessionKey: oldKey, mode: 'unseen' }] },
+  });
+  const state = await h.collectionStore.open('recent');
+  const key = h.currentBatch(state).sessionKey;
+  assert.notEqual(key, oldKey);
+  const session = await h.exploreStoreFor(key).load();
+  assert.deepEqual(session.ids, ['c', 'b', 'a']);
+  assert.equal(session.activeId, 'a');
+  assert.equal((await h.app.storage.getValue(oldKey)).activeId, 'a');
+  assert.equal(h.currentBatch(await h.collectionStore.open('recent')).sessionKey, key);
   h.db.close();
 });
 

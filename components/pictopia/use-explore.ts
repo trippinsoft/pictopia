@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppState } from "react-native";
+import { AppState, Platform } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { usePictopia } from "./provider";
 import { exploreStore, exploreStoreFor, type ExploreStore } from "@/services/explore";
@@ -34,9 +34,11 @@ export function useExplore(key?: string) {
     };
   }, []);
   const readMedia = useCallback(async (s: ExploreSession) => {
-    const rows = await Promise.all(s.ids.map((id) => storage.get(id)));
+    const rows = key?.startsWith("collection:recents:") && Platform.OS !== "web" && s.ids.length
+      ? await storage.query({ ids: s.ids, limit: s.ids.length })
+      : await Promise.all(s.ids.map((id) => storage.get(id)));
     return Object.fromEntries(rows.filter((m): m is Media => !!m && m.active && !m.deletedAt).map(m => [m.id, m]));
-  }, []);
+  }, [key]);
   const reloadRequested = useRef(false);
   const reload = useCallback(async () => {
     if (!app.ready) return;

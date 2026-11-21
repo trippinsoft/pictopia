@@ -1,4 +1,4 @@
-import { ScrollView, View, useWindowDimensions } from 'react-native';
+import { Platform, ScrollView, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Text } from '@/components/pictopia/ui';
 import { Wordmark } from '@/components/pictopia/playful';
@@ -17,7 +17,7 @@ export function Welcome({ onStart }: { onStart: () => void }) {
       <SafeAreaView className="flex-1" edges={['top', 'bottom', 'left', 'right']}>
         <ScrollView bounces={false} contentContainerClassName="mx-auto w-full max-w-md flex-grow justify-center px-5 py-6">
           <View className="items-center gap-3">
-            <Wordmark large />
+            <Wordmark large hero={Platform.OS !== 'web'} />
             <ProblemPile size={artworkSize} />
             <View className="items-center gap-2 px-1">
               <Text className="text-center text-h4 text-muted-foreground">{PROBLEM_COPY.kicker}</Text>

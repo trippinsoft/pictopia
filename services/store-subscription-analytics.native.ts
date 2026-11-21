@@ -8,6 +8,7 @@ const native = requireOptionalNativeModule<{
   subscriptionAnalyticsTransaction?(id: string, ids: string[]): ReturnType<StoreSubscriptionAnalytics["transaction"]>;
 }>("PictopiaAnalysis");
 export const storeSubscriptionAnalytics: StoreSubscriptionAnalytics = {
+  canVerifyTransactions: !!native?.subscriptionAnalyticsTransaction && !!native?.subscriptionAnalyticsHistory,
   async history() {
     return Platform.OS === "ios" ? await native?.subscriptionAnalyticsHistory?.(PRO_PRODUCT_IDS) ?? null : null;
   },

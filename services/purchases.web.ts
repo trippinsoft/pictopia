@@ -6,6 +6,7 @@ const unavailable = () =>
     ),
   );
 export const purchaseService: PurchaseService = {
+  supportsTrialReminders: false,
   async init() {
     return () => {};
   },

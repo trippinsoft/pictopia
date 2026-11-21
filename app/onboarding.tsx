@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { AppState, Linking, Platform, View } from "react-native";
 import { router, Stack } from "expo-router";
-import { Button, Icon, Text } from "@/components/pictopia/ui";
+import { Button, Icon, Loading, Text } from "@/components/pictopia/ui";
 import { usePictopia } from "@/components/pictopia/provider";
 import { OrBadge, Postcard } from "@/components/pictopia/playful";
 import { Welcome } from "@/components/pictopia/onboarding/welcome";
 import { OnboardingFrame, QuietAction } from "@/components/pictopia/onboarding/frame";
 import { ScrollDemo, SpaceDemo, SwipeDemo } from "@/components/pictopia/onboarding/demos";
 import { LibraryReveal } from "@/components/pictopia/onboarding/reveal";
-import { Planning } from "@/components/pictopia/onboarding/planning";
 import { TrialOffer, type OfferStep } from "@/components/pictopia/onboarding/trial";
 import { ConfettiBurst, Sunrays } from "@/components/pictopia/onboarding/celebrate";
 import { adventureName } from "@/lib/pictopia/catalog";
@@ -41,7 +40,7 @@ function AccessRow({ icon, title, body }: { icon: IconName; title: string; body:
 }
 
 /** First launch: the problem → three-step story → photo/reminder access → the user's own library
- * reveal → picking two adventures → Pictopia+ offer → "Your Pictopia is ready!" → Home, where a
+ * reveal → Pictopia+ offer → "Your Pictopia is ready!" → Home, where a
  * short tour points out the adventures, Timeline and Explore. No questions: Pictopia picks. */
 export default function Onboarding() {
   const app = usePictopia();
@@ -54,6 +53,8 @@ export default function Onboarding() {
   // Home's own two recommendations, prepared (and saved) by the same logic Home uses.
   const [slots, setSlots] = useState<AdventureSlot[] | null>();
   const [leaving, setLeaving] = useState(false);
+  const [libraryCountShown, setLibraryCountShown] = useState(false);
+  const onCountShown = useCallback(() => setLibraryCountShown(true), []);
   const years = useMemo(() => yearTotals(app.months), [app.months]);
   const [purchased, setPurchased] = useState(false);
 
@@ -75,9 +76,9 @@ export default function Onboarding() {
     // Once per visit to onboarding.
   }, []);
   useEffect(() => {
-    // The offer reports its own parts (showcase, reminder, plans) through `onStep`.
+    if (step === "ready" && slots === undefined) return;
     if (step !== "trial") viewStep(step === "welcome" ? "problem" : step);
-  }, [step, viewStep]);
+  }, [step, slots, viewStep]);
   const onOfferStep = useCallback((s: OfferStep) => viewStep(s), [viewStep]);
 
   // Everyone finishes on Home, where the tour introduces the three ways in.
@@ -88,14 +89,13 @@ export default function Onboarding() {
     if (last) trackOnboarding("onboarding_step_completed", { step: last.name, index: ONBOARDING_STEPS.indexOf(last.name), seconds: stepSeconds(last.at, Date.now()) });
     trackOnboarding("onboarding_completed", { outcome: "explore_home", pro: app.pro, purchased_in_onboarding: purchased, recommendations: slots?.length ?? 0 });
     await homeTourStore.start("onboarding").catch(() => {});
-    await app.updatePrefs(replay ? { onboarded: true, replayOnboarding: false } : { onboarded: true });
+    await app.updatePrefs(replay ? { onboarded: true, replayOnboarding: false } : { onboarded: true, onboardingStarted: false });
     router.replace("/(tabs)/home");
   }, [app, replay, purchased, slots, leaving]);
 
-  // Pictopia picks Home's two adventures while the planning screen plays. `home()` saves them,
-  // and Home's next `home()` returns these same two rather than creating new ones.
+  // Prepare the same saved adventures Home will show, using access after the offer.
   useEffect(() => {
-    if (step !== "planning" || slots !== undefined) return;
+    if (step !== "ready" || slots !== undefined) return;
     let alive = true;
     void adventureStore.home(Date.now(), app.pro).then(h => {
       if (!alive) return;
@@ -107,7 +107,7 @@ export default function Onboarding() {
       trackOnboarding("onboarding_planning_result", { picked: false, recommendations: 0 });
     });
     return () => { alive = false; };
-  }, [step, slots]);
+  }, [step, slots, app.pro]);
 
   async function allowAccess() {
     if (replay && canReuseLibrary) {
@@ -117,6 +117,7 @@ export default function Onboarding() {
     setConnecting(true);
     setAccessError(undefined);
     try {
+      if (!replay && !app.prefs.onboardingStarted) await app.updatePrefs({ onboardingStarted: true });
       const connected = await app.connect();
       const total = connected ? (await storage.stats()).total : 0;
       const access = await mediaService.permission().catch(() => null);
@@ -129,6 +130,8 @@ export default function Onboarding() {
       const reminders = await notificationService.request().catch(() => undefined);
       trackOnboarding("onboarding_access_result", { access: result, library_size: librarySizeBucket(total), notifications: reminders === "granted" });
       setStep("reveal");
+    } catch {
+      setAccessError("Your library couldn’t be opened. Please try again.");
     } finally {
       setConnecting(false);
     }
@@ -167,7 +170,7 @@ export default function Onboarding() {
       {accessError && Platform.OS !== "web" ? <QuietAction onPress={() => void Linking.openSettings()}>Open Settings</QuietAction> : null}
     </>}>
       <View className="gap-7">
-        <Text accessibilityRole="header" className="text-center text-h1 text-foreground">Let’s meet your photos</Text>
+        <Text accessibilityRole="header" className="text-center text-h1 text-foreground">Get to know your library</Text>
         <View className="gap-5">
           <AccessRow icon="Images" title="Your photos" body={Platform.OS === "web" ? "Choose photos and videos from this device. Nothing is uploaded, and originals are never deleted here." : "So Pictopia can show you your memories. They stay on your phone: no account, nothing uploaded."} />
           {Platform.OS !== "web" ? <AccessRow icon="Bell" title="Reminders" body="A gentle nudge to keep your streak going. You can manage reminders in Settings." /> : null}
@@ -178,23 +181,19 @@ export default function Onboarding() {
   </>;
 
   if (step === "reveal") return <>{screen}
-    <OnboardingFrame footer={<Button large onPress={() => setStep("planning")}>Continue</Button>}>
+    <OnboardingFrame footer={<Button large disabled={!libraryCountShown} onPress={() => setStep(replay || !app.pro ? "trial" : "ready")}>Continue</Button>}>
       <View className="gap-4">
         <Text accessibilityRole="header" className="text-center text-h2 text-muted-foreground">Your library is ready!</Text>
-        <LibraryReveal years={years} total={app.stats.total} photosCount={app.stats.photos} videos={app.stats.videos} />
+        <LibraryReveal years={years} total={app.stats.total} photosCount={app.stats.photos} videos={app.stats.videos} onCountShown={onCountShown} />
         <Text className="text-center text-caption leading-5 text-muted-foreground">{app.permission?.limited ? "These are the items you’ve allowed Pictopia to access. You can change access in Settings." : "These are the items Pictopia can access, including screenshots."}</Text>
         {Platform.OS === "ios" ? <Text className="text-center text-caption leading-5 text-muted-foreground">Hidden items, extra burst shots, shared albums and computer-synced items aren’t included in this view.</Text> : null}
       </View>
     </OnboardingFrame>
   </>;
 
-  if (step === "planning") return <>{screen}
-    <OnboardingFrame footer={<View className="h-14" />}>
-      <Planning ready={slots !== undefined} picked={slots?.length ?? 0} total={app.stats.total} onDone={() => setStep(replay || !app.pro ? "trial" : "ready")} />
-    </OnboardingFrame>
-  </>;
-
   if (step === "trial") return <>{screen}<TrialOffer onStep={onOfferStep} onDone={bought => { if (bought) setPurchased(true); setStep("ready"); }} /></>;
+
+  if (slots === undefined) return <>{screen}<OnboardingFrame footer={null}><Loading /></OnboardingFrame></>;
 
   const [first, second] = slots ?? [];
   return <>{screen}
@@ -230,7 +229,7 @@ export default function Onboarding() {
 const noop = () => {};
 /** The ready screen's promise matches what was actually prepared. */
 function readyLine(picked: number) {
-  return picked >= 2 ? "We’ve explored your library and picked two adventures just for you."
-    : picked === 1 ? "We’ve explored your library and picked an adventure just for you."
-    : "We’ve explored your library. Let’s take a look around.";
+  return picked >= 2 ? "We picked two adventures just for you."
+    : picked === 1 ? "We picked an adventure just for you."
+    : "Let’s take a look around.";
 }

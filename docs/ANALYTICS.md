@@ -25,12 +25,12 @@ Every event carries `onboarding_version` (bump `ONBOARDING_VERSION` in `lib/pict
 | Event | Trigger | Additional properties |
 | --- | --- | --- |
 | `onboarding_started` | Onboarding mounts | `replay`, `resumed` (reopened past access) |
-| `onboarding_step_viewed` | A step becomes visible | `step` (`problem`, `scroll`, `swipe`, `space`, `access`, `reveal`, `planning`, `plus_showcase`, `trial_reminder`, `trial_plans`, `ready`), `index` |
+| `onboarding_step_viewed` | A step becomes visible | `step` (`problem`, `scroll`, `swipe`, `space`, `access`, `reveal`, `plus_showcase`, `trial_timeline`, `trial_plans`, `ready`), `index` |
 | `onboarding_step_completed` | Leaving a step (including finishing) | `step`, `index`, `seconds` (capped at 600) |
 | `onboarding_access_result` | Allow access finishes | `access` (`full`/`limited`/`denied`/`empty`/`error`), `library_size` (range), `notifications` on success |
-| `onboarding_planning_result` | Home's adventures picked (or not) | `picked`, `recommendations` (0–2) |
+| `onboarding_planning_result` | Home’s adventure picks are prepared for the final reveal | `picked`, `recommendations` (0–2) |
 | `onboarding_showcase_progress` | Each Pictopia+ showcase scene seen for the first time | `scene`, `scenes_seen` |
-| `onboarding_offer_closed` | Free continuation from the offer (✕, loading or no offers) | `closed_from`, `seconds` on the plans screen |
+| `onboarding_offer_closed` | Free continuation from the offer (✕ or no offers) | `closed_from`, `seconds` since the trial or paid offer opened |
 | `onboarding_backgrounded` | App goes to background during onboarding | `step`, `index` |
 | `onboarding_completed` | "Let’s explore Pictopia" (everyone lands on Home) | `outcome` (`explore_home`), `pro`, `purchased_in_onboarding`, `recommendations` |
 | `home_tour_started` | The Home tour appears | `source` (`onboarding`/`settings`), `steps` (3–4) |

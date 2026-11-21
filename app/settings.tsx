@@ -163,8 +163,8 @@ function DeveloperTools({ action }: { action: (work: () => Promise<unknown>) => 
         <Text className="text-caption leading-5 text-muted-foreground">Automatic uses the real App Store or Google Play purchase. Free and Pictopia+ ignore it until you switch back.</Text>
       </View>
       <Pressable accessibilityRole="button" disabled={!app.ready || replaying} onPress={() => void action(replayOnboarding)} className="min-h-14 justify-center gap-0.5 border-b border-border px-4 py-3 active:opacity-70">
-        <Text className="text-body text-primary">{replaying ? "Opening onboarding…" : "Reset onboarding"}</Text>
-        <Text className="text-caption leading-5 text-muted-foreground">Replay from Welcome, including the Pictopia+ offer. Photo progress and store purchases are kept.</Text>
+        <Text className="text-body text-primary">{replaying ? "Opening onboarding…" : "Replay onboarding"}</Text>
+        <Text className="text-caption leading-5 text-muted-foreground">Replay from Welcome, including the Pictopia+ offer. Photo progress, permissions and store purchases are kept.</Text>
       </Pressable>
       <View className="gap-2.5 border-b border-border px-4 py-3.5">
         <Text className="text-body text-foreground">Free daily review limit</Text>

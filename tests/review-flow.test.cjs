@@ -184,7 +184,7 @@ test("explicit Finish from the end page handles a lagging saved position without
   assert.equal(x.reduceExplore(unseen,action),unseen,'unseen endpoints cannot be asserted');
 });
 
-test("collection completion exposes Review Again and keeps later replay batches reachable", async () => {
+test("collection completion keeps existing batch navigation without a Review Again button", async () => {
   const { hooks, textOf } = require("./hook-harness.cjs");
   const byLabel = (node, label) => {
     if (!node || typeof node !== "object") return undefined;
@@ -198,7 +198,6 @@ test("collection completion exposes Review Again and keeps later replay batches 
     headlineOverride: "You’ve reviewed all your photos!",
     more: { label: "Review next batch", onPress: () => calls.push("next") },
     moreAfterCompletion: true,
-    reviewAgain: { onPress: () => calls.push("again") },
     onDone() {}, onReview() {}, onPrevious() {}, onUndo() {}, canUndo: false,
   };
   const h = hooks("components/pictopia/adventure-finish.tsx", "AdventureFinish", {
@@ -210,10 +209,10 @@ test("collection completion exposes Review Again and keeps later replay batches 
   try {
     const completed = h.render();
     assert.match(textOf(completed), /You’ve reviewed all your photos!/);
-    byLabel(completed, "Review Again").props.onPress();
+    assert.equal(byLabel(completed, "Review Again"), undefined);
     byLabel(completed, "Review next batch").props.onPress();
-    assert.deepEqual(calls, ["again", "next"]);
-    const unrelated = h.render({ ...props, reviewAgain: undefined, moreAfterCompletion: false });
+    assert.deepEqual(calls, ["next"]);
+    const unrelated = h.render({ ...props, moreAfterCompletion: false });
     assert.equal(byLabel(unrelated, "Review Again"), undefined);
     assert.equal(byLabel(unrelated, "Review next batch"), undefined);
     const empty = h.render({ ...props, scope: { explored: 0, total: 0, complete: false }, headlineOverride: undefined });

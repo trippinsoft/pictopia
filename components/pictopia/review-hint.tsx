@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
 import Animated, { cancelAnimation, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withSequence, withTiming, type SharedValue } from "react-native-reanimated";
 import { Icon, Text } from "./ui";
-import { nextReviewStep, REVIEW_HINTS, REVIEW_SPOTLIGHT, REVIEW_STEPS, reviewSteps, type ReviewGuidance, type ReviewStep } from "@/lib/pictopia/review-guidance";
+import { nextReviewStep, REVIEW_HINTS, REVIEW_SPOTLIGHT, reviewSteps, type ReviewGuidance, type ReviewStep } from "@/lib/pictopia/review-guidance";
 import { placeCard } from "@/lib/pictopia/home-tour";
 import { reviewGuidance } from "@/services/review-guidance";
 import { measureTarget } from "./tour-targets";
@@ -18,22 +18,18 @@ const FIND_TRIES = 10, FIND_EVERY_MS = 250;
 export function useReviewGuidance(enabled: boolean, favorites = FAVORITES) {
   const steps = reviewSteps(favorites);
   const [done, setDone] = useState<ReviewGuidance>();
-  const alive = useRef(true), state = useRef(done); state.current = done;
+  const state = useRef(done); state.current = done;
   useFocusEffect(useCallback(() => {
-    alive.current = true;
-    if (enabled) void reviewGuidance.load().then(value => { if (alive.current) setDone(value); }).catch(() => {});
-    return () => { alive.current = false; };
+    let alive = true;
+    if (enabled) void reviewGuidance.load().then(value => { if (alive) setDone(value); }).catch(() => {});
+    return () => { alive = false; };
   }, [enabled]));
   const complete = useCallback((step: ReviewStep) => {
     if (!state.current || nextReviewStep(state.current, steps) !== step) return;
     const next = { ...state.current, [step]: true }; state.current = next; setDone(next);
     void reviewGuidance.complete(step).catch(() => {});
   }, [steps]);
-  const skip = useCallback(() => {
-    setDone(REVIEW_STEPS.reduce<ReviewGuidance>((all, step) => ({ ...all, [step]: true }), {}));
-    void reviewGuidance.skip().catch(() => {});
-  }, []);
-  return { step: enabled && done ? nextReviewStep(done, steps) : undefined, complete, skip };
+  return { step: enabled && done ? nextReviewStep(done, steps) : undefined, complete };
 }
 
 /** One tip's card: icon, "Tip n of N" with Got it beside it, title and body. */
@@ -70,12 +66,9 @@ function HintCard({ step, index, total, motion, onNext }: { step: ReviewStep; in
  * couldn't be found (the tip then shows as a plain card, never blocking the review). */
 type Spot = { step: ReviewStep; hole: SpotlightHole | null };
 
-/** The reviewer's coach. Tips complete when the user actually does the thing (or taps Got it);
- * there's no Skip, so everyone sees all of them. The heart tip dims the reviewer and spotlights
- * the real heart button (measured only while the tip shows; the reviewer's layout never moves)
- * with a one-time pulse. Nothing here makes a decision about a photo or changes a favorite.
- * `onSkip` is accepted for existing callers but no longer offered. */
-export function ReviewHint({ step, onNext, favorites = FAVORITES }: { step?: ReviewStep; onNext(step: ReviewStep): void; onSkip?(): void; favorites?: boolean }) {
+/** Got it advances each tip. The heart tip spotlights the real control with a one-time pulse.
+ * The review layout stays in place, and showing a tip never changes the photo. */
+export function ReviewHint({ step, onNext, favorites = FAVORITES }: { step?: ReviewStep; onNext(step: ReviewStep): void; favorites?: boolean }) {
   const reduced = useReducedMotion(), motion = useSharedValue(0);
   const { width: windowW, height: windowH } = useWindowDimensions();
   const insets = useSafeAreaInsets();

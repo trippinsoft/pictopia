@@ -214,3 +214,9 @@ The review interaction uses the original 1.0.21 live feed: marked photos leave s
 - 2026-11-21: Onboarding opens with the problem (growing photo pile) and introduces Pictopia+ through an animated four-scene showcase instead of a feature list; step-level onboarding analytics added.
 - 2026-11-21: Onboarding always ends on Home ("Your Pictopia is ready!", two adventures picked by Home's own logic); a one-time spotlight tour introduces the adventures, Timeline and Explore, replayable from Settings.
 - 2026-11-21: Home tour is four steps (adventures, Explore, Timeline, then the % sticker + Progress tab together) with Skip tutorial / Let's go!, replayable via Settings › Replay app tour.
+- 2026-11-21: Reviewer gained Tip 3 “Heart your favorites”, spotlighting the real heart, so people know scrolling past already keeps a photo.
+- All Photos, All videos and Largest videos became repeatable sorted collections that reopen from the top after a completed pass.
+- Review tips require their own Got it acknowledgments and still appear when the Home tutorial is skipped.
+
+- Onboarding presents the library count, Pictopia+ showcase, eligible trial timeline, shared plan picker, and a single starburst adventure reveal. Confirmed iPhone trials can schedule a local reminder on day two.
+- The onboarding trial timeline now offers direct redemption with the renewal price visible and weekly/yearly alternatives in a bottom sheet.

@@ -1,8 +1,10 @@
 # Pictopia
 
-The first welcome page places the transparent stacked-photo artwork and pastel waves on a cream or navy background with “Scroll your photos. Swipe the clutter.” Get started continues into the existing story and permission flow.
+The welcome uses Pictopia’s illustrated photo pile and a larger wordmark on native phones. The story demos precede photo access. After the library count, onboarding shows the 5× Pictopia+ showcase, an eligible trial timeline with direct redemption and a View all plans bottom sheet, and one adventure reveal with sunrays before Home. The trial offer’s upper-left close appears after four seconds. People without a trial see the paid plan picker. The offer is skipped for existing Pictopia+ members outside developer replay.
 
-In development and opted-in staging builds, **Settings → Developer tools → Reset onboarding** replays Welcome through the Pictopia+ offer while keeping photo progress and store access. Use [the Apple sandbox checklist](docs/SUBSCRIPTIONS.md#testflight-exercise-real-billing) for a fresh purchase or trial.
+An eligible trial started during onboarding schedules one local reminder if notifications are enabled and an iPhone running iOS 17.2+ verifies the new StoreKit trial. Production uses the signed trial end date, with one day of notice for the three-day trial. Sandbox uses the same relative timing if the store accelerates the trial.
+
+In development and opted-in staging builds, **Settings → Developer tools → Replay onboarding** reuses existing photo access and keeps photo progress, system permissions, and store history. Use [the Apple sandbox checklist](docs/SUBSCRIPTIONS.md#testflight-exercise-real-billing) for a fresh trial.
 
 Keep the memories. Lose the clutter.
 
@@ -46,7 +48,7 @@ To measure a device, run Full library once and then repeat it for a warm-cache r
 
 Explore’s Months & Years opens complete chronological collections, separately from short The Yearbook adventures. Months and years aggregate the same first-seen history used everywhere else, include screenshots, display real library thumbnails and remaining/Complete/Resume states, and reopen when unseen photos arrive. Unknown dates have their own group; browser dates remain file-modified dates.
 
-All Photos, All videos and Largest videos keep a saved Continue position and review unseen items in 120-item batches. Review Again starts from the beginning of the currently accessible library and walks all batches in newest-first photo, oldest-first video, or size order. Largest videos reads size metadata without downloading originals and places unknown sizes last. Screenshot Sweep continues in 50-photo adventure sets and uses the same review feed in 50-photo batches for Review Again. Prior encounters in these four experiences preserve first-seen history and cost no free reviews or streak credit. Existing discards remain marked and deletion still requires queue confirmation. Recents shows the latest 100 mixed items and Favorites includes already-viewed favorites. Classic timed sessions keep their own saved collections.
+All Photos, All videos and Largest videos include previously viewed items in 120-item batches. They resume unfinished passes and open from the top after the final batch. Recents opens its latest mixed-media set from the synced library index and resumes an unfinished visit. A finished Recents opens from the start the next time. Largest videos reads size metadata without downloading originals and places unknown sizes last. Screenshot Sweep continues in 50-photo adventure sets. Prior encounters in these four experiences preserve first-seen history and cost no free reviews or streak credit. Existing discards remain marked and deletion still requires queue confirmation. Recents shows the latest 100 mixed items and Favorites includes already-viewed favorites. Classic timed sessions keep their own saved collections.
 
 ## Smart Sessions
 

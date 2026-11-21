@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
 import { Button, Icon, Loading, Text } from "@/components/pictopia/ui";
@@ -39,9 +39,6 @@ export default function Explore() {
   const today = useLocalDay();
   const todayLabel = new Date(`${today}T12:00:00`).toLocaleDateString(undefined, { month: "long", day: "numeric" });
   const lift = useLift();
-  const { fontScale } = useWindowDimensions();
-  // Reserve two title lines and two caption lines, plus padding and a small rounding margin.
-  const utilityCopyHeight = 22 + Math.ceil(80 * Math.max(fontScale, 1));
   const [choices, setChoices] = useState<Choices>();
   const [parked, setParked] = useState<AdventureSlot[]>([]);
   const [recentCount, setRecentCount] = useState<number>();
@@ -213,7 +210,7 @@ export default function Explore() {
               <View className="flex-row gap-3">
                 {screenshotsAvailable ? (
                   <ExploreTile
-                    utilityCopyHeight={utilityCopyHeight} lift={lift}
+                    utility lift={lift}
                     title="Screenshot Sweep"
                     hint={screenshots ? `${screenshots.total.toLocaleString()} screenshots` : "Oldest first"}
                     art={{ illustration: "screenshots" }}
@@ -222,11 +219,11 @@ export default function Explore() {
                     onPress={() => openPlus(() => void begin("screenshot-sweep"))}
                   />
                 ) : (
-                  <ExploreTile utilityCopyHeight={utilityCopyHeight} lift={lift} title="Screenshot Sweep" hint={screenshots ? "Nothing to sweep" : "Looking…"} art={{ illustration: "screenshots" }} plus disabled />
+                  <ExploreTile utility lift={lift} title="Screenshot Sweep" hint={screenshots ? "Nothing to sweep" : "Looking…"} art={{ illustration: "screenshots" }} plus disabled />
                 )}
                 {videos?.total ? (
                   <ExploreTile
-                    utilityCopyHeight={utilityCopyHeight} lift={lift}
+                    utility lift={lift}
                     title="Largest videos"
                     hint={`${videos.total.toLocaleString()} videos · biggest first`}
                     art={{ illustration: "largeVideos" }}
@@ -234,13 +231,13 @@ export default function Explore() {
                     onPress={() => openPlus(() => router.push({ pathname: "/collection-review", params: { scope: "videos-large" } }))}
                   />
                 ) : (
-                  <ExploreTile utilityCopyHeight={utilityCopyHeight} lift={lift} title="Largest videos" hint={videos ? "No videos yet" : "Looking…"} art={{ illustration: "largeVideos" }} plus disabled />
+                  <ExploreTile utility lift={lift} title="Largest videos" hint={videos ? "No videos yet" : "Looking…"} art={{ illustration: "largeVideos" }} plus disabled />
                 )}
               </View>
 
               <View className="flex-row gap-3">
                 <ExploreTile
-                  utilityCopyHeight={utilityCopyHeight} lift={lift}
+                  utility lift={lift}
                   title="Duplicate Hunt"
                   hint={lookalikes ? `${lookalikes.toLocaleString()} ${lookalikes === 1 ? "set" : "sets"} of look-alikes` : "Copies and near-identical shots"}
                   art={{ illustration: "duplicates" }}
@@ -249,7 +246,7 @@ export default function Explore() {
                 />
                 {videos?.total ? (
                   <ExploreTile
-                    utilityCopyHeight={utilityCopyHeight} lift={lift}
+                    utility lift={lift}
                     title="All videos"
                     hint={`${videos.total.toLocaleString()} videos · oldest first`}
                     art={{ illustration: "allVideos" }}
@@ -257,7 +254,7 @@ export default function Explore() {
                     onPress={() => openPlus(() => router.push({ pathname: "/collection-review", params: { scope: "videos" } }))}
                   />
                 ) : (
-                  <ExploreTile utilityCopyHeight={utilityCopyHeight} lift={lift} title="All videos" hint={videos ? "No videos yet" : "Looking…"} art={{ illustration: "allVideos" }} plus disabled />
+                  <ExploreTile utility lift={lift} title="All videos" hint={videos ? "No videos yet" : "Looking…"} art={{ illustration: "allVideos" }} plus disabled />
                 )}
               </View>
             </View>
@@ -283,7 +280,7 @@ export default function Explore() {
 /** One unified Explore tile. By default it's a landscape row (108 px tall with a 108 px art
  * panel on the left). Utilities use half-width cards with matching artwork and text areas. `disabled` greys the tile
  * but keeps its shape, so empty sections never collapse. */
-function ExploreTile({ lift, title, hint, art, plus, disabled, badge, utilityCopyHeight, grouped, onPress }: {
+function ExploreTile({ lift, title, hint, art, plus, disabled, badge, utility, grouped, onPress }: {
   lift: object;
   title: string;
   hint: string;
@@ -292,12 +289,12 @@ function ExploreTile({ lift, title, hint, art, plus, disabled, badge, utilityCop
   plus?: boolean;
   disabled?: boolean;
   badge?: string;
-  utilityCopyHeight?: number;
+  utility?: boolean;
   grouped?: boolean;
   onPress?: () => void;
 }) {
   const label = `${title}${plus ? ", Pictopia+" : ""}. ${hint}${badge ? `. ${badge}` : ""}`;
-  if (utilityCopyHeight !== undefined) {
+  if (utility) {
     const cardStyle = [lift, utilityTile];
     const cardClass = "overflow-hidden rounded-[18px] bg-card";
     const content = (
@@ -311,7 +308,7 @@ function ExploreTile({ lift, title, hint, art, plus, disabled, badge, utilityCop
             </View>
           </View> : null}
         </View>
-        <View style={{ height: utilityCopyHeight }} className="gap-1 px-3 py-2">
+        <View className="gap-1 px-3 pb-2 pt-1.5">
           <Text numberOfLines={2} className="text-h3 leading-[23px] text-foreground">{title}</Text>
           <Text numberOfLines={2} ellipsizeMode="tail" className="text-caption leading-[17px] text-muted-foreground">{hint}</Text>
         </View>
@@ -386,5 +383,5 @@ function PlusTag() {
 const tagStyle = { fontFamily: "Inter_700Bold" };
 /** Utilities cards use a landscape picture (3:2) so the pairs stay compact on the page. */
 const squareArt = { width: "100%", aspectRatio: 1.5, flexShrink: 0 } as const;
-// Share row width evenly. The artwork ratio and reserved copy area set the height.
+// Share row width evenly. The row grows to fit its longest label.
 const utilityTile = { flexBasis: 0, flexGrow: 1, minWidth: 0 };

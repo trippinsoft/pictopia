@@ -41,13 +41,12 @@ export interface FinishActions {
   explored: number; marked: number; unavailable: number; libraryBefore?: number;
   photoIds: string[]; discarded: Media[];
 }
-export function AdventureReview({ id, collection, finishContent, onContinue, dateNavigation, showCompletionOnOpen, reviewAgain, reviewError }: {
+export function AdventureReview({ id, collection, finishContent, onContinue, dateNavigation, showCompletionOnOpen, reviewError }: {
   id: string;
-  /** Collections: their session, title and, for the header, explored progress when opened. */
-  collection?: { sessionKey: string; title: string; firstReviewOnly?: boolean; replay?: boolean; progress?: { explored: number; total: number } };
+  /** Collections supply their own review session and title. */
+  collection?: { sessionKey: string; title: string; firstReviewOnly?: boolean; replay?: boolean };
   finishContent?: (actions: FinishActions) => ReactNode;
   showCompletionOnOpen?: boolean;
-  reviewAgain?: { busy: boolean; onPress(): void };
   reviewError?: string;
   /** Remount the review after a persisted segment change to discard the prior feed state. */
   onContinue?: () => void;
@@ -202,10 +201,6 @@ export function AdventureReview({ id, collection, finishContent, onContinue, dat
   const replay = collection?.replay;
   const firstReviewOnly = collection?.firstReviewOnly || adventure?.kind === "screenshots";
   const allowance = useAllowance(session, sequence, valid && !complete ? photo : undefined, app.pro, available, firstReviewOnly ? media : undefined);
-  const again = reviewAgain ?? (adventure?.kind === "screenshots" && app.pro ? {
-    busy: false,
-    onPress: () => router.push({ pathname: "/collection-review", params: { scope: "screenshots", review: "again" } }),
-  } : undefined);
   const stopBefore = replay ? undefined : allowance.stopBefore;
   const encounter = useCallback((displayedAt: number) => photo ? change({ type: "seen", id: photo, displayedAt }) : Promise.resolve(), [photo, change]);
   // A photo that can't be shown must never block 100%: an explicit tap counts it as reviewed
@@ -300,7 +295,7 @@ export function AdventureReview({ id, collection, finishContent, onContinue, dat
     return <>
       <Stack.Screen options={{ title, headerShown: false }} />
       {finishContent?.({ onUndo: () => { setSelected(undefined); undo(); }, onPreviousPhoto: () => { setSelected(undefined); apply({ type: "back" }); }, onReview: reviewMarked, onDone: exit, onBackToPhotos: backToPhotos, onDeleteNow: deleteNow, canUndo, canReview: sequence.length > 0, pending, explored: counts.explored, marked: marked.length, unavailable: counts.unavailable, libraryBefore: opened.current?.finished ? undefined : libraryBefore.current, photoIds: sequence, discarded: discardedMedia }) ??
-        <AdventureFinish headerContent={dateStrip} reviewAgain={again} onContinueSegment={next => { if (onContinue) { onContinue(); return; } setSelected(undefined); setAtEnd(false); opened.current = undefined; void reload().then(() => setAdventure(next)); }} adventure={adventure} photoIds={sequence} explored={counts.explored} marked={marked.length} unavailable={counts.unavailable} libraryBefore={opened.current?.finished ? undefined : libraryBefore.current} canUndo={canUndo} pending={pending}
+        <AdventureFinish headerContent={dateStrip} onContinueSegment={next => { if (onContinue) { onContinue(); return; } setSelected(undefined); setAtEnd(false); opened.current = undefined; void reload().then(() => setAdventure(next)); }} adventure={adventure} photoIds={sequence} explored={counts.explored} marked={marked.length} unavailable={counts.unavailable} libraryBefore={opened.current?.finished ? undefined : libraryBefore.current} canUndo={canUndo} pending={pending}
           discarded={discardedMedia} onBackToPhotos={backToPhotos} onDeleteNow={deleteNow}
           onReview={reviewMarked} onDone={exit} onUndo={() => { setSelected(undefined); undoSaved(); }} onPrevious={() => { setSelected(undefined); void change({ type: "back" }).catch(() => {}); }} />}
     </>;
@@ -322,12 +317,6 @@ export function AdventureReview({ id, collection, finishContent, onContinue, dat
         {session && <ProgressLine ref={line} total={sequence.length} initial={Math.max(0, originalPlace)} />}
       </View>
       {dateStrip}
-      {again && valid && session && !complete ? <Pressable accessibilityRole="button"
-        disabled={again.busy || busy || pending || flying > 0 || tray}
-        onPress={() => { feed.current?.flush(); again.onPress(); }}
-        className="min-h-11 self-center justify-center px-4 active:opacity-70">
-        <Text className="text-caption text-foreground">{again.busy ? "Opening…" : "Review Again"}</Text>
-      </Pressable> : null}
       {valid === false ? <View className="flex-1 justify-center gap-4 px-6"><Text className="text-display text-foreground">Choose a fresh adventure</Text><Text className="text-body text-muted-foreground">This older adventure is no longer available. Your previous progress and marked photos are kept.</Text><Button onPress={() => router.replace("/(tabs)/explore")}>Explore adventures</Button></View> : !session || valid === undefined ? <Loading /> : <>
         <View className="min-h-0 flex-1" onLayout={event => { frames.current.feed = event.nativeEvent.layout; measureStage(); }}>
           {empty ? <View className="flex-1 items-center justify-center gap-3 px-8">
@@ -339,14 +328,13 @@ export function AdventureReview({ id, collection, finishContent, onContinue, dat
               <Button secondary icon="Trash2" onPress={() => setTray(true)}>Open Discarded</Button>
             </View>
           </View> : allowance.error ? <View className="flex-1 items-center justify-center gap-4 px-8"><Text className="text-center text-body text-foreground">Couldn’t check your daily free reviews. Your saved review is safe.</Text><Button onPress={() => void allowance.reload()}>Try again</Button></View> : !allowance.ready ? <Loading /> : <ExploreFeed ref={feed} session={session} media={media} autoplayVideo={Platform.OS !== "web" && app.prefs.autoplay} change={change} getSession={getSession} flight={flight} canReview={allowance.canReview} stopBefore={stopBefore} limitPage={limitPage} endPage={endPage} onEnd={finish}
-            onPage={(index, total) => { setAtEnd(index >= total); if (index < total) setSelected(sequence[index]); }} onScrollPosition={position => line.current?.setPosition(position)} onScrollActive={(target, ready) => { setSelected(target); setAvailable(ready); }} onBusy={setBusy} onAvailability={setAvailable} onError={setTransitionError} onRestore={restore} onCountUnavailable={countUnavailable} onPhotoUnavailable={checkGone} onUndone={allowance.refund}
-            onBrowse={() => guidance.complete("browse")} onDiscard={() => guidance.complete("discard")} />}
+            onPage={(index, total) => { setAtEnd(index >= total); if (index < total) setSelected(sequence[index]); }} onScrollPosition={position => line.current?.setPosition(position)} onScrollActive={(target, ready) => { setSelected(target); setAvailable(ready); }} onBusy={setBusy} onAvailability={setAvailable} onError={setTransitionError} onRestore={restore} onCountUnavailable={countUnavailable} onPhotoUnavailable={checkGone} onUndone={allowance.refund} />}
           {!!sizeLabel && !empty && !atEnd && <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" className="absolute left-3 top-2 flex-row items-center gap-1 rounded-[9px] bg-black/50 px-2.5 py-1"><Icon name="HardDrive" size={13} className="text-white" /><Text className="text-caption text-white" style={{ fontVariant: ["tabular-nums"] }}>{sizeLabel}</Text></View>}
           {!!label && !empty && !atEnd && <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" className="absolute right-3 top-2 rounded-[9px] bg-black/50 px-2.5 py-1"><Text className="text-caption text-white">{label}</Text></View>}
           {/* Over the photos, never above them: inserting it would resize every page mid-scroll. */}
           {!!(error || loadError || transitionError) && <Pressable accessibilityRole="button" accessibilityLabel="Retry loading saved review" onPress={() => { setTransitionError(undefined); void reload(); }} className="absolute left-4 right-4 top-12 rounded-2xl bg-card/95 px-4 py-2"><Text accessibilityRole="alert" className="text-body text-foreground">{error || loadError || transitionError}</Text></Pressable>}
           {reviewError ? <Text accessibilityRole="alert" className="absolute left-4 right-4 top-12 rounded-2xl bg-card px-4 py-2 text-center text-body text-destructive">{reviewError}</Text> : null}
-          <ReviewHint step={guidance.step} onNext={guidance.complete} onSkip={guidance.skip} />
+          <ReviewHint step={guidance.step} onNext={guidance.complete} />
         </View>
         <View className="flex-row items-center justify-between px-4 pb-2 pt-2">
           <Pressable accessibilityRole="button" accessibilityLabel={canUndo ? "Undo the last discard and bring that photo back" : "Undo, nothing to undo yet"} accessibilityState={{ disabled: !canUndo || busy }} disabled={!canUndo || busy} onPress={undo}
