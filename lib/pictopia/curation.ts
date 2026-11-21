@@ -1,4 +1,4 @@
-import { eligibleStills, adventurePool, selectMixedMedia } from "./photo-eligibility";
+import { eligibleStills, adventurePool, isSweepScreenshot, selectMixedMedia } from "./photo-eligibility";
 import type { Media } from "./types";
 import { bestScore, shuffle, similar } from "./logic";
 import { plural } from "./text";
@@ -259,7 +259,7 @@ function selectScreenshots(candidate: Candidate, ctx: CurationContext, size: num
   const { groups, fresh } = prepare(candidate, ctx);
   const now = ctx.now ?? Date.now();
   const allowed = (m: Media) =>
-    m.screenshot && !favorite(m) && (ctx.chosen || !(m.firstSeenAt || ctx.explored.has(m.id)));
+    isSweepScreenshot(m) && (ctx.chosen || !(m.firstSeenAt || ctx.explored.has(m.id)));
   // Every screenshot is shown, including runs of scrolling captures, so counts match.
   const shots = groups.flatMap((g) => g.filter(allowed));
   const old = (m: Media) => now - m.created > 180 * 86400000;

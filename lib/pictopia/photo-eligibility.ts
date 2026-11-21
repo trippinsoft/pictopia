@@ -34,6 +34,9 @@ export function adventureMediaQuery(kind: AdventureKind) {
   return policy === "include" || policy === "selective" ? {}
     : policy === "only" ? { type: "photo" as const, screenshot: true } : photographQuery;
 }
+export function isSweepScreenshot(m: Media) {
+  return m.type === "photo" && m.screenshot && !m.favorite && !m.systemFavorite;
+}
 export function adventurePool(pool: Media[], kind: AdventureKind, exclude: ReadonlySet<string> = new Set(), now = Date.now()) {
   if (kind === "day") return onThisDayPool(pool, exclude, now);
   const policy = adventureScreenshotPolicy(kind);

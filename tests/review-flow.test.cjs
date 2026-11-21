@@ -183,3 +183,41 @@ test("explicit Finish from the end page handles a lagging saved position without
   const unseen={...s,records:{...s.records,p17:undefined}};
   assert.equal(x.reduceExplore(unseen,action),unseen,'unseen endpoints cannot be asserted');
 });
+
+test("collection completion exposes Review Again and keeps later replay batches reachable", async () => {
+  const { hooks, textOf } = require("./hook-harness.cjs");
+  const byLabel = (node, label) => {
+    if (!node || typeof node !== "object") return undefined;
+    if (node.type === "Button" && node.props.children === label) return node;
+    return [node.props?.children].flat(Infinity).map(child => byLabel(child, label)).find(Boolean);
+  };
+  const calls = [];
+  const props = {
+    title: "All Photos", explored: 120, unavailable: 0, marked: 0, pending: false,
+    scope: { explored: 245, total: 245, complete: true },
+    headlineOverride: "You’ve reviewed all your photos!",
+    more: { label: "Review next batch", onPress: () => calls.push("next") },
+    moreAfterCompletion: true,
+    reviewAgain: { onPress: () => calls.push("again") },
+    onDone() {}, onReview() {}, onPrevious() {}, onUndo() {}, canUndo: false,
+  };
+  const h = hooks("components/pictopia/adventure-finish.tsx", "AdventureFinish", {
+    "react-native": { Pressable: "Pressable", ScrollView: "ScrollView", View: "View" },
+    "react-native-safe-area-context": { SafeAreaView: "SafeAreaView" },
+    "./navigation-header": { ScreenHeader: "ScreenHeader" }, "./media-image": { MediaImage: "MediaImage" },
+    "./ui": { Button: "Button", Text: "Text" }, "@/services/adventures": {}, "@/services/badges": {},
+  }, props);
+  try {
+    const completed = h.render();
+    assert.match(textOf(completed), /You’ve reviewed all your photos!/);
+    byLabel(completed, "Review Again").props.onPress();
+    byLabel(completed, "Review next batch").props.onPress();
+    assert.deepEqual(calls, ["again", "next"]);
+    const unrelated = h.render({ ...props, reviewAgain: undefined, moreAfterCompletion: false });
+    assert.equal(byLabel(unrelated, "Review Again"), undefined);
+    assert.equal(byLabel(unrelated, "Review next batch"), undefined);
+    const empty = h.render({ ...props, scope: { explored: 0, total: 0, complete: false }, headlineOverride: undefined });
+    assert.match(textOf(empty), /No items available/);
+    assert.doesNotMatch(textOf(empty), /100% reviewed/);
+  } finally { h.unmount(); }
+});

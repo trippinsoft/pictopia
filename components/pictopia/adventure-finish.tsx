@@ -19,6 +19,9 @@ interface Props {
   explored: number; marked: number; unavailable: number; pending: boolean;
   scope?: { complete: boolean; explored: number; total: number };
   headlineOverride?: string; art?: ReactNode;
+  reviewAgain?: { busy?: boolean; onPress(): void };
+  reviewError?: string;
+  moreAfterCompletion?: boolean;
   more?: { label: string; busy?: boolean; onPress(): void };
   /** This review's discarded photos, for the stack and the size. */
   discarded?: Media[];
@@ -33,7 +36,7 @@ interface Props {
 }
 /** The end of an adventure: how much of the set was reviewed, what was kept and discarded,
  * and the discards themselves, ready to delete or look through. */
-export function AdventureFinish({ adventure, title, photoIds, explored, marked, unavailable, pending, scope, more, discarded = [], onContinueSegment, onBackToPhotos, onDeleteNow, onReview, onDone, headerContent }: Props) {
+export function AdventureFinish({ adventure, title, photoIds, explored, marked, unavailable, pending, scope, more, reviewAgain, reviewError, moreAfterCompletion, headlineOverride, discarded = [], onContinueSegment, onBackToPhotos, onDeleteNow, onReview, onDone, headerContent }: Props) {
   const [facts, setFacts] = useState<Awaited<ReturnType<typeof adventureStore.segmentStatus>>>();
   const [ready, setReady] = useState(!adventure), [error, setError] = useState<string>();
   const [retry, setRetry] = useState(0), [busy, setBusy] = useState(false);
@@ -67,13 +70,15 @@ export function AdventureFinish({ adventure, title, photoIds, explored, marked, 
   const name = title ?? (adventure ? adventureLabel(adventure) : "Adventure");
   const complete = scope?.complete ?? facts?.complete ?? false;
   const total = photoIds?.length ?? scope?.total ?? 0;
+  const empty = !!scope && total === 0 && !complete;
   const reviewed = Math.min(explored, total || explored);
   const percent = total ? Math.floor((100 * reviewed) / total) : 100;
   const discardedCount = discarded.length || marked;
   const kept = Math.max(0, reviewed - discardedCount);
   const bytes = discarded.reduce((n, m) => n + displayMediaSize(m), 0);
-  const hasMore = !complete && (!!more || (!!facts?.nextCount && !!onContinueSegment));
-  const moreLabel = more?.label ?? (adventure?.kind === "screenshots" ? "Next sweep" : `Keep going: ${facts?.nextCount} more`);
+  const hasMore = (!complete || moreAfterCompletion) && (!!more || (!!facts?.nextCount && !!onContinueSegment));
+  const moreLabel = more?.label ?? (adventure?.kind === "screenshots" ? "Continue Reviewing" : `Keep going: ${facts?.nextCount} more`);
+  const headline = headlineOverride ?? (adventure?.kind === "screenshots" && complete ? "You’ve reviewed all your screenshots!" : undefined);
   return <SafeAreaView edges={["top", "bottom", "left", "right"]} className="flex-1 bg-background">
     <View className="mx-auto w-full max-w-md px-5"><ScreenHeader title={name} onBack={onDone} /></View>
     {headerContent}
@@ -82,19 +87,21 @@ export function AdventureFinish({ adventure, title, photoIds, explored, marked, 
     </View> : <ScrollView className="flex-1" contentContainerClassName="flex-grow">
       <View className="mx-auto w-full max-w-md flex-1 px-6 pb-6">
         <View className="flex-1 items-center justify-center py-8">
-          {percent >= 100 && <Text accessibilityElementsHidden importantForAccessibility="no" className="text-[48px] leading-[56px]">🎉</Text>}
-          <Text accessibilityRole="header" className="text-center text-display text-foreground" style={{ fontVariant: ["tabular-nums"] }}>{`${percent}% reviewed`}</Text>
-          <Text className="mt-2 text-center text-body text-muted-foreground" style={{ fontVariant: ["tabular-nums"] }}>
+          {!empty && percent >= 100 && <Text accessibilityElementsHidden importantForAccessibility="no" className="text-[48px] leading-[56px]">🎉</Text>}
+          <Text accessibilityRole="header" className="text-center text-display text-foreground" style={{ fontVariant: ["tabular-nums"] }}>{empty ? "No items available" : `${percent}% reviewed`}</Text>
+          {total > 0 ? <Text className="mt-2 text-center text-body text-muted-foreground" style={{ fontVariant: ["tabular-nums"] }}>
             {discardedCount ? `${kept} kept · ${discardedCount} discarded${bytes > 0 ? ` (${sizeText(bytes)})` : ""}` : `${plural(kept, "photo")} kept`}
-          </Text>
+          </Text> : null}
+          {headline ? <Text className="mt-2 text-center text-body text-foreground">{headline}</Text> : null}
           {unavailable > 0 && <Text className="mt-2 text-center text-caption text-muted-foreground">{`${plural(unavailable, "photo")} couldn’t load · Try again later`}</Text>}
           {discarded.length > 0 && <DiscardStack items={discarded} onPress={onReview} />}
         </View>
-        {!!error && <Text accessibilityRole="alert" className="mb-4 text-center text-body text-destructive">{error}</Text>}
+        {error || reviewError ? <Text accessibilityRole="alert" className="mb-4 text-center text-body text-destructive">{error || reviewError}</Text> : null}
         <View className="gap-3">
           {discardedCount > 0 && onDeleteNow && <Button large danger icon="Trash2" disabled={pending} onPress={onDeleteNow}>{`Delete ${discardedCount} now`}</Button>}
           {hasMore && <Button large secondary={discardedCount > 0} disabled={busy || pending || more?.busy} onPress={() => void continueReview()}>{busy || more?.busy ? "Opening photos…" : moreLabel}</Button>}
-          <Button large secondary={discardedCount > 0 || hasMore} onPress={onDone}>Done</Button>
+          {reviewAgain ? <Button large secondary={discardedCount > 0 || hasMore || !complete} disabled={busy || pending || reviewAgain.busy} onPress={reviewAgain.onPress}>Review Again</Button> : null}
+          <Button large secondary={discardedCount > 0 || hasMore || !!reviewAgain} onPress={onDone}>Done</Button>
           {onBackToPhotos && <Pressable accessibilityRole="button" onPress={onBackToPhotos} className="min-h-12 items-center justify-center active:opacity-70">
             <Text className="text-button text-foreground">Back to photos</Text>
           </Pressable>}

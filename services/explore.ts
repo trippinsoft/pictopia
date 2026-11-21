@@ -30,6 +30,7 @@ export async function deletionBlocked() {
  * unknown for deletion safety, so there we only check that the user's selected local file
  * exists; this never proves OS deletion. */
 export async function visibleIds(ids: string[]) {
+  if (!ids.length) return [];
   if (Platform.OS === "web")
     return (
       await Promise.all(
@@ -63,6 +64,8 @@ export function exploreStoreFor(key: string) {
         if (!current) throw Error("This adventure couldn’t be found. Return Home to choose another.");
         const built = typeof action === "function" ? action(current) : action;
         const next = reduceExplore(current, built);
+        const firstOnly = async () => review && (/^collection:(recent|videos|videos-large|screenshots):/.test(key) ||
+          (key.startsWith("adventure:") && (await storage.getValue<{ kind?: string }>(key.slice(0, -8)))?.kind === "screenshots"));
         if (built.type === "seen" && review && current.review) {
           const qualified = qualifiedEncounterTime(built.displayedAt, current.startedAt);
           if (!current.ids.includes(built.id) || (!qualified && built.id !== current.activeId) || (built.displayedAt !== undefined && !qualified)) return current;
@@ -70,7 +73,7 @@ export function exploreStoreFor(key: string) {
           // Idempotent even when the session already records this encounter. A retried or
           // delayed event can repair its timestamp without moving the feed or deciding.
           const activity = (await storage.getValue<number>(`activity:${key}`)) ?? 0;
-          const daily = await activityValues([built.id], at);
+          const daily = await activityValues([built.id], at, false, await firstOnly());
           await storage.put(await firstSeenUpdates([built.id], at), { ...daily, [key]: next, [`activity:${key}`]: Math.max(activity, at) });
           return next;
         }
@@ -96,9 +99,11 @@ export function exploreStoreFor(key: string) {
           // Media decision and session mark are committed together. No OS call is made here.
           // A mark counts as a meaningful view for streaks (once per item per day).
           const marked = built.type === "discard" ? changed.filter(id => next.records[id]?.queued) : [];
-          const daily = await activityValues([...seenIds, ...marked], Date.now(), built.type === "discard");
+          const activityIds = [...seenIds, ...marked];
+          const daily = activityIds.length ? await activityValues(activityIds, Date.now(), built.type === "discard", await firstOnly()) : {};
           const refundedId = built.type === "undo" ? lastExploreDiscard(current)?.id : undefined;
-          const refund = review && refundedId ? await reviewRefundValues(refundedId) : {};
+          const prior = refundedId && await firstOnly() ? (await storage.get(refundedId))?.firstSeenAt : undefined;
+          const refund = review && refundedId && (!prior || prior >= current.startedAt) ? await reviewRefundValues(refundedId) : {};
           const seenUpdates = await firstSeenUpdates(seenIds);
           const merged = new Map(seenUpdates.map(m => [m.id, m]));
           for (const item of updates) merged.set(item.id, { ...item, firstSeenAt: item.firstSeenAt ?? merged.get(item.id)?.firstSeenAt });

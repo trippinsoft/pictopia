@@ -3,17 +3,19 @@ import { AppState } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { allowanceStore } from "@/services/daily";
 import { devOverrideStore } from "@/services/entitlement";
-import { allowanceStop } from "@/lib/pictopia/daily";
+import { allowanceStop, localDate } from "@/lib/pictopia/daily";
 import type { ExploreSession } from "@/lib/pictopia/explore";
+import type { Media } from "@/lib/pictopia/types";
 import { rewardEvents } from "@/services/reward-events";
 
 interface Snapshot { counted: Set<string>; left: number; limit: number; date: string }
 
 /** The free daily allowance inside the shared review. Each newly presented photo or video
  * counts once per day (the first one too); revisits within a session and assets already
- * counted today are free; Pro is unlimited. `stopBefore` is the first photo ahead that the
+ * counted today are free. First-review-only feeds also waive credit for prior encounters.
+ * Pro is unlimited. `stopBefore` is the first photo ahead that the
  * remaining allowance can't cover, where the feed shows the daily-limit page instead. */
-export function useAllowance(session: ExploreSession | undefined, sequence: string[], shown: string | undefined, pro: boolean, viewable: boolean) {
+export function useAllowance(session: ExploreSession | undefined, sequence: string[], shown: string | undefined, pro: boolean, viewable: boolean, firstReviewMedia?: Readonly<Record<string, Media>>) {
   const [foreground, setForeground] = useState(AppState.currentState === "active");
   const [focused, setFocused] = useState(false);
   useFocusEffect(useCallback(() => { setFocused(true); return () => setFocused(false); }, []));
@@ -54,15 +56,25 @@ export function useAllowance(session: ExploreSession | undefined, sequence: stri
     const stopRewards = rewardEvents.subscribe(() => { void load(); });
     return () => { alive = false; sub.remove(); clearTimeout(timer); stopDev(); stopRewards(); };
   }, [load]);
-  const free = useCallback((id: string) => pro || waived.has(id) || !!snap?.counted.has(id), [pro, snap, waived]);
+  const free = useCallback((id: string) => {
+    if (pro || waived.has(id) || snap?.counted.has(id)) return true;
+    if (!firstReviewMedia) return false;
+    if (firstReviewMedia[id]?.firstSeenAt) return true;
+    // Media is loaded as a snapshot. If this review stayed open overnight, its saved
+    // encounters still qualify even when the media snapshot predates those writes.
+    const record = session?.records[id];
+    return !!(record?.encountered && snap && localDate(record.changedAt) < snap.date);
+  }, [pro, snap, waived, firstReviewMedia, session?.records]);
   /** Undo of a discard returns that photo's free review to today's allowance. */
   const refund = useCallback((id: string | undefined) => {
     if (pro || !id) return;
+    const prior = firstReviewMedia?.[id]?.firstSeenAt;
+    if (prior && session && prior < session.startedAt) return;
     setWaived(previous => new Set([...previous, id]));
     void allowanceStore.refund(id).then(r => {
       accept(r);
     }).catch(() => { setWaived(previous => new Set([...previous].filter(value => value !== id))); setError(true); });
-  }, [pro, accept]);
+  }, [pro, accept, firstReviewMedia, session?.startedAt]);
   useEffect(() => {
     if (error || !foreground || !focused || !viewable || !shown || !snap || (!pro && snap.left <= 0) || free(shown) || counting.current.has(shown)) return;
     counting.current.add(shown);
@@ -83,6 +95,6 @@ export function useAllowance(session: ExploreSession | undefined, sequence: stri
     return allowanceStop(sequence, shown ?? session.activeId, snap.left,
       id => free(id) || (snap.left > 0 && !viewable && id === shown));
   }, [pro, snap, session, sequence, free, shown, viewable]);
-  const canReview = useCallback((id: string) => pro || waived.has(id) || (!!snap && (snap.left > 0 || snap.counted.has(id))), [pro, snap, waived]);
+  const canReview = useCallback((id: string) => free(id) || (!!snap && snap.left > 0), [free, snap]);
   return { canReview, refund, error: !pro && error, ready: pro || !!snap, left: pro ? undefined : snap?.left, limit: snap?.limit, stopBefore, reload: load };
 }

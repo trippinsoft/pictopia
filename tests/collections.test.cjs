@@ -234,3 +234,180 @@ test('largest videos ranks the entire library before limiting a batch', async ()
   assert.equal(ids[119], 'v390');
   h.db.close();
 });
+
+test('Largest videos resumes its saved position independently of a size-ranked replay, even after restarting', async () => {
+  const h = await setup([100, 300, 200, 50].map((size, i) => media(`video${i}`, { type: 'video', size })));
+  const first = await h.collectionStore.open('videos-large');
+  const normalKey = h.currentBatch(first).sessionKey;
+  const normal = h.exploreStoreFor(normalKey);
+  await normal.change({ type: 'seen', id: 'video1', displayedAt: Date.now() });
+  await normal.change(s => ({ type: 'page', id: s.activeId, revision: s.revision, toId: 'video2', availableIds: s.ids }));
+  await normal.change({ type: 'seen', id: 'video2', displayedAt: Date.now() });
+  const replay = await h.collectionStore.next('videos-large', true);
+  assert.deepEqual((await h.exploreStoreFor(h.currentBatch(replay).sessionKey).load()).ids, ['video1', 'video2', 'video0', 'video3']);
+  await h.collectionStore.open('recent');
+  const app = await boot(h.db, h.p);
+  const load = makeLoader({ ...h.p.mocks, './repository': app, './media': { mediaService: app.mediaService } });
+  const { collectionStore } = load('services/collections.ts');
+  assert.equal(h.currentBatch(await collectionStore.open('videos-large')).sessionKey, normalKey);
+  assert.equal((await load('services/explore.ts').exploreStoreFor(normalKey).load()).activeId, 'video2');
+  const oldest = await collectionStore.open('videos');
+  const { ids } = await app.storage.getValue(h.currentBatch(oldest).sessionKey);
+  assert.deepEqual(ids, ['video0', 'video3'], 'Continue in All videos sees the same global history');
+  await exploreBatch(h, oldest);
+  assert.equal((await collectionStore.summary('videos')).remaining, 0);
+  const all = await collectionStore.next('videos', true);
+  assert.deepEqual((await app.storage.getValue(h.currentBatch(all).sessionKey)).ids, ['video0', 'video1', 'video2', 'video3']);
+  h.p.library.add('new-video');
+  await app.repository.ingest([media('new-video', { type: 'video', size: 500 })], 2);
+  assert.deepEqual((await app.storage.getValue(h.currentBatch(await collectionStore.open('videos')).sessionKey)).ids, ['new-video']);
+  h.db.close();
+});
+
+test('All Photos replays every 120-item batch from newest first without adding unique or streak credit', async () => {
+  const rows = Array.from({ length: 245 }, (_, i) => media(`p${String(i).padStart(3, '0')}`, { firstSeenAt: 1 }));
+  const h = await setup(rows);
+  await h.collectionStore.open('recent');
+  let state = await h.collectionStore.next('recent', true);
+  const visited = [];
+  const before = await h.app.storage.progress();
+  for (const count of [120, 120, 5]) {
+    assert.equal(h.currentBatch(state).hasMore, count === 120);
+    const ids = await exploreBatch(h, state);
+    assert.equal(ids.length, count);
+    visited.push(...ids);
+    if (count === 120) state = await h.collectionStore.next('recent');
+  }
+  assert.deepEqual(visited, rows.map(m => m.id).reverse());
+  assert.deepEqual(await h.app.storage.progress(), before);
+  assert.equal(await h.app.storage.getValue('dailyActivity:v1'), undefined);
+  h.p.library.add('new-photo');
+  await h.app.repository.ingest([media('new-photo', { created: rows[0].created + 1 })], 2);
+  state = await h.collectionStore.open('recent');
+  assert.deepEqual(await exploreBatch(h, state), ['new-photo']);
+  const day = await h.app.storage.getValue('dailyActivity:v1');
+  assert.deepEqual(day.today.ids, ['new-photo']);
+  assert.equal((await h.app.storage.progress()).explored, before.explored + 1);
+  h.db.close();
+});
+
+for (const os of ['ios', 'android']) {
+  test(`Review Again respects queue, limited access and unknown media on ${os}`, async () => {
+    const rows = [
+      media('queued', { decision: 'delete', firstSeenAt: 1 }),
+      media('kept', { decision: 'keep', systemFavorite: true, firstSeenAt: 1 }),
+      media('deleted', { deletedAt: 10 }),
+      media('private'),
+      media('cloud-lookup-failed'),
+      media('pending', { decision: 'delete' }),
+    ];
+    const db = new DatabaseSync(':memory:');
+    const p = platform({ os, library: rows.map(m => m.id), access: 'limited', selected: rows.filter(m => m.id !== 'private').map(m => m.id) });
+    p.lookupErrors.add('cloud-lookup-failed');
+    const lookup = p.ml.getAssetInfoAsync;
+    const downloadOptions = [];
+    p.ml.getAssetInfoAsync = async (id, options) => {
+      downloadOptions.push(options.shouldDownloadFromNetwork);
+      return lookup(id);
+    };
+    const app = await boot(db, p);
+    await app.storage.put(rows, { deletionAttempt: { ids: ['pending'] } });
+    const load = makeLoader({ ...p.mocks, './repository': app, './media': { mediaService: app.mediaService } });
+    const h = { app, ...load('services/collections.ts'), ...load('services/explore.ts') };
+    const state = await h.collectionStore.next('recent', true);
+    const store = h.exploreStoreFor(h.currentBatch(state).sessionKey);
+    const session = await store.load();
+    assert.deepEqual(new Set(session.ids), new Set(['queued', 'kept']));
+    assert.equal(session.records.queued.queued, true);
+    await store.change({ type: 'seen', id: 'queued', displayedAt: Date.now() });
+    await store.change(s => ({ type: 'discard', id: 'queued', revision: s.revision, direction: 'left' }));
+    assert.equal((await store.load()).history.length, 0, 'a pre-existing discard cannot be added twice');
+    await exploreBatch(h, state);
+    assert.equal((await app.storage.get('queued')).decision, 'delete');
+    assert.equal((await app.storage.get('kept')).decision, 'keep');
+    assert.equal((await app.storage.get('kept')).systemFavorite, true);
+    assert.equal((await app.storage.get('cloud-lookup-failed')).firstSeenAt, undefined);
+    assert.deepEqual(await app.storage.getValue('deletionAttempt'), { ids: ['pending'] });
+    assert.ok(downloadOptions.length > 0);
+    assert.ok(downloadOptions.every(option => option === false), 'replay never downloads originals to test visibility');
+    assert.deepEqual(p.requests, []);
+    db.close();
+  });
+}
+
+test('Screenshot Sweep retains its normal 50-item adventure segments and replays independently in groups of 50', async () => {
+  const rows = Array.from({ length: 107 }, (_, i) => media(`shot${String(i).padStart(3, '0')}`, { screenshot: true }));
+  rows.push(media('favorite', { screenshot: true, systemFavorite: true }));
+  const h = await setup(rows);
+  const load = makeLoader({ ...h.p.mocks, './repository': h.app, './media': { mediaService: h.app.mediaService } });
+  const { adventureStore, adventureSessionKey } = load('services/adventures.ts');
+  const { badgeStore } = load('services/badges.ts');
+  const sweep = await adventureStore.choose({ kind: 'screenshots' }, 1, true);
+  await adventureStore.open(sweep.id, true);
+  const store = h.exploreStoreFor(adventureSessionKey(sweep.id));
+  const swept = [];
+  for (const count of [50, 50, 7]) {
+    const { ids } = await store.load();
+    assert.equal(ids.length, count);
+    swept.push(...ids);
+    for (const id of ids) await store.change({ type: 'seen', id, displayedAt: Date.now() });
+    const saved = await store.load();
+    await store.change({ type: 'finish', endId: ids.at(-1), expectedRevision: saved.revision });
+    await adventureStore.finish(sweep.id);
+    if (count === 50) {
+      const next = swept.length === 50 ? await adventureStore.open(sweep.id, true) : await adventureStore.continue(sweep.id);
+      assert.equal(next.id, sweep.id);
+    }
+  }
+  assert.equal(new Set(swept).size, 107);
+  assert.equal((await adventureStore.segmentStatus(sweep.id)).complete, true);
+  assert.equal(await adventureStore.choose({ kind: 'screenshots' }, 2, true), undefined);
+  const earned = (await badgeStore.evaluate()).values.adventurer;
+  let replay = await h.collectionStore.next('screenshots', true);
+  const replayed = [];
+  for (const count of [50, 50, 7]) {
+    const ids = await exploreBatch(h, replay);
+    assert.equal(ids.length, count);
+    replayed.push(...ids);
+    if (count === 50) replay = await h.collectionStore.next('screenshots');
+  }
+  assert.deepEqual(replayed, rows.slice(0, -1).map(m => m.id));
+  assert.equal((await badgeStore.evaluate()).values.adventurer, earned);
+  h.p.library.add('new-shot');
+  await h.app.repository.ingest([media('new-shot', { screenshot: true })], 2);
+  const fresh = await adventureStore.choose({ kind: 'screenshots' }, 3, true);
+  assert.deepEqual((await h.exploreStoreFor(adventureSessionKey(fresh.id)).load()).ids, ['new-shot']);
+  h.db.close();
+});
+
+test('Recents keeps its latest 100 mixed items and Favorites includes previously reviewed favorites', async () => {
+  const rows = Array.from({ length: 104 }, (_, i) => media(`m${String(i).padStart(3, '0')}`, {
+    type: i % 2 ? 'video' : 'photo', screenshot: i % 4 === 0, firstSeenAt: 1, favorite: i === 102,
+  }));
+  const h = await setup(rows);
+  const recents = await h.collectionStore.open('recents');
+  const ids = await exploreBatch(h, recents);
+  assert.deepEqual(ids, rows.slice(4).map(m => m.id).reverse());
+  assert.equal(h.currentBatch(await h.collectionStore.open('recents')).sessionKey, h.currentBatch(recents).sessionKey);
+  const favorite = await h.collectionStore.open('favorites');
+  assert.deepEqual(await exploreBatch(h, favorite), ['m102']);
+  assert.deepEqual(await exploreBatch(h, await h.collectionStore.open('favorites')), ['m102']);
+  assert.deepEqual(['recent', 'videos', 'videos-large', 'screenshots', 'recents', 'favorites', 'month:2025-06'].filter(h.canReviewAgain),
+    ['recent', 'videos', 'videos-large', 'screenshots']);
+  h.db.close();
+});
+
+test('Largest videos replay advances without repeating when the last size-ranked item disappears', async () => {
+  const rows = Array.from({ length: 123 }, (_, i) => media(`video${i}`, { type: 'video', size: 200 - i, firstSeenAt: 1 }));
+  const h = await setup(rows);
+  let state = await h.collectionStore.next('videos-large', true);
+  assert.equal(h.currentBatch(state).hasMore, true);
+  await exploreBatch(h, state);
+  h.p.library.delete('video119');
+  h.p.library.add('new-largest');
+  await h.app.repository.ingest([media('new-largest', { type: 'video', size: 5_000 })], 2);
+  state = await h.collectionStore.next('videos-large');
+  assert.deepEqual(await exploreBatch(h, state), ['new-largest', 'video120', 'video121', 'video122']);
+  assert.equal(h.currentBatch(state).hasMore, false);
+  h.db.close();
+});

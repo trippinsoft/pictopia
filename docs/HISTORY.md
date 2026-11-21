@@ -210,3 +210,4 @@ The review interaction uses the original 1.0.21 live feed: marked photos leave s
 - Explore: larger tile titles; Duplicate Hunt and All videos became a square pair under Utilities, and All videos got its own illustration.
 - Explore: Utilities cards shortened to 3:2 pictures (zoomed-out `wide` framing) to save vertical space.
 - Adventurer badge: Level I now at 1 finished adventure (then 5/10/25/50/100/250) so new users earn an early badge; existing holders move up one level.
+- All Photos, All videos, Largest videos and Screenshot Sweep gained Review Again with separate Continue progress and first-review credit rules.

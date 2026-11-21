@@ -64,7 +64,7 @@ export default function Explore() {
         void storage.query({ order: "newest", limit: RECENTS_LIMIT + 50 }).then(rows => {
           if (alive) setRecents(rows.filter(m => !m.deletedAt).slice(0, RECENTS_LIMIT).length);
         }).catch(() => { if (alive) setRecents(0); });
-        void storage.count({ type: "photo", screenshot: true }).then(totals => {
+        void collectionStore.summary("screenshots").then(totals => {
           if (alive) setScreenshots(totals);
         }).catch(() => {});
         void lookalikeStore.saved().then(index => { if (alive) setLookalikes(index?.groups.length); }).catch(() => {});
@@ -104,6 +104,13 @@ export default function Explore() {
       if (!adventureId) {
         const choice: ExploreChoice = id === "surprise-me" ? { kind: "detour" } : { kind: "screenshots" };
         const made = await adventureStore.choose(choice, Date.now(), app.pro);
+        if (!made?.id && id === "screenshot-sweep") {
+          const summary = await collectionStore.summary("screenshots");
+          if (summary.total && !summary.remaining) {
+            router.push({ pathname: "/collection-review", params: { scope: "screenshots" } });
+            return;
+          }
+        }
         if (!made?.id) { setMessage("No eligible photos for that one right now. Try another adventure."); return; }
         adventureId = made.id;
       }
@@ -119,7 +126,7 @@ export default function Explore() {
   const otd = parked.find(slot => slot.adventure.kind === "day" && slot.adventure.source === `day:${today.slice(5)}`);
   const surprise = unfinished("surprise-me");
   const screenshotSlot = unfinished("screenshot-sweep");
-  const screenshotsAvailable = !!choices?.screenshots || (screenshots?.total ?? 0) > 0;
+  const screenshotsAvailable = screenshots ? screenshots.total > 0 : !!choices?.screenshots;
   const openPlus = (go: () => void) => app.pro ? go() : router.push({ pathname: "/paywall", params: { entry: "Explore" } });
 
   return (

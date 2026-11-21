@@ -1,5 +1,5 @@
 import { adventureName } from "@/lib/pictopia/catalog";
-import { eligiblePhotographs, onThisDayPool, adventureMediaQuery, adventureScreenshotPolicy } from "@/lib/pictopia/photo-eligibility";
+import { eligiblePhotographs, isSweepScreenshot, onThisDayPool, adventureMediaQuery, adventureScreenshotPolicy } from "@/lib/pictopia/photo-eligibility";
 import { Platform } from "react-native";
 import { storage, serialize } from "./repository";
 import { deletionBlocked, EXPLORE_KEY, exploreStoreFor, visibleIds } from "./explore";
@@ -268,7 +268,8 @@ async function loadCandidate(plan: Plan, _ctx: CurationContext): Promise<Candida
 // On This Day is its whole date, so it has no "more" to continue into.
 const extendable = (a: Adventure) => !!a.source && !a.lab && ["year", "month", "capsule", "screenshots", "detour", "random"].includes(a.kind);
 async function scopeStatus(a: Adventure) {
-  const rows = await scopeRows(a.kind, a.source);
+  const pool = await scopeRows(a.kind, a.source);
+  const rows = a.kind === "screenshots" ? pool.filter(isSweepScreenshot) : pool;
   const blocked = await deletionBlocked();
   const eligibleRows = rows.filter(m => m.active && !m.deletedAt && !blocked.has(m.id));
   const explored = eligibleRows.filter(m => !!m.firstSeenAt).length;
@@ -296,12 +297,24 @@ async function nextSegment(a: Adventure, session: ExploreSession, retryUnavailab
   const index = await loadIndex();
   const blocked = await deletionBlocked();
   const ctx = { ...(await curationContext(index, Date.now())), chosen: true, exclude: onlyFresh ? new Set([...blocked, ...attempted]) : blocked };
-  const curated = curate({ kind: a.kind, source: a.source, pool, context: status.rows }, ctx);
+  const candidate = { kind: a.kind, source: a.source, pool, context: status.rows };
+  const curated = a.kind === "screenshots" ? await visibleSweep(candidate, ctx) : curate(candidate, ctx);
   if (!curated) return a;
   const archive = `adventure:${a.id}:segment:${a.segment ?? 0}:explore`;
   const updated = { ...a, count: curated.ids.length, segment: (a.segment ?? 0) + 1, segmentKeys: [...(a.segmentKeys ?? []), archive], finishedAt: undefined, completionProof: undefined };
   await storage.put([], { [archive]: session, [adventureSessionKey(a.id)]: { ...createExplore(curated.ids), review: true, instructionsDismissed: true }, [metaKey(a.id)]: updated });
   return updated;
+}
+
+async function visibleSweep(candidate: Candidate, ctx: CurationContext) {
+  const excluded = new Set(ctx.exclude);
+  for (;;) {
+    const result = curate(candidate, { ...ctx, exclude: excluded });
+    if (!result) return undefined;
+    const visible = new Set(await visibleIds(result.ids));
+    if (visible.size === result.ids.length) return result;
+    for (const id of result.ids) if (!visible.has(id)) excluded.add(id);
+  }
 }
 
 /** Stores a curated Adventure with its frozen order. Photos that turn out not to be
@@ -621,7 +634,10 @@ export const adventureStore = {
       if (adventure.historyPro && !pro) throw Error("Past-date Adventures require Pictopia+.");
       if (adventure.kind === "screenshots" && !pro) throw Error("Screenshot Sweep is part of Pictopia+.");
       const session = await loadSession(id);
-      if (session) adventure = await refreshDaySnapshot(adventure, session);
+      if (session) {
+        adventure = await refreshDaySnapshot(adventure, session);
+        if (adventure.kind === "screenshots" && session.finished) adventure = await nextSegment(adventure, session, true);
+      }
       if (session && !await validPhotoOffer(adventure, session)) throw Error("This older adventure contains screenshots. Choose a fresh photo adventure in Explore.");
       const now = Date.now();
       await storage.setValue(metaKey(id), {
@@ -689,8 +705,9 @@ export const adventureStore = {
                   }).find((p) => p.kind === (choice.kind === "capsule" ? "capsule" : "detour"));
       if (!plan && choice.kind === "detour") plan = { kind: "detour", source: "detour", reason: "A mix of your accessible memories." };
       if (!plan) return undefined;
-      const candidate = await loadCandidate(plan, ctx);
-      const curated = curate(candidate, ctx);
+      const loaded = await loadCandidate(plan, ctx);
+      const candidate = choice.kind === "screenshots" ? { ...loaded, pool: loaded.pool.filter(m => !m.firstSeenAt) } : loaded;
+      const curated = choice.kind === "screenshots" ? await visibleSweep(candidate, ctx) : curate(candidate, ctx);
       if (!curated) return undefined;
       const made = await persist(curated, candidate, ctx, { chosen: true, ...(choice.kind === "day" ? { dayDate: choice.date ?? localDate(now), historyPro: (choice.date ?? localDate(now)) < localDate(Date.now()) } : {}) }, false);
       if (!made) return undefined;

@@ -150,3 +150,30 @@ test('a failed current photo does not block the next accessible photo when one f
   try {h.render();await tick();assert.equal(h.render().stopBefore,'later','next remains reachable without charging the failed photo');}
   finally{h.unmount()}
 });
+
+test('first-review-only feeds waive allowance for prior encounters and charge new loaded media normally', async () => {
+  const charged = [], refunded = [], counted = [];
+  const session = { ids: ['old', 'fresh', 'cloud', 'earlier'], activeId: 'old', startedAt: Date.now(), records: {} };
+  const rows = { old: media('old', { firstSeenAt: 1 }), earlier: media('earlier', { firstSeenAt: 2 }) };
+  const snapshot = () => ({ counted, left: 1 - counted.length, limit: 1, date: '2026-11-14' });
+  const h = hooks('components/pictopia/use-allowance.ts', 'useAllowance', {
+    'react-native': { AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) } },
+    '@/services/daily': { allowanceStore: {
+      snapshot: async () => snapshot(),
+      present: async id => { charged.push(id); counted.push(id); return snapshot(); },
+      refund: async id => { refunded.push(id); return snapshot(); },
+    } },
+  }, [session, session.ids, 'old', false, true, rows]);
+  try {
+    h.render(); await tick(); h.render(); await tick();
+    assert.deepEqual(charged, []);
+    h.render([session, session.ids, 'fresh', false, true, rows]); await tick();
+    h.render([session, session.ids, 'cloud', false, false, rows]); await tick();
+    const allowance = h.render();
+    assert.deepEqual(charged, ['fresh']);
+    assert.equal(allowance.canReview('cloud'), false);
+    assert.equal(allowance.canReview('earlier'), true, 'reviewed items stay eligible even after the allowance runs out');
+    allowance.refund('old');
+    assert.deepEqual(refunded, []);
+  } finally { h.unmount(); }
+});

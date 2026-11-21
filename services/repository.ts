@@ -72,14 +72,14 @@ export const DAILY_ACTIVITY = "dailyActivity:v1";
 /** Activity values for a meaningful encounter or mark, to merge into the same atomic
  * `storage.put` as the first-seen update. Must run inside the repository serializer, and
  * before the first-seen update is written, so "first time" is judged correctly. */
-export async function activityValues(ids: string[], at: number, marked = false) {
+export async function activityValues(ids: string[], at: number, marked = false, firstOnly = false) {
   if (!ids.length) return {};
   const events: ActivityEvent[] = [];
   for (const id of new Set(ids)) {
     const m = await storage.get(id);
-    if (m) events.push({ type: "view", id, video: m.type === "video", firstTime: !m.firstSeenAt, marked });
+    if (m && (!firstOnly || !m.firstSeenAt)) events.push({ type: "view", id, video: m.type === "video", firstTime: !m.firstSeenAt, marked });
   }
-  return { [DAILY_ACTIVITY]: recordActivity(await storage.getValue<Activity>(DAILY_ACTIVITY), events, at) };
+  return events.length ? { [DAILY_ACTIVITY]: recordActivity(await storage.getValue<Activity>(DAILY_ACTIVITY), events, at) } : {};
 }
 export async function deletionActivityValues(count: number, at = Date.now()) {
   if (!count) return {};
