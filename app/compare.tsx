@@ -26,7 +26,7 @@ export default function Compare() {
   }, [id, app.revision, app.pro]);
   async function mark(m: Media) {
     if (!app.pro) {
-      router.replace("/paywall");
+      router.replace({ pathname: "/paywall", params: { entry: "Duplicates" } });
       return;
     }
     await repository.update(m.id, (latest) => ({
@@ -43,7 +43,7 @@ export default function Compare() {
           <Empty
             title="Compare with Pictopia+"
             description="Your review history is retained when Pictopia+ expires."
-            action={<Button onPress={() => router.replace("/paywall")}>View Pictopia+ plans</Button>}
+            action={<Button onPress={() => router.replace({ pathname: "/paywall", params: { entry: "Duplicates" } })}>View Pictopia+ plans</Button>}
           />
         ) : (
           <>

@@ -1,4 +1,5 @@
 import { useLifetimeTest } from "./use-lifetime-test";
+import { LIFETIME_PLUS_ENABLED } from "@/lib/pictopia/feature-flags";
 import { lifetimeTestStore } from "@/services/lifetime-testing";
 import { testAchievementVisible } from "@/lib/pictopia/lifetime-testing";
 import { useEffect, useState } from "react";
@@ -32,6 +33,7 @@ export function LifetimePlusRow() {
     return () => { if (timer) clearTimeout(timer); foreground.remove(); };
   }, [membership]);
   useEffect(() => lifetimePlusStore.subscribe(() => setMembership(lifetimePlusStore.snapshot())), []);
+  if (!LIFETIME_PLUS_ENABLED && !isLifetimeAward(membership)) return null;
   // In particular, app.pro and developer overrides are never evidence of payment.
   if (simulation ? !testAchievementVisible(simulation) : !membership || !showLifetimeAchievement(membership, now)) return null;
   const earned = simulation ? simulation.award === "earned" : isLifetimeAward(membership);

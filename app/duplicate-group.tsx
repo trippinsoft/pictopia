@@ -55,7 +55,7 @@ export default function DuplicateGroup() {
   const trash = useRef<ReviewTrashHandle>(null), stage = useRef<View>(null), strip = useRef<ScrollView>(null);
   const frames = useRef<{ stage?: { x: number; y: number }; photo?: { x: number; y: number; width: number; height: number }; trash?: { x: number; y: number } }>({});
 
-  useEffect(() => { if (app.ready && !app.pro) router.replace("/paywall"); }, [app.ready, app.pro]);
+  useEffect(() => { if (app.ready && !app.pro) router.replace({ pathname: "/paywall", params: { entry: "Duplicates" } }); }, [app.ready, app.pro]);
   useEffect(() => {
     if (!groupId) return;
     let alive = true;

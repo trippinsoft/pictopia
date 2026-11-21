@@ -1,28 +1,35 @@
 import { useEffect, useState } from "react";
-import { Platform, Pressable, View } from "react-native";
+import { Platform, View } from "react-native";
 import { Button, Icon, Loading, Text } from "@/components/pictopia/ui";
 import { usePictopia } from "@/components/pictopia/provider";
-import type { IconName } from "@/lib/icons/LucideIcon";
-import { leadOffer, periodLabel, trialTimeline, TRIAL_REMINDER_DAYS_BEFORE } from "@/lib/pictopia/onboarding";
+import { periodLabel, trialTimeline } from "@/lib/pictopia/onboarding";
+import { defaultPlan, paywallPlans, planAction, planTerms } from "@/lib/pictopia/paywall";
+import { plural } from "@/lib/pictopia/text";
+import { PaywallHero, PaywallLinks, PlanOptions } from "@/components/pictopia/paywall";
 import { openLegal } from "@/lib/pictopia/links";
 import type { Offer } from "@/lib/pictopia/types";
-import { notificationService } from "@/services/notifications";
 import { purchaseService } from "@/services/purchases";
+import { usePaywallAnalytics } from "@/components/pictopia/use-paywall-analytics";
+import { lifetimeTestStore } from "@/services/lifetime-testing";
 import { OnboardingFrame, QuietAction } from "./frame";
 import { SwipeDemo } from "./demos";
 
 type Part = "intro" | "reminder" | "plans";
-const BENEFITS: { icon: IconName; text: string }[] = [
-  { icon: "Infinity", text: "Explore as many photos as you like, every day" },
-  { icon: "CalendarDays", text: "Open any recent On This Day, not just today’s" },
-  { icon: "Heart", text: "Support an independent app with no ads" },
-];
-const day = (t: number) => new Date(t).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+/** Like SwipeWipe, the last screen's ✕ appears after a few seconds. */
+export const CLOSE_DELAY_MS = 4000;
+const inDays = (n: number) => `In ${plural(n, "day")}`;
+/** "3 days free, then <price>/week", or "Only <price>/week" without a trial. */
+function priceLine(offer: Offer) {
+  const period = periodLabel(offer.kind);
+  const price = period ? `${offer.price}/${period}` : offer.price;
+  return offer.trialDays ? `${offer.trialDays} days free, then ${price}` : `Only ${price}`;
+}
 
-/** The onboarding trial offer, in Picnic's three steps: what you get, a reminder before the
- * trial ends, then a timeline and the plans. Every price and trial length comes from the
- * store; without a store trial it's a plain plan choice, and the free version is always one
- * tap away. */
+/** The onboarding trial offer, in SwipeWipe and Picnic's three steps: "We want you to try
+ * Pictopia+", a nudge to set their own reminder before the trial ends, then Picnic's Today → In 2 days → In 3 days
+ * timeline with one button. There's no way out on the first two; the last one's ✕ appears after
+ * a few seconds and leads to the free version. Every price and trial length comes from the
+ * store; without a store trial the last step is a plain plan choice. */
 export function TrialOffer({ onDone, start = "intro" }: { onDone: () => void; start?: Part }) {
   const app = usePictopia();
   const [part, setPart] = useState<Part>(start);
@@ -30,32 +37,32 @@ export function TrialOffer({ onDone, start = "intro" }: { onDone: () => void; st
   const [selected, setSelected] = useState<string>();
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string>();
+  const [closable, setClosable] = useState(false);
   useEffect(() => {
-    void purchaseService.offers().then(o => { setOffers(o); setSelected(leadOffer(o)?.id); }).catch(() => setOffers([]));
+    void purchaseService.offers().then(o => { const plans = paywallPlans(o); setOffers(plans); setSelected(defaultPlan(plans)?.id); }).catch(() => setOffers([]));
   }, []);
-  const offer = offers?.find(o => o.id === selected);
-  const trial = offer?.trialDays;
-  const lead = offers ? leadOffer(offers) : undefined;
+  useEffect(() => {
+    if (part !== "plans") return;
+    setClosable(false);
+    const t = setTimeout(() => setClosable(true), CLOSE_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [part]);
+  const lead = offers ? defaultPlan(offers) : undefined;
   const leadTrial = lead?.trialDays;
-  const free = <QuietAction onPress={onDone}>Continue with the free version</QuietAction>;
+  // With a trial the last screen offers just that plan, like Picnic; otherwise the picker.
+  const offer = leadTrial ? lead : offers?.find(o => o.id === selected);
+  const trial = offer?.trialDays;
+  const selectAnalytics = usePaywallAnalytics("Onboarding", app.pro, !!offers && app.ready, offers ?? [], offer, part === "plans");
 
   async function buy() {
     if (!offer) return;
+    if (lifetimeTestStore.snapshot()) { setError("Reset the lifetime simulation before making a real purchase."); return; }
     setWorking(true);
     setError(undefined);
     try {
-      const startedAt = Date.now();
       const e = await purchaseService.purchase(offer.id);
       await app.setEntitlement(e);
       if (!e.active) { setError("The store hasn’t confirmed Pictopia+ yet. It unlocks as soon as it does."); return; }
-      if (offer.trialDays) {
-        const { reminderAt, chargeAt } = trialTimeline(offer.trialDays, startedAt);
-        await notificationService.scheduleOnce({
-          id: "pictopia-trial-end", at: reminderAt, url: "/settings",
-          title: `Your Pictopia+ trial ends in ${TRIAL_REMINDER_DAYS_BEFORE} days`,
-          body: `Your first payment of ${offer.price} is on ${day(chargeAt)}. Cancel anytime in your store account.`,
-        }).catch(() => {});
-      }
       onDone();
     } catch (e) {
       setError((e as Error).message);
@@ -64,30 +71,22 @@ export function TrialOffer({ onDone, start = "intro" }: { onDone: () => void; st
     }
   }
 
-  if (!offers) return <OnboardingFrame footer={free}><Loading /></OnboardingFrame>;
+  if (!offers) return <OnboardingFrame footer={<QuietAction onPress={onDone}>Continue with the free version</QuietAction>}><Loading /></OnboardingFrame>;
+
+  const caption = (o: Offer | undefined) => (o ? <Text className="pt-1 text-center text-caption text-muted-foreground">{priceLine(o)}</Text> : null);
 
   if (part === "intro" || !offers.length) {
     return (
       <OnboardingFrame
         footer={offers.length ? <>
           {leadTrial ? <Text className="text-center text-caption text-muted-foreground">No payment due now</Text> : null}
-          <Button large onPress={() => setPart(leadTrial ? "reminder" : "plans")}>{leadTrial ? `Try ${leadTrial} days for free` : "See plans"}</Button>
-          {free}
+          <Button large onPress={() => setPart(leadTrial ? "reminder" : "plans")}>Continue</Button>
+          {caption(lead)}
         </> : <Button large onPress={onDone}>Continue</Button>}
       >
-        <View className="gap-6">
-          <View className="h-[300px]"><SwipeDemo /></View>
-          <View className="gap-2">
-            <Text accessibilityRole="header" className="text-center text-h1 text-foreground">{leadTrial ? "Try Pictopia+ for free" : "Get more from Pictopia+"}</Text>
-          </View>
-          <View className="gap-3">
-            {BENEFITS.map(b => (
-              <View key={b.text} className="flex-row items-center gap-3">
-                <View className="h-9 w-9 items-center justify-center rounded-full bg-sun-soft"><Icon name={b.icon} size={18} className="text-foreground" /></View>
-                <Text className="flex-1 text-body leading-6 text-foreground">{b.text}</Text>
-              </View>
-            ))}
-          </View>
+        <View className="gap-8">
+          <Text accessibilityRole="header" className="text-center text-h1 text-foreground">{leadTrial ? "We want you to try Pictopia+ for free" : "We want you to try Pictopia+"}</Text>
+          <View className="h-[340px]"><SwipeDemo /></View>
           {!offers.length ? (
             <Text className="text-center text-caption leading-5 text-muted-foreground">
               {Platform.OS === "web" ? "Pictopia+ is available in the Pictopia app for iPhone and Android." : "Plans couldn’t load from the store right now. You can find Pictopia+ in Settings anytime."}
@@ -99,94 +98,84 @@ export function TrialOffer({ onDone, start = "intro" }: { onDone: () => void; st
   }
 
   if (part === "reminder" && leadTrial) {
-    const { reminderAt } = trialTimeline(leadTrial, Date.now());
     return (
       <OnboardingFrame
-        topAction="Back" onTopAction={() => setPart("intro")}
         footer={<>
-          <Text className="text-center text-caption text-muted-foreground">No payment due now</Text>
-          <Button large icon="Bell" onPress={() => void notificationService.request().catch(() => "denied").finally(() => setPart("plans"))}>Remind me</Button>
-          <QuietAction onPress={() => setPart("plans")}>Not now</QuietAction>
+          <Text className="text-center text-body text-foreground">Cancel anytime.</Text>
+          <Button large onPress={() => setPart("plans")}>Continue</Button>
+          {caption(lead)}
         </>}
       >
-        <View className="items-center gap-5">
-          <View className="h-28 w-28 items-center justify-center rounded-full bg-sun"><Icon name="BellRing" size={52} className="text-foreground" /></View>
-          <Text accessibilityRole="header" className="text-center text-h1 text-foreground">We’ll remind you before your trial ends</Text>
-          <Text className="text-center text-body leading-6 text-muted-foreground">
-            You’ll get a reminder on {day(reminderAt)}, {TRIAL_REMINDER_DAYS_BEFORE} days before your first payment. Cancel anytime before then and you won’t be charged.
-          </Text>
+        <View className="items-center gap-10">
+          <Text accessibilityRole="header" className="text-center text-h1 text-foreground">Set a reminder before your trial ends</Text>
+          <View className="h-36 w-36 items-center justify-center rounded-full bg-sun"><Icon name="BellRing" size={72} className="text-foreground" /></View>
         </View>
       </OnboardingFrame>
     );
   }
 
-  const timeline = trial ? trialTimeline(trial, Date.now()) : undefined;
-  return (
-    <OnboardingFrame
-      topAction="Not now" onTopAction={onDone}
-      footer={<>
-        {trial ? <Text className="text-center text-caption text-muted-foreground">No payment due now</Text> : null}
-        <Button large disabled={!offer || working || app.pro} onPress={() => void buy()}>
-          {app.pro ? "Pictopia+ is unlocked" : working ? "Waiting for the store…" : trial ? `Start my ${trial}-day free trial` : "Continue"}
-        </Button>
-        {free}
-      </>}
-    >
-      <View className="gap-5">
-        <Text accessibilityRole="header" className="text-center text-h1 text-foreground">{trial ? `Start your ${trial}-day free trial` : "Choose your plan"}</Text>
-        {timeline && offer ? (
-          <View className="gap-0">
-            {[
-              { icon: "LockOpen" as const, title: "Today", text: "Full Pictopia+ access" },
-              { icon: "Bell" as const, title: day(timeline.reminderAt), text: "We remind you your trial is ending" },
-              { icon: "Star" as const, title: day(timeline.chargeAt), text: `You’re charged ${offer.price}, unless you cancel before` },
-            ].map((row, i, all) => (
-              <View key={row.title} className="flex-row gap-3">
+  const close = closable ? onDone : undefined;
+  const links = (
+    <PaywallLinks disabled={working} links={[
+      { title: "Restore", run: () => app.restorePurchases().then(onDone) },
+      { title: "Terms", run: () => openLegal("terms") },
+      { title: "Privacy", run: () => openLegal("privacy") },
+    ].map(l => ({ title: l.title, run: () => void l.run().catch(e => setError((e as Error).message)) }))} />
+  );
+  const action = (
+    <Button large disabled={!offer || working || app.pro} onPress={() => void buy()}>
+      {app.pro ? "Pictopia+ is unlocked" : working ? "Waiting for the store…" : planAction(offer)}
+    </Button>
+  );
+  const errorLine = error ? <Text accessibilityRole="alert" className="text-center text-body text-destructive">{error}</Text> : null;
+
+  if (trial && offer) {
+    const timeline = trialTimeline(trial, Date.now());
+    const rows = [
+      { icon: "LockOpen" as const, title: "Today", text: "Unlock everything in Pictopia+" },
+      { icon: "Sparkles" as const, title: inDays(timeline.reminderDay), text: "Keep enjoying everything in Pictopia+" },
+      { icon: "Check" as const, title: inDays(trial), text: "You won’t be charged before. Cancel anytime." },
+    ];
+    return (
+      <OnboardingFrame
+        onClose={close}
+        footer={<>
+          <Text className="text-center text-caption text-muted-foreground">No payment due now</Text>
+          {action}
+          {caption(offer)}
+          {links}
+        </>}
+      >
+        <View className="gap-8">
+          <Text accessibilityRole="header" className="text-center text-h1 text-foreground">{`Start your ${trial}-day free trial`}</Text>
+          <View>
+            {rows.map((row, i) => (
+              <View key={row.title} className="flex-row gap-4">
                 <View className="items-center">
-                  <View className={`h-9 w-9 items-center justify-center rounded-full ${i === 0 ? "bg-grass" : "bg-sun"}`}><Icon name={row.icon} size={17} className="text-foreground" /></View>
-                  {i < all.length - 1 ? <View className="w-1 flex-1 bg-foreground/10" /> : null}
+                  <View className={`h-12 w-12 items-center justify-center rounded-full ${i === 0 ? "bg-grass" : "bg-sun"}`}><Icon name={row.icon} size={22} className="text-foreground" /></View>
+                  {i < rows.length - 1 ? <View className="w-1.5 flex-1 bg-sun/50" /> : null}
                 </View>
-                <View className="flex-1 pb-4">
-                  <Text className="text-h5 text-foreground">{row.title}</Text>
-                  <Text className="text-caption text-muted-foreground">{row.text}</Text>
+                <View className="flex-1 gap-1 pb-7 pt-2.5">
+                  <Text className="text-h4 text-foreground">{row.title}</Text>
+                  <Text className="text-body leading-6 text-muted-foreground">{row.text}</Text>
                 </View>
               </View>
             ))}
           </View>
-        ) : null}
-        <View accessibilityRole="radiogroup" className="gap-2.5">
-          {offers.map(o => {
-            const on = o.id === selected;
-            return (
-              <Pressable key={o.id} accessibilityRole="radio" accessibilityState={{ checked: on }} disabled={working} onPress={() => setSelected(o.id)}
-                className={`flex-row items-center gap-3 rounded-2xl border-2 bg-card px-4 py-3.5 ${on ? "border-foreground" : "border-transparent"}`}>
-                <View className={`h-5 w-5 items-center justify-center rounded-full border-2 ${on ? "border-foreground bg-foreground" : "border-foreground/30"}`}>
-                  {on ? <Icon name="Check" size={12} className="text-background" /> : null}
-                </View>
-                <View className="flex-1">
-                  <Text className="text-h5 text-foreground">{o.kind === "weekly" ? "Weekly" : o.kind === "monthly" ? "Monthly" : o.kind === "annual" ? "Yearly" : "Lifetime"}</Text>
-                  {o.trialDays ? <Text className="text-caption text-grass">{o.trialDays}-day free trial</Text> : null}
-                </View>
-                <Text className="text-h5 text-foreground">{o.price}{periodLabel(o.kind) ? ` / ${periodLabel(o.kind)}` : ""}</Text>
-              </Pressable>
-            );
-          })}
+          {errorLine}
+          <Text className="text-center text-caption leading-5 text-muted-foreground">{planTerms(offer, Platform.OS === "ios" || Platform.OS === "android" ? Platform.OS : "web")}</Text>
         </View>
-        {error ? <Text accessibilityRole="alert" className="text-center text-body text-destructive">{error}</Text> : null}
-        <Text className="text-center text-caption leading-5 text-muted-foreground">
-          Payment is charged to your {Platform.OS === "ios" ? "Apple ID" : "Google Play account"}{trial ? " when the trial ends" : ""}. Subscriptions renew automatically unless cancelled at least 24 hours before the end of the period. Manage or cancel in your store account.
-        </Text>
-        <View className="flex-row flex-wrap justify-center">
-          {[
-            { title: "Restore purchases", run: () => app.restorePurchases().then(onDone) },
-            { title: "Terms", run: () => openLegal("terms") },
-            { title: "Privacy", run: () => openLegal("privacy") },
-          ].map(l => (
-            <Pressable key={l.title} accessibilityRole="link" disabled={working} onPress={() => void l.run().catch(e => setError((e as Error).message))} className="min-h-11 justify-center px-3">
-              <Text className="text-caption text-tertiary">{l.title}</Text>
-            </Pressable>
-          ))}
-        </View>
+      </OnboardingFrame>
+    );
+  }
+
+  return (
+    <OnboardingFrame onClose={close} footer={<>{action}{links}</>}>
+      <View className="gap-5">
+        <PaywallHero />
+        <PlanOptions plans={offers} selected={selected} onSelect={id => { selectAnalytics(id); setSelected(id); }} disabled={working} />
+        {errorLine}
+        {offer ? <Text className="text-center text-caption leading-5 text-muted-foreground">{planTerms(offer, Platform.OS === "ios" || Platform.OS === "android" ? Platform.OS : "web")}</Text> : null}
       </View>
     </OnboardingFrame>
   );

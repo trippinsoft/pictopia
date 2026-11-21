@@ -61,6 +61,14 @@ final class PictopiaReview {
           options.resizeMode = .exact
           var bytes: Data?
           PHImageManager.default().requestImage(for: asset, targetSize: CGSize(width: 160, height: 160), contentMode: .aspectFill, options: options) { image, _ in bytes = image?.jpegData(compressionQuality: 0.78) }
+          // With "Optimize iPhone Storage" a photo's sharp copy may live only in iCloud. Take
+          // the small preview the phone keeps locally, then let Photos fetch a small one.
+          if bytes == nil {
+            options.deliveryMode = .fastFormat
+            options.resizeMode = .fast
+            PHImageManager.default().requestImage(for: asset, targetSize: CGSize(width: 160, height: 160), contentMode: .aspectFill, options: options) { image, _ in bytes = image?.jpegData(compressionQuality: 0.78) }
+          }
+          if bytes == nil { bytes = Self.cloudThumbnail(asset) }
           guard let bytes = bytes else { throw NSError(domain: "Pictopia", code: 2, userInfo: [NSLocalizedDescriptionKey: "Thumbnail is not available locally."]) }
           try bytes.write(to: file, options: .atomic)
           let cached = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
@@ -70,6 +78,28 @@ final class PictopiaReview {
         promise.resolve(file.absoluteString)
       } catch { promise.reject("THUMBNAIL_UNAVAILABLE", error.localizedDescription) }
     }
+  }
+  /** A small iCloud-fetched preview, bounded so one slow download never stalls the queue. */
+  private static func cloudThumbnail(_ asset: PHAsset) -> Data? {
+    let options = PHImageRequestOptions()
+    options.isSynchronous = false
+    options.isNetworkAccessAllowed = true
+    options.deliveryMode = .highQualityFormat
+    options.resizeMode = .fast
+    let done = DispatchSemaphore(value: 0)
+    let box = ImageBytes()
+    let request = PHImageManager.default().requestImage(for: asset, targetSize: CGSize(width: 160, height: 160), contentMode: .aspectFill, options: options) { image, info in
+      if (info?[PHImageResultIsDegradedKey] as? Bool) == true { return }
+      box.set(image?.jpegData(compressionQuality: 0.78))
+      done.signal()
+    }
+    if done.wait(timeout: .now() + 10) == .timedOut { PHImageManager.default().cancelImageRequest(request) }
+    return box.get()
+  }
+  private final class ImageBytes {
+    private let lock = NSLock(); private var data: Data?
+    func set(_ value: Data?) { lock.lock(); data = value; lock.unlock() }
+    func get() -> Data? { lock.lock(); defer { lock.unlock() }; return data }
   }
   // Main-queue ownership: cancellation rejects once and late PhotoKit callbacks are inert.
   private struct DisplayRequest { var id: PHImageRequestID; let promise: Promise }
@@ -96,20 +126,46 @@ final class PictopiaReview {
       let options = PHImageRequestOptions()
       options.isSynchronous = false
       options.isNetworkAccessAllowed = network
-      options.deliveryMode = .highQualityFormat
+      // Without network, "Optimize iPhone Storage" photos have no sharp local copy. Opportunistic
+      // delivery hands over the best preview the phone does keep, used when nothing sharper comes.
+      options.deliveryMode = network ? .highQualityFormat : .opportunistic
       options.resizeMode = .exact
       // Aspect fit within 2048 pixels; Photos chooses the representation without exporting
       // an original. This is a temporary display cache, never bytes recovered by deletion.
       displays[token] = DisplayRequest(id: PHInvalidImageRequestID, promise: promise)
+      var preview: UIImage? // main queue only
+      // The local preview is written beside, never as, the cached sharp copy.
+      let previewFile = directory.appendingPathComponent("\(hash)-preview.jpg")
+      let usePreview = { (image: UIImage) in
+        self.queue.async {
+          let written = (try? image.jpegData(compressionQuality: 0.85)?.write(to: previewFile, options: .atomic)) != nil
+          DispatchQueue.main.async {
+            guard let pending = self.displays.removeValue(forKey: token) else { return }
+            PHImageManager.default().cancelImageRequest(pending.id)
+            if written { promise.resolve(previewFile.absoluteString) }
+            else { promise.reject("DISPLAY_UNAVAILABLE", "Photo is not available locally.") }
+          }
+        }
+      }
       let request = PHImageManager.default().requestImage(for: asset, targetSize: CGSize(width: 2048, height: 2048), contentMode: .aspectFit, options: options) { image, info in
         DispatchQueue.main.async {
           guard self.displays[token] != nil else { return }
-          if (info?[PHImageResultIsDegradedKey] as? Bool) == true { return }
+          if (info?[PHImageResultIsDegradedKey] as? Bool) == true {
+            // Keep it; if the sharp copy never arrives locally, this preview is shown instead.
+            if !network, let image = image, preview == nil {
+              preview = image
+              DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                if self.displays[token] != nil, let image = preview { usePreview(image) }
+              }
+            }
+            return
+          }
           if (info?[PHImageCancelledKey] as? Bool) == true {
             self.displays.removeValue(forKey: token)
             promise.reject("DISPLAY_CANCELLED", "Photo loading cancelled."); return
           }
           guard info?[PHImageErrorKey] == nil, let image = image else {
+            if !network, let image = preview { usePreview(image); return }
             self.displays.removeValue(forKey: token)
             promise.reject("DISPLAY_UNAVAILABLE", network ? "Photo couldn’t load. Check your connection and photo access, then try again." : "Photo is not available locally.")
             return

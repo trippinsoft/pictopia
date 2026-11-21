@@ -131,7 +131,7 @@ async function dark(page) {
     for (const [route, title] of [
       ["smart", "A smarter kind of clean"],
       ["onboarding", "Welcome to Pictopia"],
-      ["paywall", "A little extra brilliance"],
+      ["paywall", "Choose your plan"],
       ["statistics", "A little progress adds up"],
       ["help", "A little help"],
       ["legal?page=privacy", "Privacy policy"],

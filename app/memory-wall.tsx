@@ -12,7 +12,7 @@ import { usePeek } from "@/components/pictopia/use-peek";
 import { progressResource } from "@/services/progress";
 import { blockTiles, OVERVIEW_TILE, UNDATED, yearComplete } from "@/lib/pictopia/memory-wall";
 import { bytes } from "@/lib/pictopia/logic";
-import { plural } from "@/lib/pictopia/text";
+import { libraryReadyLabel, plural } from "@/lib/pictopia/text";
 
 /** The Big Picture: the whole photo library as one picture, one rectangle per year, revealed tile by
  * tile as photos are explored anywhere in Pictopia. Tap a year to look closer. */
@@ -34,7 +34,7 @@ export default function MemoryWall() {
         error ? (
           <View className="gap-3 pt-4"><Text className="text-body text-destructive">The Big Picture couldn’t be loaded.</Text><Button onPress={() => void progressResource.refresh()}>Try again</Button></View>
         ) : initialLoading || !app.ready || !app.libraryReliable ? (
-          <View className="gap-3 pt-8"><Loading />{!app.busy && app.ready && !app.libraryReliable && <Button onPress={() => void app.connect()}>Connect library</Button>}</View>
+          <View className="gap-3 pt-8"><Loading label={libraryReadyLabel(app.syncProgress)} />{!app.busy && app.ready && !app.libraryReliable && <Button onPress={() => void app.connect()}>Connect library</Button>}</View>
         ) : null
       ) : model.photos === 0 ? (
         <View className="gap-4 pt-4">

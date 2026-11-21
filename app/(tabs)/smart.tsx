@@ -66,7 +66,7 @@ export default function Smart() {
   }
   async function openLarge() {
     if (!app.pro) {
-      router.push("/paywall");
+      router.push({ pathname: "/paywall", params: { entry: "Smart Clean" } });
       return;
     }
     await app.start("large");
@@ -87,7 +87,7 @@ export default function Smart() {
         <View className="self-start">
           <Button
             disabled={!app.ready || (!app.stats.total && app.pro)}
-            onPress={() => (app.pro ? void scan() : router.push("/paywall"))}
+            onPress={() => (app.pro ? void scan() : router.push({ pathname: "/paywall", params: { entry: "Smart Clean" } }))}
             icon="Sparkles"
           >
             {app.pro
@@ -151,7 +151,7 @@ export default function Smart() {
             key={t.key}
             onPress={() => {
               if (!app.pro) {
-                router.push("/paywall");
+                router.push({ pathname: "/paywall", params: { entry: "Smart Clean" } });
                 return;
               }
               if (t.key === "large") void openLarge();

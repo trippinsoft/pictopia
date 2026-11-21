@@ -37,7 +37,7 @@ export default function Statistics() {
         <Empty
           title="Deeper insights with Pictopia+"
           description="Your library progress remains available in the Progress tab. Cleanup history is retained even without Pictopia+."
-          action={<Button onPress={() => router.push("/paywall")}>View Pictopia+ plans</Button>}
+          action={<Button onPress={() => router.push({ pathname: "/paywall", params: { entry: "Statistics" } })}>View Pictopia+ plans</Button>}
         />
       ) : (
         <>

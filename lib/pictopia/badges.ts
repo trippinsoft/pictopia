@@ -14,7 +14,7 @@ export const BADGES: readonly BadgeDefinition[] = [
   { family: "declutterer", name: "Declutterer", unit: (v) => `${n(v)} photos deleted`, tiers: [10, 50, 100, 500, 1000, 5000] },
   { family: "months", name: "Month Finisher", unit: (v) => `${n(v)} ${v === 1 ? "month" : "months"} fully explored`, tiers: [1, 6, 12, 36, 120] },
   { family: "years", name: "Time Traveller", unit: (v) => `${n(v)} ${v === 1 ? "year" : "years"} fully explored`, tiers: [1, 3, 5, 10, 20] },
-  { family: "adventurer", name: "Adventurer", unit: (v) => `${n(v)} ${v === 1 ? "adventure" : "adventures"} finished`, tiers: [1, 5, 10, 25, 50, 100] },
+  { family: "adventurer", name: "Adventurer", unit: (v) => `${n(v)} ${v === 1 ? "adventure" : "adventures"} finished`, tiers: [1, 5, 10, 25, 50, 100, 250] },
   { family: "streak", name: "Streak", unit: (v) => `${n(v)}-day best streak`, tiers: [3, 7, 14, 30, 50, 100, 200, 365] },
 ];
 // "decades" (Across the Decades) is retired from the visible six families so Progress fits a

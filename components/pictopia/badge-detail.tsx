@@ -35,11 +35,9 @@ export function BadgeDetail({ definition, badges, onClose }: { definition: Badge
   const front = useAnimatedStyle(() => ({ opacity: flip.value < 0.5 ? 1 : 0, transform: [{ perspective: 1200 }, { rotateY: `${flip.value * 180}deg` }] }));
   const back = useAnimatedStyle(() => ({ opacity: flip.value >= 0.5 ? 1 : 0, transform: [{ perspective: 1200 }, { rotateY: `${(flip.value - 1) * 180}deg` }] }));
   const v = badgeView(definition, badges?.state, badges?.values[definition.family] ?? 0);
-  const legacy = badges?.state.legacy?.[definition.family];
-  const unsupported = !!legacy && legacy.tier > v.tier;
   const level = badges ? v.earned ? `Level ${ROMAN[v.tier]} earned` : "Not yet earned" : "Loading achievements…";
-  const rules = definition.family === "explorer" ? "Each photo counts once across all reviews and adventures. Videos are separate. Saved views and choices were included when badges were introduced."
-    : definition.family === "adventurer" ? `${badges?.audit.verified.length ?? 0} distinct saved completions verified. ${badges?.audit.unverified.length ?? 0} endings lack supporting evidence. The older counter recorded ${badges?.audit.legacyCount ?? 0}. Reopening never adds another completion.`
+  const rules = definition.family === "explorer" ? "Each photo counts once across all reviews and adventures. Videos don’t count toward this badge."
+    : definition.family === "adventurer" ? "Finish 5 adventures to earn Level I. Each completed set counts once; replays don’t."
     : definition.family === "declutterer" ? "Only confirmed photo deletions count. Marking, restoring and pending deletions earn no deletion credit."
     : definition.family === "streak" ? "A day qualifies after 10 distinct photos or videos viewed, or a confirmed deletion. Your best streak includes eligible restored days."
     : "Based on fully explored photos in your accessible library. Earned levels stay saved if your library changes.";
@@ -65,9 +63,8 @@ export function BadgeDetail({ definition, badges, onClose }: { definition: Badge
                   <BadgeArt family={definition.family} tier={v.tier} size={56} />
                   <View className="min-w-0 flex-1 gap-1"><Text accessibilityRole="header" className="text-h2 text-foreground">{definition.name}</Text><Text className="text-h5 text-muted-foreground">{level}</Text></View>
                 </View>
-                {v.earned && <Text className="text-body text-foreground">{`${unsupported ? "Saved level requirement: " : "Earned at "}${v.label}.`}</Text>}
-                {badges && <View className="gap-1"><Text className="text-caption text-muted-foreground">Verified progress</Text><Text className="text-h3 text-foreground">{definition.unit(v.value)}</Text></View>}
-                {unsupported && <Text className="text-caption leading-5 text-muted-foreground">{definition.family === "adventurer" ? "An older award is retained in your history but is not confirmed by the available adventure records. It is excluded from earned badges." : "An older award is retained in your history. Available records do not verify it, so it is excluded from earned badges."}</Text>}
+                {v.earned && <Text className="text-body text-foreground">{`Earned at ${v.label}.`}</Text>}
+                {badges && <View className="gap-1"><Text className="text-caption text-muted-foreground">Your progress</Text><Text className="text-h3 text-foreground">{definition.unit(v.value)}</Text></View>}
                 {badges && <View className="gap-2 rounded-2xl bg-secondary p-4"><Text className="text-h5 text-foreground">{v.maxed ? "Highest level reached" : `Next · Level ${ROMAN[v.tier + 1]}`}</Text>{!v.maxed && <><Text className="text-body text-foreground">{definition.unit(v.next!)}</Text><Text className="text-caption text-muted-foreground">{`${Math.max(0, v.next! - v.value).toLocaleString()} more to go`}</Text></>}</View>}
                 <Text className="text-caption leading-5 text-muted-foreground">{rules}</Text>
               </ScrollView>

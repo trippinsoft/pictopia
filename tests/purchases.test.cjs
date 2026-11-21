@@ -19,6 +19,22 @@ test("only Pictopia's own products unlock Pro", () => {
   assert.equal(entitlementFrom([{ productId: "other.app.sub", isActive: true }], "android", NOW).active, false);
 });
 
+test("iOS never invents access when expiry is missing, malformed or reached", () => {
+  for (const expirationDateIOS of [undefined, null, 0, NaN, Infinity, "tomorrow", NOW]) {
+    assert.equal(entitlementFrom([{ productId: PRO_PRODUCTS.weekly, isActive: true, expirationDateIOS }], "ios", NOW).active, false);
+  }
+});
+
+test("cancellation keeps paid access until expiry; a same-level plan change uses the current store result", () => {
+  const weekly = { productId: PRO_PRODUCTS.weekly, isActive: true, expirationDateIOS: NOW + DAY, renewalInfoIOS: { willAutoRenew: false } };
+  const cached = JSON.parse(JSON.stringify(entitlementFrom([weekly], "ios", NOW)));
+  assert.equal(entitlementActive(cached, NOW + DAY - 1), true, "saved access survives a restart until expiry");
+  assert.equal(entitlementActive(cached, NOW + DAY), false);
+  const annual = { productId: PRO_PRODUCTS.annual, isActive: true, expirationDateIOS: NOW + 365 * DAY };
+  assert.equal(entitlementFrom([{ ...weekly, isActive: false }, annual], "ios", NOW).expires, annual.expirationDateIOS);
+  assert.equal(entitlementFrom([{ ...annual, isActive: false }, weekly], "ios", NOW).expires, weekly.expirationDateIOS);
+});
+
 test("iOS trusts StoreKit's expiry; Android trusts a verified result offline for three days", () => {
   const ios = entitlementFrom([{ productId: PRO_PRODUCTS.monthly, isActive: true, expirationDateIOS: NOW + 20 * DAY }], "ios", NOW);
   assert.equal(ios.expires, NOW + 20 * DAY);
@@ -45,8 +61,52 @@ function store(os, initial = []) {
     purchaseErrorListener: (fn) => ((s.listeners.error = fn), { remove() {} }),
     isUserCancelledError: (e) => e.code === "user-cancelled",
   };
-  s.service = makeLoader({ "expo-iap": s.iap, "react-native": { Platform: { OS: os } } })("services/purchases.native.ts").purchaseService;
+  s.service = makeLoader({
+    "expo-iap": s.iap, "react-native": { Platform: { OS: os } },
+    "./subscription-analytics": { subscriptionAnalytics: { async enabled() { return true; }, async prepare() { return []; }, observe() {}, completed() {}, restored() {} } },
+    "./analytics": { trackSubscriptionAnalytics() {} },
+  })("services/purchases.native.ts").purchaseService;
   return s;
+}
+
+test("iOS loads the configured Weekly and Annual plans with localized StoreKit prices", async () => {
+  const s = store("ios");
+  s.iap.fetchProducts = async ({ skus, type }) => {
+    assert.equal(type, "subs");
+    assert.ok(skus.includes(PRO_PRODUCTS.weekly));
+    assert.ok(skus.includes(PRO_PRODUCTS.annual));
+    return [
+      { id: PRO_PRODUCTS.weekly, type: "subs", displayPrice: "$7.99", price: 7.99, currency: "USD" },
+      { id: PRO_PRODUCTS.annual, type: "subs", displayPrice: "$29.99", price: 29.99, currency: "USD" },
+    ];
+  };
+  const offers = await s.service.offers();
+  const { paywallPlans } = makeLoader()("lib/pictopia/paywall.ts");
+  assert.deepEqual(paywallPlans(offers).map(o => [o.id, o.price]), [[PRO_PRODUCTS.annual, "$29.99"], [PRO_PRODUCTS.weekly, "$7.99"]]);
+});
+
+for (const id of [PRO_PRODUCTS.weekly, PRO_PRODUCTS.annual]) {
+  test(`simulated iOS confirmation unlocks ${id}, restores and refreshes on a new service instance`, async () => {
+    const s = store("ios");
+    s.iap.fetchProducts = async () => [{ id, type: "subs", displayPrice: "Localized price", price: 1, currency: "USD" }];
+    await s.service.init(() => {});
+    await s.service.offers();
+    const purchase = s.service.purchase(id);
+    await new Promise(r => setTimeout(r, 0));
+    assert.deepEqual(s.requests[0], { request: { apple: { sku: id } }, type: "subs" });
+    const active = { productId: id, isActive: true, expirationDateIOS: Date.now() + DAY };
+    s.active = [active];
+    s.listeners.update({ productId: id, purchaseState: "purchased" });
+    assert.equal((await purchase).active, true);
+    assert.ok(s.finished.includes(id));
+    assert.equal((await s.service.restore()).active, true);
+    const restarted = store("ios", [active]);
+    let restored;
+    await restarted.service.init(e => { restored = e; });
+    assert.equal(restored.active, true);
+    restarted.active = [];
+    assert.equal((await restarted.service.refresh()).active, false, "revocation/expiration removes subscription access");
+  });
 }
 
 test("launch finishes unacknowledged purchases so Google never auto-refunds them", async () => {

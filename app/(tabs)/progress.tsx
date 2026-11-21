@@ -1,6 +1,7 @@
 import { LifetimePlusRow } from "@/components/pictopia/lifetime-plus-row";
+import { StreakInfo } from "@/components/pictopia/streak-info";
 import { useState } from "react";
-import { Modal, Pressable, ScrollView, View } from "react-native";
+import { ActivityIndicator, Modal, Pressable, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Button, Icon, Text } from "@/components/pictopia/ui";
@@ -15,6 +16,9 @@ import { dailyStore } from "@/services/daily";
 import { BADGES, ROMAN, badgeView, type BadgeDefinition } from "@/lib/pictopia/badges";
 import { addDays, qualifies } from "@/lib/pictopia/daily";
 import { bytes } from "@/lib/pictopia/logic";
+import { libraryReadyLabel } from "@/lib/pictopia/text";
+import { usePictopia } from "@/components/pictopia/provider";
+import { useTheme } from "@/theming/ThemeProvider";
 
 const weekday = (date: string, style: "narrow" | "long" = "narrow") => new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: style });
 const dayOfMonth = (date: string) => Number(date.slice(8, 10));
@@ -58,6 +62,8 @@ function HeadlineTile({ icon, value, caption, onPress, label }: { icon: "Flame" 
 /** Progress: three headlines, Discarded link, streak calendar w/ restore, badges, Take a break. */
 export default function Progress() {
   const lift = useLift();
+  const app = usePictopia();
+  const { theme } = useTheme();
   const { progress, error, snapshot } = useLibraryProgress();
   const streak = snapshot?.streak;
   const activity = snapshot?.activity;
@@ -108,6 +114,12 @@ export default function Progress() {
         {error && <View className="mt-3 gap-2"><Text accessibilityRole="alert" className="text-body text-destructive">{snapshot ? "Couldn’t refresh progress. Showing your last saved statistics." : "Couldn’t load progress."}</Text><Button secondary onPress={() => void progressResource.refresh()}>Retry progress</Button></View>}
         {!!message && <Text accessibilityRole="alert" className="mt-3 text-body text-destructive">{message}</Text>}
 
+        {!snapshot && !app.libraryReliable && !!libraryReadyLabel(app.syncProgress) && (
+          <View accessibilityLiveRegion="polite" className="mt-3 flex-row items-center gap-2.5">
+            <ActivityIndicator size="small" color={theme.colors.primary} />
+            <Text className="flex-1 text-caption text-muted-foreground">{libraryReadyLabel(app.syncProgress)}</Text>
+          </View>
+        )}
         {/* Memory Wall (carries the library percentage) above the streak and cleared headlines */}
         <MemoryWallCard />
         <LifetimePlusRow />
@@ -136,6 +148,7 @@ export default function Progress() {
               <Text className="text-h2 leading-8 text-foreground">{streak?.current ?? "…"} day streak</Text>
               <Text className="text-caption text-muted-foreground">Best {streak?.best ?? "…"} · {streak?.activeDays ?? "…"} active days</Text>
             </View>
+            <StreakInfo />
           </View>
           {streak?.restore && (
             <Pressable accessibilityRole="button" onPress={() => setRestoring(true)} className="flex-row items-center gap-3 rounded-[14px] bg-sun-soft px-3.5 py-3 active:opacity-80">
@@ -174,7 +187,6 @@ export default function Progress() {
         <View className="flex-row flex-wrap justify-between gap-y-2.5">
           {BADGES.map((def) => {
             const v = badgeView(def, badges?.state, badges?.values[def.family] ?? 0);
-            const needsVerification = (badges?.state.legacy?.[def.family]?.tier ?? 0) > v.tier;
             return (
               <Pressable key={def.family} accessibilityRole="button" onPress={() => setDetail(def)} style={lift} accessibilityLabel={`${def.name}${v.earned ? `, tier ${v.tier}` : ", not yet earned"}. ${v.label}.${v.next ? ` Next at ${v.next.toLocaleString()}.` : ""}`} className="w-[31.5%] items-center gap-1 rounded-[18px] bg-card px-1.5 pb-2.5 pt-3">
                 <View>
@@ -186,7 +198,6 @@ export default function Progress() {
                   <View className={`h-full rounded-full ${v.earned ? "bg-grass" : "bg-foreground/30"}`} style={{ width: `${Math.round(v.progress * 100)}%` }} />
                 </View>
                 <Text className="text-[11px] text-muted-foreground">{!badges ? "…" : v.maxed ? "Top tier" : `${v.value.toLocaleString()} / ${v.next?.toLocaleString()}`}</Text>
-                {needsVerification && <Text className="text-center text-[11px] text-muted-foreground">Needs verification</Text>}
               </Pressable>
             );
           })}

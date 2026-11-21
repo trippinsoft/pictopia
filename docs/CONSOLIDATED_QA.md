@@ -92,14 +92,14 @@ Confirmed-deletion streak activity used to save after the atomic deletion transa
 | Month Finisher | 1 / 6 / 12 / 36 / 120 fully explored accessible months |
 | Time Traveller | 1 / 3 / 5 / 10 / 20 fully explored accessible years |
 | Across the Decades | 2 / 3 / 4 decades containing a fully explored accessible year |
-| Adventurer | 1 / 5 / 10 / 25 / 50 / 100 distinct supported completions |
+| Adventurer | 5 / 10 / 25 / 50 / 100 / 250 verified completed curated sets |
 | Streak | 3 / 7 / 14 / 30 / 50 / 100 / 200 / 365 best consecutive qualifying days |
 
 A full accessible year means all accessible dated photos in that year, not twelve populated months. Unknown dates do not create calendar badges. Later library/access changes do not revoke a tier confirmed under the new evidence version.
 
-On first evaluation, legacy earned records are archived under badge-state `legacy`, unchanged. Only current authoritative facts confirm tiers in `earned`; the state is marked `verification: 2`. Unsupported claims are retained with an explanation but excluded from confirmed earned-family counts. There is no celebration flood during reconciliation. Future verified awards are permanent. For example, 21 supported completions mean Level III earned and progress toward IV at 25; a legacy IV claim remains an unconfirmed archived claim, never progress toward V at 50.
+On first evaluation, legacy earned records are archived under badge-state `legacy`, unchanged. Only current authoritative facts confirm tiers in `earned`; the state is marked `verification: 2`. Unsupported claims are retained with an explanation but excluded from confirmed earned-family counts. There is no celebration flood during reconciliation. Future verified awards are permanent. For example, 21 supported completions mean Level III earned and progress toward IV at 25; a legacy claim remains an unconfirmed archived claim, never progress toward a higher level.
 
-Adventurer ignores the old aggregate feedback-pacing counter. Indexed IDs are deduplicated; starts, partial legacy endings, failed metadata saves and repeated completion visits do not add credit. Valid version-2 proofs survive later Undo/reopening; upgrades preserve prior proofs. First-seen exploration migrations remain idempotent and do not reconstruct unsaved past browsing or invent old streak days.
+Adventurer counts each completed curated set once, including each Keep going set and shorter final sets. Whole-library/year completion is not required; Time Traveller still measures fully explored years. Current and archived snapshots backfill only with saved completion evidence, and per-set receipts survive replay/Undo. Adventurer ignores the old aggregate feedback-pacing counter. Indexed IDs are deduplicated; starts, partial legacy endings, failed metadata saves and repeated completion visits do not add credit. Valid version-2 proofs survive later Undo/reopening; upgrades preserve prior proofs. First-seen exploration migrations remain idempotent and do not reconstruct unsaved past browsing or invent old streak days.
 
 The actual iPhone database and its prior 396-photo/25-adventure records were not available here. Their precise historical truth cannot be reconstructed from screenshots. Reconciliation runs against the saved evidence on that device when this code opens it.
 

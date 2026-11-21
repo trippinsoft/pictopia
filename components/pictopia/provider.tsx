@@ -89,6 +89,9 @@ const Ctx = createContext<Context | null>(null);
 /** Minimum gap between blind foreground re-syncs. Real library changes still sync instantly
  * through the media change listener; this only throttles the belt-and-suspenders resync. */
 const FOREGROUND_RESYNC_MS = 5 * 60 * 1000;
+/** Set when a full library check completes and never cleared by a later, unfinished one
+ * (`libraryIndex:v1` flips to "indexing" at the start of every pass). */
+const INDEXED_KEY = "libraryIndexedAt:v1";
 export function PictopiaProvider({ children }: { children: React.ReactNode }) {
   const [libraryReliable, setLibraryReliable] = useState(false);
   const [ready, setReady] = useState(false),
@@ -186,6 +189,7 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
         const indexed = await storage.stats();
         if (Platform.OS !== "web" && (indexedIds.size !== discovered || indexed.total !== indexedIds.size)) throw Error("Your library index is incomplete. Please try again.");
         await storage.setValue("libraryIndex:v1", { status: "complete", startedAt: epoch, completedAt: Date.now(), discovered, uniqueIndexed: indexedIds.size, metadataFailures: syncReport?.metadataFailures ?? [], indexed });
+        await storage.setValue(INDEXED_KEY, { at: Date.now() });
       }
       await refresh();
       if (!controller.signal.aborted) {
@@ -221,9 +225,17 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
         setDevOverrideState(await devOverrideStore.load());
         const saved = await storage.getValue<ScanState>("scan");
         if (saved) setScan(saved.status === "running" ? { ...saved, status: "paused" } : saved);
-        setPermission(await mediaService.permission());
+        const startPermission = await mediaService.permission();
+        setPermission(startPermission);
         await refresh();
-        setLibraryReliable(Platform.OS === "web");
+        // A library check that finished on an earlier launch makes the saved records
+        // trustworthy right away: show them now and let this launch's sync update them in
+        // place. Only a library that has never finished indexing waits (and shows progress).
+        const indexedBefore = Platform.OS === "web" || (startPermission.granted && (
+          !!(await storage.getValue<{ at: number }>(INDEXED_KEY))?.at ||
+          (await storage.getValue<{ status: string }>("libraryIndex:v1"))?.status === "complete"));
+        if (indexedBefore) syncedRef.current = true;
+        setLibraryReliable(indexedBefore);
         // Verify the saved receipt locally before review screens can apply a free limit.
         // Network availability is never required to restore a saved award.
         await lifetimePlusStore.load().catch(() => null);

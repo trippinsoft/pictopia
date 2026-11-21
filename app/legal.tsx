@@ -12,15 +12,15 @@ const privacy = [
   ],
   [
     "Purchases",
-    "Native purchases are processed by Apple or Google and validated through RevenueCat. Store receipts, an anonymous customer identifier, entitlement status, and necessary purchase information may be processed by those services. Photos are not sent to RevenueCat. See revenuecat.com/privacy.",
+    "Native purchases are processed by Apple or Google through their store services. Pictopia checks subscription status with the store and saves access information locally. When enabled, Pictopia+ for Life verification sends store purchase evidence to Pictopia’s existing verification service. Photos and videos are not sent for purchase verification.",
   ],
   [
     "Your control",
     "You may limit or revoke photo access in system settings. Decisions and analysis caches can be reset in Pictopia. Original media is deleted only after your explicit confirmation and an authorized native deletion request.",
   ],
   [
-    "No ads or tracking",
-    "Pictopia’s application code adds no advertising SDK, photo-upload service, or behavioral analytics. The development preview is hosted by Draftbit and subject to its own platform policies.",
+    "Product analytics",
+    "When configured, Pictopia uses Amplitude to understand app opens, returns to the app, and visits to named screens. Events include a random installation identifier, timestamps, platform and basic browser or operating-system information. Photos, videos, media identifiers, filenames, library dates, referral codes and screen parameters are not sent. Advertising identifiers, IP-based location enrichment, automatic interaction capture and session replay are disabled. No account or advertising SDK is added. See amplitude.com/privacy. The development preview is hosted by Draftbit and subject to its own platform policies.",
   ],
   [
     "Publisher details required",
@@ -42,7 +42,7 @@ const terms = [
   ],
   [
     "Billing",
-    "Prices and billing periods are shown by the store before purchase. Monthly and annual subscriptions renew automatically unless cancelled according to the store’s terms. Lifetime is a one-time, non-consumable unlock of the current Pictopia+ entitlement. Manage subscriptions through your store account. Refunds are handled under applicable store rules and law.",
+    "Prices and billing periods are shown by the store before purchase. Weekly, monthly and annual subscriptions renew automatically unless cancelled according to the store’s terms. Manage subscriptions through your store account. Refunds are handled under applicable store rules and law.",
   ],
   [
     "Availability",

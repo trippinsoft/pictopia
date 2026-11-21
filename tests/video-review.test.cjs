@@ -158,12 +158,12 @@ test("an iCloud video's poster is the local platform thumbnail; nothing is downl
 });
 
 // ------------------------------------------------------------------- VideoPage (real component)
-function videoHarness(source) {
+function videoHarness(source, overrides = {}) {
   const s = { enabled: [], retries: 0, sources: [], plays: 0, status: "idle", error: undefined, traces: [], requests: [] };
   let player = { generation: 1 };
   const owner = { current: { pause() {}, play() { s.plays++; }, replace(uri) { s.sources.push(uri); return Promise.resolve(); } } };
   const retry = () => { s.retries++; player = { generation: player.generation + 1 }; s.status = "idle"; s.error = undefined; };
-  const props = { media: video("v"), active: true, playing: false, onPlayingChange: (value) => { props.playing = value; } };
+  const props = { media: video("v"), active: true, playing: false, onPlayingChange: (value) => { props.playing = value; }, ...overrides };
   const h = hooks("components/pictopia/video-page.tsx", "VideoPage", {
     "react-native": { ActivityIndicator: "Spinner", View: "View", StyleSheet: { absoluteFill: {} }, AppState: { currentState: "active", addEventListener: () => ({ remove() {} }) } },
     "./use-review-video": { useReviewVideo: (enabled) => { s.enabled.push(enabled); return { player: enabled === false ? undefined : player, status: s.status, currentTime: 0, owner, ended: 0, retry, error: s.error }; } },
@@ -175,6 +175,39 @@ function videoHarness(source) {
   const tap = () => { props.playing = !props.playing; return h.render(); };
   return { h, s, props, tap };
 }
+
+test("autoplay starts a local video on its shown page and leaves a pause in place", async () => {
+  const v = videoHarness(async () => ({ uri: "file://local.mov" }), { autoplay: true, active: false });
+  try {
+    v.h.render(); v.h.render();
+    assert.deepEqual(v.s.requests, [], "neighboring pages do not start playback");
+    v.props.active = true;
+    v.h.render(); v.h.render(); await tick(); v.h.render();
+    assert.deepEqual(v.s.requests, [false]);
+    v.s.status = "readyToPlay"; v.h.render(); v.h.render();
+    assert.equal(v.s.plays, 1);
+    v.tap(); v.h.render();
+    assert.equal(v.props.playing, false);
+    assert.equal(v.s.plays, 1);
+  } finally { v.h.unmount(); }
+});
+
+test("autoplay leaves an iCloud download to an explicit tap, including on revisit", async () => {
+  const v = videoHarness(async (_, network) => {
+    if (!network) throw Error(CLOUD_ONLY);
+    return { uri: "file://download.mov" };
+  }, { autoplay: true });
+  try {
+    v.h.render(); v.h.render(); await tick();
+    assert.match(textOf(v.h.render()), /In iCloud · tap to download and play/);
+    assert.equal(v.props.playing, false);
+    v.props.active = false; v.h.render();
+    v.props.active = true; v.h.render(); v.h.render();
+    assert.deepEqual(v.s.requests, [false]);
+    v.tap(); await tick(); v.h.render();
+    assert.deepEqual(v.s.requests, [false, true]);
+  } finally { v.h.unmount(); }
+});
 
 test("a source the player can't open falls back to the next one on a fresh player before any error shows", async () => {
   const v = videoHarness(async () => ({ uri: "ph://v", alternates: ["file:///var/mobile/Media/DCIM/IMG_1.MOV"] }));

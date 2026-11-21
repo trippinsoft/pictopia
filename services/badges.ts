@@ -20,12 +20,30 @@ export async function auditAdventureCompletions() {
   const backfills: Record<string, Adventure> = {};
   for (const id of ids) {
     const meta = await storage.getValue<Adventure>(`adventure:${id}`);
-    const session = await storage.getValue<ExploreSession>(`adventure:${id}:explore`);
-    if (meta?.id === id && meta.finishedAt && (savedCompletion(meta, session) || (meta.count === session?.ids?.length && completionEvidence(session)))) {
-      verified.push(id);
-      if (!savedCompletion(meta, session) && session) backfills[`adventure:${id}`] = { ...meta, priorCompletionProof: meta.completionProof, completionProof: completionProof(session, meta.finishedAt) };
+    if (meta?.id !== id) continue;
+    let updated = meta;
+    const snapshots = [...new Set(meta.segmentKeys ?? []), `adventure:${id}:explore`];
+    for (const key of snapshots) {
+      const session = await storage.getValue<ExploreSession>(key);
+      const set = key === `adventure:${id}:explore` ? String(meta.segment ?? 0) : key.match(/:segment:(\d+):explore$/)?.[1];
+      if (set === undefined) continue;
+      const receipt = updated.completedSets?.[set];
+      const supported = receipt
+        ? savedCompletion({ ...meta, count: receipt.total, finishedAt: receipt.at, completionProof: receipt }, session)
+        : (key === `adventure:${id}:explore` && savedCompletion(meta, session)) || completionEvidence(session);
+      if (supported && session) {
+        verified.push(set === "0" ? id : `${id}:set:${set}`);
+        const proof = receipt ?? (key === `adventure:${id}:explore` && savedCompletion(meta, session) ? meta.completionProof! : completionProof(session, session.completionVerifiedAt ?? meta.finishedAt ?? Date.now()));
+        if (!receipt) updated = { ...updated, completedSets: { ...updated.completedSets, [set]: proof } };
+        // Keep the existing whole-adventure proof for older readers as well.
+        if (key === `adventure:${id}:explore` && meta.finishedAt && !savedCompletion(meta, session)) {
+          updated = { ...updated, priorCompletionProof: meta.completionProof, completionProof: completionProof(session, meta.finishedAt) };
+        }
+      } else if (session?.finished || (key === `adventure:${id}:explore` && meta.finishedAt)) {
+        unverified.push(set === "0" ? id : `${id}:set:${set}`);
+      }
     }
-    else if (meta?.finishedAt || session?.finished) unverified.push(id);
+    if (updated !== meta) backfills[`adventure:${id}`] = updated;
   }
   return { verified, unverified, backfills, legacyCount: index?.finished ?? 0 };
 }

@@ -208,7 +208,7 @@ export default function Swipe() {
       {!allowance.ready ? <Loading /> : <View className="gap-4 px-5 py-8">
         <Text className="text-h2 text-foreground">{allowance.error ? "Couldn’t check daily reviews" : `You’ve explored ${allowance.limit ?? DEFAULT_FREE_SWIPES} items today`}</Text>
         <Text className="text-body text-muted-foreground">{allowance.error ? "Your saved review is safe. Please try again." : "Come back tomorrow or keep exploring with Pictopia+. Your marks are saved."}</Text>
-        <Button onPress={() => allowance.error ? void allowance.reload() : router.push("/paywall")}>{allowance.error ? "Try again" : "Explore with Pictopia+"}</Button>
+        <Button onPress={() => allowance.error ? void allowance.reload() : router.push({ pathname: "/paywall", params: { entry: "daily_limit" } })}>{allowance.error ? "Try again" : "Explore with Pictopia+"}</Button>
         <Button secondary onPress={undo}>Undo last decision</Button>
         <Button secondary onPress={() => router.push("/queue")}>Review marked items</Button>
       </View>}

@@ -50,9 +50,9 @@
 | Advanced Quick Clean | Pro adds cached group candidates and large-media candidates | Entitlement gated; native scan data QA pending |
 | Free tier | Unlimited manual review, no daily limits, no required ads/account | Browser gating checked |
 | Pro gating | Central current entitlement with expiry; history retained | Entitlement tests passed |
-| Monthly / annual / lifetime | RevenueCat packages and one logical `pro` entitlement | External products, offerings, public keys, store credentials missing |
+| Weekly / monthly / annual | Direct Expo IAP / StoreKit 2 / Play Billing, exact `pictopia.pro.*` IDs | Store configuration and native billing verification required; see SUBSCRIPTIONS.md |
 | Purchases / restore | Real SDK calls; cancellation/pending/error handling | SDK adapter tests passed; genuine store sandbox tests NOT run |
-| Expiry / revocation / offline | Current CustomerInfo listener, foreground refresh, unexpired entitlement cache | Expiration and revocation test doubles exercised; real store tests pending |
+| Expiry / revocation / offline | Native purchase listener, foreground store refresh, unexpired entitlement cache | Expiration and revocation test doubles exercised; real store tests pending |
 | Paywall | Localized store prices, mathematically checked annual savings, disclosures | Browser unavailable-checkout and links checked |
 | Onboarding | Welcome, three-step story, photo/reminder access, library reveal, planning, store-driven trial offer, first adventure | Browser welcome/story/trial checked; library reveal, permissions, trial purchase and reminders need a device build; weekly product + trial must exist in both stores |
 | Appearance / preferences | System, light, dark; haptics, autoplay, favorites, reviewed, reverse directions | Browser Light/Dark/System, persistence, dialog variables, core/secondary flows and contrast verified; native chrome/device appearance and haptics pending |
@@ -68,17 +68,13 @@
 
 ## External setup required
 
-1. Identifiers are `com.trippinsoft.pictopia` on both platforms; the iOS bundle ID is registered with Apple. Create the matching Google Play app and RevenueCat apps before the first store build; identity must remain stable for native data and store continuity.
-2. In App Store Connect and Google Play Console create these suggested product IDs:
-   - `pictopia_pro_monthly`: auto-renewing monthly, initial test price $2.99.
-   - `pictopia_pro_annual`: auto-renewing annual, initial test price $19.99.
-   - `pictopia_pro_lifetime`: non-consumable, initial test price $39.99.
-   Store-localized product values are authoritative; the application never fabricates these prices.
-3. Add both platform applications to RevenueCat. Connect the relevant Apple/Google store credentials in RevenueCat, not in client code. Import products, attach all three to entitlement `pro`, and create a current offering with Monthly, Annual, and Lifetime package types.
-4. Set `EXPO_PUBLIC_REVENUECAT_IOS_KEY` and `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY` to the respective public SDK keys in the app's DEVELOPMENT/STAGING/PRODUCTION environments as appropriate. Never put secret RevenueCat, Apple, or service-account keys in the application.
+1. Identifiers are `com.trippinsoft.pictopia` on both platforms; identity must remain stable for native data and store continuity. Use the matching store app records.
+2. Configure auto-renewable products `pictopia.pro.weekly` (1 week), `pictopia.pro.monthly` (1 month), `pictopia.pro.annual` (1 year), using the intended prices and availability. Apple plans belong to one Pictopia+ group at the same level; Android needs active base plans. Store-localized values are authoritative. No lifetime purchase product is used.
+3. Complete store business agreements, banking/tax information and product metadata. RevenueCat configuration and SDK keys are not required by the current direct Expo IAP adapter. Do not put store private keys in client environment variables.
+4. Follow `SUBSCRIPTIONS.md` for native purchase/restore/expiration verification. TestFlight billing is sandbox automatically; use Automatic subscription access and reset lifetime testing simulations before a real billing test. Separate lifetime-reward release requirements remain in `LIFETIME_PLUS.md`.
 5. Supply `EXPO_PUBLIC_SUPPORT_EMAIL`, `EXPO_PUBLIC_PRIVACY_URL`, and `EXPO_PUBLIC_TERMS_URL`, publisher legal identity/address, governing jurisdiction, policy effective date, and a public support URL. Complete legal review.
 6. Use Draftbit **Publishing** for internal native builds. Ensure the custom analysis module is included; Expo Go is insufficient. Complete the device matrix and genuine sandbox purchase/restore/expiry/refund tests before production distribution.
-7. Confirm store data-safety declarations against the final binary, RevenueCat processing, and any Publishing-added integrations. The app itself includes no photo-upload or behavioral analytics service. Draftbit preview telemetry belongs to the hosted development environment.
+7. Confirm store data-safety declarations against the final binary, direct store billing, any enabled rewards/store-evidence verification, optional Amplitude analytics and any Publishing-added integrations. Amplitude receives anonymous lifecycle and named-screen events when configured; personal media remains local. Draftbit preview telemetry belongs to the hosted development environment. See `ANALYTICS.md`.
 
 ## Verification record
 

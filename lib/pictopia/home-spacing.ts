@@ -1,15 +1,26 @@
-/** Home's existing 4 pt rhythm, compressed only as far as comfortable minimum gaps.
- * Intrinsic height excludes these gaps and includes actual text/cards/recap height. */
-const ROOMY = { stats: 20, adventure: 28, postcards: 24, note: 32, pending: 28, bottom: 32 };
-const COMPACT = { stats: 12, adventure: 20, postcards: 16, note: 20, pending: 16, bottom: 16 };
-type Gaps = typeof ROOMY;
-export function homeSpacing(viewport: number, intrinsic: number, _resume: boolean, pending: boolean) {
-  const enabled = (key: keyof Gaps) => key !== "pending" || pending;
-  const sum = (gaps: Gaps) => (Object.keys(gaps) as (keyof Gaps)[]).reduce((total, key) => total + (enabled(key) ? gaps[key] : 0), 0);
-  const roomy = sum(ROOMY), minimum = sum(COMPACT);
-  const pressure = viewport > 0 ? Math.min(1, Math.max(0, (intrinsic + roomy - viewport) / (roomy - minimum))) : 0;
-  const gaps = Object.fromEntries((Object.keys(ROOMY) as (keyof Gaps)[]).map(key => [key,
-    Math.max(COMPACT[key], Math.floor((ROOMY[key] - pressure * (ROOMY[key] - COMPACT[key])) / 4) * 4),
-  ])) as Gaps;
-  return { ...gaps, total: sum(gaps) };
+import type { ViewStyle } from "react-native";
+
+/** Home's gaps between sections: roomy when everything fits, compressed toward the
+ * compact minimums when the screen is short, and scrolling beyond that.
+ *
+ * The compression is done entirely by the native layout engine in a single pass:
+ * each gap is a flex spacer that starts at its compact height and may grow (in
+ * proportion to its range) up to its roomy height. Nothing is measured in
+ * JavaScript and no React state depends on layout, so a layout result can never
+ * feed back into the next layout. (Measuring sections with onLayout and choosing
+ * 4 pt-stepped gaps from that state made Home oscillate between two layouts.) */
+export const HOME_GAPS = {
+  roomy: { stats: 20, adventure: 28, postcards: 24, note: 32, pending: 28, bottom: 32 },
+  compact: { stats: 12, adventure: 20, postcards: 16, note: 20, pending: 16, bottom: 16 },
+} as const;
+export type HomeGap = keyof typeof HOME_GAPS.roomy;
+
+const styles = Object.fromEntries((Object.keys(HOME_GAPS.roomy) as HomeGap[]).map((key) => {
+  const roomy = HOME_GAPS.roomy[key], compact = HOME_GAPS.compact[key];
+  return [key, { flexBasis: compact, minHeight: compact, maxHeight: roomy, flexGrow: roomy - compact, flexShrink: 0 }];
+})) as Record<HomeGap, ViewStyle>;
+
+/** Style for the spacer that sits before (or, for `bottom`, after) a Home section. */
+export function homeGap(key: HomeGap): ViewStyle {
+  return styles[key];
 }

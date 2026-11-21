@@ -5,7 +5,7 @@ const { makeLoader } = require('./loader.cjs');
 const now = Date.now();
 const installation = 'a'.repeat(64);
 const claims = { version:1, entitlement:'lifetime_plus', installation, firstPaidAt:now-1000, awardedAt:now-500, issuedAt:now };
-async function setup() {
+async function setup(enabled = true) {
   global.crypto = webcrypto;
   const keys = await webcrypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign','verify']);
   process.env.EXPO_PUBLIC_LIFETIME_PLUS_PUBLIC_KEY=Buffer.from(await webcrypto.subtle.exportKey('spki',keys.publicKey)).toString('base64');
@@ -14,6 +14,7 @@ async function setup() {
   const values=new Map(); let fail=false; const evidenceCalls=[]; const requests=[];
   const storage={init:async()=>{}, getValue:async k=>values.get(k), setValue:async(k,v)=>{if(fail)throw Error('disk full');values.set(k,JSON.parse(JSON.stringify(v)));}};
   const mocks={
+    "@/lib/pictopia/feature-flags":{LIFETIME_PLUS_ENABLED:enabled},
     './purchases':{purchaseService:{evidence:async restore=>{evidenceCalls.push(restore);return {platform:"ios",transactions:["test-owned"]};}}},
     'expo-crypto':{CryptoDigestAlgorithm:{SHA256:'sha256'},digestStringAsync:async()=>installation},
     './referrals':{rewardCredential:async()=> 'capability'},
@@ -79,4 +80,15 @@ test('no-membership response clears unearned membership but preserves an earned 
  app.response(await app.sign(claims));await store.sync();
  app.response(null);await store.sync({payment:true});assert.equal(store.snapshot().awardedAt,claims.awardedAt);
  const awarded=app.boot();await awarded.load();assert.equal(awarded.snapshot().awardedAt,claims.awardedAt);
+});
+
+
+test('paused launch blocks all network and store evidence while retaining an earned signed receipt', async()=>{
+ const app=await setup(false);
+ app.values.set('lifetimePlusReceipt:v1', await app.sign(claims));
+ const store=app.boot(); await store.load();
+ await store.sync(); await store.sync({payment:true}); await store.sync({restore:true});
+ await store.sync({completion:{ready:true}});
+ assert.equal(app.evidenceCalls.length,0); assert.equal(app.requests.length,0);
+ assert.equal(store.snapshot().awardedAt,claims.awardedAt);
 });

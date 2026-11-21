@@ -22,12 +22,12 @@ export function useLift(depth = 3) {
   return { boxShadow: `0px ${depth}px 0px ${tint}` } as ViewStyle;
 }
 
-export function Wordmark({ large = false }: { large?: boolean }) {
-  // The large Home wordmark sizes itself in `style`; `text-h1` would override it.
-  const type = large ? "" : "text-h1 ";
-  const size = large ? styles.wordmarkLarge : undefined;
+export function Wordmark({ large = false, hero = false }: { large?: boolean; hero?: boolean }) {
+  // The large Home and hero (onboarding welcome) wordmarks size themselves in `style`; `text-h1` would override it.
+  const type = large || hero ? "" : "text-h1 ";
+  const size = hero ? styles.wordmarkHero : large ? styles.wordmarkLarge : undefined;
   return (
-    <Text accessibilityRole="header" accessibilityLabel="Pictopia" numberOfLines={1} adjustsFontSizeToFit className={`${type}text-foreground`} style={size}>
+    <Text accessibilityRole="header" accessibilityLabel="Pictopia" numberOfLines={hero ? undefined : 1} adjustsFontSizeToFit={!hero} className={`${hero ? "w-full text-center " : type}text-foreground`} style={size}>
       pictopia<Text className={`${type}text-tomato`} style={size}>.</Text>
     </Text>
   );
@@ -136,13 +136,15 @@ export function Postcard({ kind, ids, title, hint, rotate, onPress, variant = "a
   pickLabel?: string;
 }) {
   const isPick = variant === "pick";
+  const { theme } = useTheme();
+  const lift = useLift(6);
   const label = pickLabel ?? "Pictopia’s pick";
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={isPick ? `${label}: ${title}. ${hint}` : `Or try ${title}. ${hint}`}
       onPress={onPress}
-      style={[styles.postcard, isPick ? styles.postcardPick : styles.postcardAlt, { transform: [{ rotate: `${rotate}deg` }] }]}
+      style={[styles.postcard, theme.name === "dark" ? lift : null, isPick ? styles.postcardPick : styles.postcardAlt, { transform: [{ rotate: `${rotate}deg` }] }]}
       className="gap-1.5 rounded-[22px] bg-card p-2 pb-3 active:opacity-90"
     >
       <View style={isPick ? styles.artPick : styles.artAlt} className="overflow-hidden rounded-[15px] bg-muted">
@@ -278,6 +280,7 @@ export function AdventureCard({ entry, kind, blurb, badge, landscape, onPress, f
 const styles = StyleSheet.create({
   postcard: { boxShadow: "0px 10px 24px rgba(27,35,80,0.16)" } as ViewStyle,
   wordmarkLarge: { fontFamily: "Fredoka_700Bold", fontSize: 44, lineHeight: 52, letterSpacing: -0.5 },
+  wordmarkHero: { fontFamily: "Fredoka_700Bold", fontSize: 60, lineHeight: 68, letterSpacing: -1 },
   // Between the body (16) and caption (13) sizes; a type class would override `style`.
   tagline: { fontFamily: "Inter_400Regular", fontSize: 14.5, lineHeight: 20 },
   // Pick sits on top of alt with a tiny overlap so the two read as a stack of postcards

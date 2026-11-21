@@ -20,7 +20,13 @@ export type ArtName =
   | "whereWasThis"
   | "whichFirst"
   | "memoryMatch"
+  | "upgrade"
   | "duplicates"
+  | "recents"
+  | "favorites"
+  | "allPhotos"
+  | "largeVideos"
+  | "allVideos"
   | "finish"
   | "gameResult"
   | "spring"
@@ -50,12 +56,15 @@ export const Illustration = memo(function Illustration({
   name,
   style,
   square = false,
+  wide = false,
   accessibilityLabel,
 }: {
   name: ArtName;
   style?: StyleProp<ViewStyle>;
   /** Crop to the central square (icons and thumbnails). */
   square?: boolean;
+  /** Zoom out to a 3:2 landscape frame that keeps the whole subject (compact cards). */
+  wide?: boolean;
   accessibilityLabel?: string;
 }) {
   const { theme } = useTheme();
@@ -65,7 +74,7 @@ export const Illustration = memo(function Illustration({
       width="100%"
       height="100%"
       style={style}
-      viewBox={square ? "0 15 120 120" : "0 0 120 150"}
+      viewBox={wide ? "-15 25 150 100" : square ? "0 15 120 120" : "0 0 120 150"}
       preserveAspectRatio="xMidYMid slice"
       {...(accessibilityLabel ? { accessible: true, accessibilityLabel } : {})}
     >
@@ -75,7 +84,8 @@ export const Illustration = memo(function Illustration({
 });
 
 type Scene = (c: ArtPalette) => ReactNode;
-const sky = (fill: string) => <Rect width="120" height="150" fill={fill} />;
+// The backdrop overflows the 120 × 150 canvas so the zoomed-out `wide` frame has no bare edges.
+const sky = (fill: string) => <Rect x="-60" y="-60" width="240" height="270" fill={fill} />;
 const cloud = (x: number, y: number, fill: string, s = 1) => (
   <G transform={`translate(${x} ${y}) scale(${s})`}>
     <Ellipse cx="0" cy="0" rx="10" ry="4.5" fill={fill} />
@@ -93,6 +103,14 @@ const sparkle = (x: number, y: number, r: number, fill: string) => (
   <Path
     d={`M${x} ${y - r} Q${x + r * 0.18} ${y - r * 0.18} ${x + r} ${y} Q${x + r * 0.18} ${y + r * 0.18} ${x} ${y + r} Q${x - r * 0.18} ${y + r * 0.18} ${x - r} ${y} Q${x - r * 0.18} ${y - r * 0.18} ${x} ${y - r}Z`}
     fill={fill}
+  />
+);
+/** A plump heart centered on (x, y), roughly 2.6r wide. */
+const heart = (x: number, y: number, r: number, fill: string, rot = 0) => (
+  <Path
+    d={`M${x} ${y + r * 0.95} C${x - r * 1.5} ${y - r * 0.05} ${x - r * 1.2} ${y - r * 1.35} ${x} ${y - r * 0.5} C${x + r * 1.2} ${y - r * 1.35} ${x + r * 1.5} ${y - r * 0.05} ${x} ${y + r * 0.95}Z`}
+    fill={fill}
+    transform={rot ? `rotate(${rot} ${x} ${y})` : undefined}
   />
 );
 /** A small instant print: border, picture area with a sun and a hill. */
@@ -396,6 +414,20 @@ const SCENES: Record<ArtName, Scene> = {
     </G>
   ),
 
+  // A library leveling up: photo prints climb toward a golden sparkle.
+  // Transparent so the mark belongs to the paywall's chosen page theme.
+  upgrade: (c) => (
+    <G>
+      <Ellipse cx="60" cy="120" rx="43" ry="4" fill={c.ink} opacity="0.07" />
+      {print(14, 77, 28, -12, c, c.canvasMint)}
+      {print(39, 59, 33, -5, c, c.canvasLilac)}
+      {print(67, 39, 38, 7, c, c.canvasBlue)}
+      {sparkle(96, 24, 11, c.sun)}
+      {sparkle(32, 43, 4, c.tealLight)}
+      <Circle cx="58" cy="30" r="2.5" fill={c.sun} />
+    </G>
+  ),
+
   // Memory Match's emblem, big and centered: the app icon's three fanned cards on a fresh
   // mint table, the same mark printed on every face-down card in the game.
   memoryMatch: (c) => (
@@ -436,6 +468,156 @@ const SCENES: Record<ArtName, Scene> = {
         {sparkle(20, 34, 4.2, c.sun)}
         {sparkle(31, 28, 4.2, c.sun)}
         {sparkle(104, 118, 2.8, c.terracotta)}
+      </G>
+    );
+  },
+
+  // Recents: fresh prints landing on the pile, newest on top, under a little clock.
+  recents: (c) => (
+    <G>
+      {sky(c.canvasMint)}
+      <G transform="translate(60 76) scale(1.16) translate(-60 -76)">
+      <Ellipse cx="60" cy="112" rx="44" ry="5" fill={c.ink} opacity="0.07" />
+      {print(12, 64, 30, -14, c, c.coral)}
+      {print(36, 56, 34, -4, c, c.tealLight)}
+      {print(62, 50, 38, 8, c, c.sage)}
+      <Path d="M18 50 H32 M14 56 H26" stroke={c.paper} strokeWidth="2.4" strokeLinecap="round" opacity={0.9} />
+      <Circle cx="94" cy="44" r="14" fill={c.sun} />
+      <Circle cx="94" cy="44" r="10.5" fill={c.paper} />
+      <Line x1="94" y1="44" x2="94" y2="37" stroke={c.ink} strokeWidth="1.8" strokeLinecap="round" />
+      <Line x1="94" y1="44" x2="99" y2="46.5" stroke={c.terracotta} strokeWidth="1.8" strokeLinecap="round" />
+      <Circle cx="94" cy="44" r="1.6" fill={c.ink} />
+      {sparkle(56, 36, 4.2, c.sun)}
+      {sparkle(108, 104, 3, c.terracotta)}
+      </G>
+    </G>
+  ),
+
+  // Favorites: a treasured print with a big heart sticker and a few hearts floating up.
+  favorites: (c) => (
+    <G>
+      {sky(c.canvasBlush)}
+      <G transform="translate(60 76) scale(1.16) translate(-60 -76)">
+      <Ellipse cx="58" cy="114" rx="38" ry="5" fill={c.ink} opacity="0.07" />
+      <G transform="rotate(-6 56 76)">
+        <Rect x="33.5" y="51" width="46" height="54" rx="3" fill={c.ink} opacity="0.12" />
+      </G>
+      {print(32, 48, 46, -6, c, c.tealLight)}
+      {heart(84, 52, 15, c.terracotta, 12)}
+      <Path d="M77 46 Q79 42 83 42" stroke={c.paper} strokeWidth="2.2" strokeLinecap="round" fill="none" opacity={0.85} />
+      {heart(22, 42, 5.5, c.coral, -14)}
+      {heart(100, 98, 4.5, c.rose, 10)}
+      {heart(30, 112, 3.5, c.terracotta, -8)}
+      {sparkle(102, 30, 3.6, c.sun)}
+      {sparkle(14, 80, 2.8, c.sun)}
+      </G>
+    </G>
+  ),
+
+  // All Photos: the whole library as one contact sheet of tiny pictures, more stacked behind.
+  allPhotos: (c) => {
+    const tints = [c.tealLight, c.sage, c.coral, c.canvasBlue, c.rose, c.tealLight, c.sage, c.canvasButter, c.coral];
+    return (
+      <G>
+        {sky(c.canvasPeach)}
+      <G transform="translate(60 76) scale(1.16) translate(-60 -76)">
+        <Ellipse cx="60" cy="118" rx="44" ry="5" fill={c.ink} opacity="0.07" />
+        <Rect x="26" y="36" width="72" height="78" rx="6" fill={c.paper} opacity={0.55} transform="rotate(8 62 75)" />
+        <G transform="rotate(-4 60 75)">
+          <Rect x="25" y="39" width="72" height="78" rx="6" fill={c.ink} opacity="0.1" />
+          <Rect x="24" y="36" width="72" height="78" rx="6" fill={c.paper} />
+          {tints.map((tint, i) => {
+            const x = 29 + (i % 3) * 21.5;
+            const y = 41 + Math.floor(i / 3) * 21.5;
+            return (
+              <G key={i}>
+                <Rect x={x} y={y} width="19" height="19" rx="2" fill={tint} />
+                {i % 2 === 0 && <Circle cx={x + 13.5} cy={y + 5.5} r="2.4" fill={c.sun} />}
+                <Path d={`M${x} ${y + 19} Q${x + (i % 3 === 1 ? 12 : 7)} ${y + 9} ${x + 19} ${y + 19}Z`} fill={i % 3 === 2 ? c.sandDeep : c.moss} opacity={0.85} />
+              </G>
+            );
+          })}
+        </G>
+        {sparkle(104, 34, 4.2, c.sun)}
+        {sparkle(16, 98, 3, c.terracotta)}
+      </G>
+      </G>
+    );
+  },
+
+  // Largest videos: a chunky film frame with a big play button, bursting its corners
+  // to say "this one takes up a lot of room".
+  largeVideos: (c) => (
+    <G>
+      {sky(c.canvasButter)}
+      <Ellipse cx="60" cy="118" rx="44" ry="5" fill={c.ink} opacity="0.08" />
+      <G transform="rotate(-4 60 78)">
+        <Rect x="21.5" y="50" width="80" height="60" rx="8" fill={c.ink} opacity="0.14" />
+        <Rect x="20" y="46" width="80" height="60" rx="8" fill={c.tealDeep} />
+        {[0, 1, 2, 3, 4, 5].map((i) => (
+          <G key={i}>
+            <Rect x={26 + i * 12.6} y="49" width="6" height="4" rx="1.2" fill={c.paper} opacity={0.85} />
+            <Rect x={26 + i * 12.6} y="99" width="6" height="4" rx="1.2" fill={c.paper} opacity={0.85} />
+          </G>
+        ))}
+        <Rect x="26" y="56" width="68" height="40" rx="3" fill={c.tealLight} />
+        <Circle cx="80" cy="64" r="4.5" fill={c.sun} />
+        <Path d="M26 96 Q44 72 62 88 Q74 78 94 92 V96Z" fill={c.moss} />
+        <Circle cx="60" cy="76" r="13" fill={c.terracotta} />
+        <Polygon points="56,69 56,83 68,76" fill={c.paper} />
+      </G>
+      {[
+        ["M14 40 L24 50", "M14 40 H21", "M14 40 V47"],
+        ["M106 40 L96 50", "M106 40 H99", "M106 40 V47"],
+        ["M14 118 L24 108", "M14 118 H21", "M14 118 V111"],
+        ["M106 118 L96 108", "M106 118 H99", "M106 118 V111"],
+      ].map((arrow, i) => (
+        <Path key={i} d={arrow.join(" ")} stroke={c.terracotta} strokeWidth="3" strokeLinecap="round" fill="none" />
+      ))}
+      {sparkle(60, 30, 4.5, c.terracotta)}
+    </G>
+  ),
+
+  // All videos: a clapperboard snapping shut in front of a fan of little video cards.
+  allVideos: (c) => {
+    const clip = (x: number, y: number, rot: number, tint: string) => (
+      <G transform={`rotate(${rot} ${x + 20} ${y + 14})`}>
+        <Rect x={x + 1.5} y={y + 2.5} width="40" height="28" rx="4" fill={c.ink} opacity="0.13" />
+        <Rect x={x} y={y} width="40" height="28" rx="4" fill={c.paper} />
+        <Rect x={x + 3} y={y + 3} width="34" height="22" rx="2" fill={tint} />
+        <Polygon points={`${x + 17},${y + 9} ${x + 17},${y + 19} ${x + 25},${y + 14}`} fill={c.paper} />
+      </G>
+    );
+    return (
+      <G>
+        {sky(c.canvasMint)}
+        <Ellipse cx="60" cy="118" rx="44" ry="5" fill={c.ink} opacity="0.08" />
+        {clip(10, 40, -14, c.canvasBlue)}
+        {clip(70, 36, 12, c.tealLight)}
+        <G transform="rotate(-3 60 90)">
+          <Rect x="27.5" y="71" width="66" height="44" rx="5" fill={c.ink} opacity="0.14" />
+          <Rect x="26" y="68" width="66" height="44" rx="5" fill={c.ink} />
+          <Rect x="32" y="80" width="40" height="3" rx="1.5" fill={c.paper} opacity={0.75} />
+          <Rect x="32" y="88" width="28" height="3" rx="1.5" fill={c.paper} opacity={0.5} />
+          <Rect x="32" y="96" width="34" height="3" rx="1.5" fill={c.paper} opacity={0.5} />
+          <Circle cx="80" cy="96" r="7" fill={c.terracotta} />
+          <Polygon points="77.5,92 77.5,100 84,96" fill={c.paper} />
+          {/* Clapper: black-and-white stripes on the base and the open lid slant in opposite
+              directions (a chevron when closed), like a real clapperboard; hinged at the left. */}
+          <Rect x="26" y="58" width="66" height="10" rx="1.5" fill={c.paper} />
+          {[0, 1, 2, 3, 4].map((i) => (
+            <Polygon key={i} points={`${31 + i * 13},58 ${38 + i * 13},58 ${32 + i * 13},68 ${25 + i * 13},68`} fill={c.ink} />
+          ))}
+          <G transform="rotate(-14 27 57)">
+            <Rect x="26" y="46" width="66" height="10" rx="1.5" fill={c.paper} />
+            {[0, 1, 2, 3, 4].map((i) => (
+              <Polygon key={i} points={`${25 + i * 13},46 ${32 + i * 13},46 ${38 + i * 13},56 ${31 + i * 13},56`} fill={c.ink} />
+            ))}
+          </G>
+        </G>
+        {sparkle(100, 82, 4, c.sun)}
+        {sparkle(20, 92, 3, c.sun)}
+        {sparkle(58, 28, 3.4, c.terracotta)}
       </G>
     );
   },

@@ -9,6 +9,7 @@ import { MediaImage } from "@/components/pictopia/media-image";
 import { useLift } from "@/components/pictopia/playful";
 import { usePictopia } from "@/components/pictopia/provider";
 import { plural } from "@/lib/pictopia/text";
+import { useTheme } from "@/theming/ThemeProvider";
 import { BATCH_SIZE, lookalikeStore, type Batch, type GroupView, type LookalikeIndex, type ScanProgress } from "@/services/lookalikes";
 
 /** Duplicate Hunt (Pictopia+): every set of look-alike photos as a card with its count.
@@ -26,7 +27,7 @@ export default function DuplicateHunt() {
   const [attempt, setAttempt] = useState(0);
   const [building, setBuilding] = useState(false);
   const latest = useRef<LookalikeIndex>(undefined);
-  useEffect(() => { if (app.ready && !app.pro) router.replace("/paywall"); }, [app.ready, app.pro]);
+  useEffect(() => { if (app.ready && !app.pro) router.replace({ pathname: "/paywall", params: { entry: "Duplicates" } }); }, [app.ready, app.pro]);
 
   const build = useCallback(async (index: LookalikeIndex) => {
     const next = await lookalikeStore.batch(index);
@@ -155,6 +156,9 @@ const GroupCard = memo(function GroupCard({ view, reviewed, lift }: { view: Grou
   const sorted = reviewed || (discarded > 0 && discarded >= items.length - 1);
   const date = new Date(best.created).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
   const kind = group.kind === "copies" ? "Copies" : "Similar";
+  // The count/check badge: muted ink by day, black at night so it reads on the sun and grass fills.
+  const night = useTheme().theme.name === "dark";
+  const ring = night ? "border-black" : "border-muted-foreground", ink = night ? "text-black" : "text-muted-foreground";
   return <Pressable accessibilityRole="button" accessibilityLabel={`${group.kind === "copies" ? "Identical copies" : "Similar shots"}, ${plural(items.length, "photo")}, ${date}${discarded ? `, ${discarded} discarded` : ""}${reviewed ? ", reviewed" : ""}`}
     onPress={() => router.push({ pathname: "/duplicate-group", params: { group: group.id } })} className="flex-1 active:opacity-90">
     <View style={lift} className={`flex-1 overflow-hidden rounded-[16px] bg-card ${reviewed ? "opacity-60" : ""}`}>
@@ -162,8 +166,8 @@ const GroupCard = memo(function GroupCard({ view, reviewed, lift }: { view: Grou
         {tiles.map(m => <View key={m.id} className={`overflow-hidden rounded-[8px] bg-muted ${tiles.length === 2 ? "h-full w-[48.5%]" : tiles.length === 3 && m === best ? "h-full w-[48.5%]" : "h-[48.5%] w-[48.5%]"}`}>
           <MediaImage media={m} thumbnail className={`flex-1 ${m.decision === "delete" ? "opacity-40" : ""}`} />
         </View>)}
-        <View className={`absolute bottom-2 right-2 h-7 min-w-7 items-center justify-center rounded-full border-2 border-muted-foreground px-1.5 ${sorted ? "bg-grass" : "bg-sun"}`}>
-          {sorted ? <Icon name="Check" size={14} strokeWidth={3} className="text-muted-foreground" /> : <Text className="text-[13px] font-bold text-muted-foreground" style={tabular}>{items.length}</Text>}
+        <View className={`absolute bottom-2 right-2 h-7 min-w-7 items-center justify-center rounded-full border-2 ${ring} px-1.5 ${sorted ? "bg-grass" : "bg-sun"}`}>
+          {sorted ? <Icon name="Check" size={14} strokeWidth={3} className={ink} /> : <Text className={`text-[13px] font-bold ${ink}`} style={tabular}>{items.length}</Text>}
         </View>
       </View>
       <View className="px-2 pb-2 pt-0.5">

@@ -69,6 +69,8 @@ export interface Adventure {
   /** Saved atomically after checking the session; survives later Undo/review visits. */
   completionProof?: { version: 1 | 2; at: number; sessionStartedAt: number; endpoint: string; total: number; explored: number };
   priorCompletionProof?: Adventure["completionProof"];
+  /** One durable badge receipt per bounded set, independent of whole-scope completion. */
+  completedSets?: Record<string, NonNullable<Adventure["completionProof"]>>;
   /** Picked in Explore rather than offered on Home. */
   chosen?: boolean;
   /** An Adventure Lab experiment. */

@@ -82,6 +82,7 @@ test('existing achievement and celebration components render simulated state and
   };
   const jsx=(type,props)=>({type,props});
   const mocks={
+    '@/lib/pictopia/feature-flags':{LIFETIME_PLUS_ENABLED:true},
     react,'react/jsx-runtime':{jsx,jsxs:jsx,Fragment:'Fragment'},
     'react-native':{Modal:'Modal',View:'View',ScrollView:'ScrollView',Pressable:'Pressable',AppState:{addEventListener:()=>({remove(){}})}},
     './use-lifetime-test':{useLifetimeTest:()=>store.snapshot()},
@@ -127,7 +128,7 @@ test('downloaded staging builds expose completion testing only with the explicit
     ]) {
       process.env.EXPO_PUBLIC_CURRENT_ENV = env;
       process.env.EXPO_PUBLIC_PICTOPIA_DEV_TOOLS = flag;
-      const isolated = makeLoader({ './repository': {} });
+      const isolated = makeLoader({ './repository': {}, '@/lib/pictopia/feature-flags':{LIFETIME_PLUS_ENABLED:true} });
       const gate = isolated('services/entitlement.ts');
       const { lifetimeTestStore: store } = isolated('services/lifetime-testing.ts');
       assert.equal(gate.LIFETIME_TEST_TOOLS, expected, `${env}/${flag}`);
@@ -142,4 +143,20 @@ test('downloaded staging builds expose completion testing only with the explicit
     if (oldFlag === undefined) delete process.env.EXPO_PUBLIC_PICTOPIA_DEV_TOOLS;
     else process.env.EXPO_PUBLIC_PICTOPIA_DEV_TOOLS = oldFlag;
   }
+});
+
+test('paused launch disables lifetime scenarios even in opted-in development and staging',()=>{
+ const oldEnv=process.env.EXPO_PUBLIC_CURRENT_ENV,oldFlag=process.env.EXPO_PUBLIC_PICTOPIA_DEV_TOOLS;
+ try {
+  process.env.EXPO_PUBLIC_PICTOPIA_DEV_TOOLS='enabled';
+  for(const env of ['DEVELOPMENT','STAGING','PRODUCTION']) {
+   process.env.EXPO_PUBLIC_CURRENT_ENV=env;
+   const isolated=makeLoader({'./repository':{}});
+   const store=isolated('services/lifetime-testing.ts').lifetimeTestStore;
+   assert.equal(store.authorized,false);store.scenario();assert.equal(store.snapshot(),null);
+  }
+ } finally {
+  if(oldEnv===undefined)delete process.env.EXPO_PUBLIC_CURRENT_ENV;else process.env.EXPO_PUBLIC_CURRENT_ENV=oldEnv;
+  if(oldFlag===undefined)delete process.env.EXPO_PUBLIC_PICTOPIA_DEV_TOOLS;else process.env.EXPO_PUBLIC_PICTOPIA_DEV_TOOLS=oldFlag;
+ }
 });

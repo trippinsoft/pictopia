@@ -100,6 +100,8 @@ export interface Preferences {
   showReviewed: boolean;
   reverseSwipe: boolean;
   onboarded: boolean;
+  /** Pending onboarding replay in an authorized development or staging build. */
+  replayOnboarding?: boolean;
   /** Local reminders (see lib/pictopia/reminders.ts). Only sent once the OS allows them. */
   reminders: ReminderPrefs;
 }
@@ -163,6 +165,9 @@ export interface Offer {
   currency: string;
   /** A free trial the store says this person can start now; absent when none is offered. */
   trialDays?: number;
+  /** Undefined if the store eligibility check failed or is unavailable. */
+  trialEligible?: boolean;
+  freeTrialAvailable?: boolean;
 }
 export interface Entitlement {
   active: boolean;

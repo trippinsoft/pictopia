@@ -1,16 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, Platform, Pressable, View } from "react-native";
+import { AccessibilityInfo, AppState, Platform, Pressable, View } from "react-native";
 import { useFocusEffect } from "expo-router";
+import Animated, { FadeOut, useReducedMotion } from "react-native-reanimated";
 import { Icon, Text } from "./ui";
 import { useTheme } from "@/theming/ThemeProvider";
 import { reviewMedia } from "@/services/review-media";
 import type { FavoriteState } from "@/services/review-media.types";
 import type { Media } from "@/lib/pictopia/types";
+
+const favoriteConfirmation = "Added to your favorites";
+const favoriteFadeOut = FadeOut.duration(220);
+
 export function ReviewActions({ media, disabled, queued, legacy, highlighted, onRestore, onUsed }: {
   media?: Media; disabled: boolean; queued: boolean; legacy: boolean; highlighted: boolean;
   onRestore(): void; onUsed(): void;
 }) {
   const { theme } = useTheme();
+  const reducedMotion = useReducedMotion();
   const [favorite, setFavorite] = useState<FavoriteState>(), [working, setWorking] = useState(false), [message, setMessage] = useState<string>();
   const [sharing, setSharing] = useState(false);
   const lock = useRef(false), generation = useRef(0);
@@ -23,7 +29,12 @@ export function ReviewActions({ media, disabled, queued, legacy, highlighted, on
     const subscription = AppState.addEventListener("change", state => { if (state === "active") read(); });
     return () => { alive = false; generation.current++; subscription.remove(); reviewMedia.cancelShare(); };
   }, [media?.id, media?.modified]));
-  useEffect(() => { if (!message) return; const timer = setTimeout(() => setMessage(undefined), 6500); return () => clearTimeout(timer); }, [message]);
+  const favoriteAdded = message === favoriteConfirmation;
+  useEffect(() => {
+    if (!message) return;
+    const timer = setTimeout(() => setMessage(undefined), favoriteAdded ? 1600 : 6500);
+    return () => clearTimeout(timer);
+  }, [message, favoriteAdded]);
   async function act(kind: "favorite" | "share") {
     if (!media || lock.current || disabled) return;
     if (kind === "favorite" && !favorite?.supported) { setMessage(favorite?.reason ?? "Checking your library’s favorite status…"); return; }
@@ -31,8 +42,16 @@ export function ReviewActions({ media, disabled, queued, legacy, highlighted, on
     lock.current = true; setWorking(true); setSharing(kind === "share"); setMessage(undefined);
     try {
       if (kind === "favorite") {
-        const saved = await reviewMedia.setFavorite(media, !favorite?.value);
-        if (generation.current === token) { setFavorite({ supported: true, value: saved }); onUsed(); }
+        const adding = !favorite?.value;
+        const saved = await reviewMedia.setFavorite(media, adding);
+        if (generation.current === token) {
+          setFavorite({ supported: true, value: saved });
+          if (adding && saved) {
+            setMessage(favoriteConfirmation);
+            if (Platform.OS === "ios") AccessibilityInfo.announceForAccessibility(favoriteConfirmation);
+          }
+          onUsed();
+        }
       } else { await reviewMedia.share(media); if (generation.current === token) onUsed(); }
     } catch (error) { if (generation.current === token) setMessage(error instanceof Error ? error.message : "That action couldn’t finish. Please try again."); }
     finally { if (generation.current === token) { lock.current = false; setWorking(false); setSharing(false); } }
@@ -46,6 +65,18 @@ export function ReviewActions({ media, disabled, queued, legacy, highlighted, on
     </Pressable>}
     {native && <Pressable accessibilityRole="button" accessibilityLabel={sharing ? "Preparing original for sharing" : "Share original photograph"} accessibilityState={{ busy: sharing, disabled: disabled || working || !media }} disabled={disabled || working || !media} onPress={() => void act("share")} className="h-12 w-12 items-center justify-center rounded-full bg-card/90 active:opacity-70"><Icon name="Share" size={21} className="text-foreground" /></Pressable>}
     {sharing && !message ? <Text pointerEvents="none" accessibilityLiveRegion="polite" className="absolute bottom-full right-0 mb-2 w-64 rounded-xl bg-card px-3 py-2 text-center text-caption text-foreground">Preparing original for sharing…</Text> : null}
-    {!!message && <Text pointerEvents="none" accessibilityLiveRegion="polite" className="absolute bottom-full right-0 mb-2 w-64 rounded-xl bg-card px-3 py-2 text-center text-caption text-foreground">{message}</Text>}
+    {favoriteAdded ? (
+      <Animated.View
+        exiting={reducedMotion ? undefined : favoriteFadeOut}
+        pointerEvents="none"
+        className="absolute bottom-full right-0 mb-2 w-60 items-end"
+      >
+        <Text accessibilityLiveRegion="polite" className="rounded-xl bg-card px-3 py-2 text-center text-caption text-foreground">
+          {message}
+        </Text>
+      </Animated.View>
+    ) : message ? (
+      <Text pointerEvents="none" accessibilityLiveRegion="polite" className="absolute bottom-full right-0 mb-2 w-64 rounded-xl bg-card px-3 py-2 text-center text-caption text-foreground">{message}</Text>
+    ) : null}
   </View>;
 }

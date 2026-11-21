@@ -2,7 +2,7 @@ module.exports = {
   android: {
     adaptiveIcon: {
       foregroundImage: "./assets/images/adaptive-icon.png",
-      backgroundColor: "#ddefe7"
+      backgroundColor: "#1B212A"
     },
     package: "com.trippinsoft.pictopia",
     versionCode: 1,
@@ -59,10 +59,14 @@ module.exports = {
   "expo-splash-screen",
   {
     image: "./assets/images/splash.png",
-    imageWidth: 160,
+    imageWidth: 288,
     resizeMode: "contain",
-    backgroundColor: "#f8f3e8",
-    dark: { backgroundColor: "#10191d" }
+    backgroundColor: "#E6F3FE",
+    dark: { backgroundColor: "#E6F3FE" },
+    ios: {
+      enableFullScreenImage_legacy: true,
+      resizeMode: "cover"
+    }
   }],
 
 
@@ -76,11 +80,10 @@ module.exports = {
 
 
 
-
   scheme: "pictopia",
   slug: "pictopia",
   userInterfaceStyle: "automatic",
-  version: "1.0.54",
+  version: "1.0.64",
   web: { bundler: "metro", output: "single", favicon: "./assets/images/favicon.png" },
   platforms: ["ios", "android", "web"]
 };

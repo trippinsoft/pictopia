@@ -3,8 +3,8 @@ import { Linking, Platform, View } from "react-native";
 import { router, Stack } from "expo-router";
 import { Button, Icon, Text } from "@/components/pictopia/ui";
 import { usePictopia } from "@/components/pictopia/provider";
-import { Postcard, Wordmark, useLift } from "@/components/pictopia/playful";
-import { Illustration } from "@/components/pictopia/illustration";
+import { Postcard } from "@/components/pictopia/playful";
+import { Welcome } from "@/components/pictopia/onboarding/welcome";
 import { OnboardingFrame, QuietAction } from "@/components/pictopia/onboarding/frame";
 import { ScrollDemo, SpaceDemo, SwipeDemo } from "@/components/pictopia/onboarding/demos";
 import { LibraryReveal } from "@/components/pictopia/onboarding/reveal";
@@ -12,14 +12,13 @@ import { Planning } from "@/components/pictopia/onboarding/planning";
 import { TrialOffer } from "@/components/pictopia/onboarding/trial";
 import { adventureName } from "@/lib/pictopia/catalog";
 import { STORY_STEPS, TAGLINE, yearTotals, type OnboardingStep } from "@/lib/pictopia/onboarding";
-import { openLegal } from "@/lib/pictopia/links";
 import type { IconName } from "@/lib/icons/LucideIcon";
 import { adventureStore, type AdventureSlot } from "@/services/adventures";
 import { notificationService } from "@/services/notifications";
 import { storage } from "@/services/repository";
 
 const STORY: Record<"scroll" | "swipe" | "space", { title: string; body: string; demo: () => ReactElement }> = {
-  scroll: { title: "Scroll through your memories", body: "Your photos, one after another, like a feed. Scroll past the ones you love and they stay put.", demo: ScrollDemo },
+  scroll: { title: "Scroll through your memories", body: "Enjoy your photos, one after another, like a feed. Scroll past the ones you love and they stay put.", demo: ScrollDemo },
   swipe: { title: "Swipe away what you don’t need", body: "Swiped photos land in Discarded. Nothing is deleted until you say so.", demo: SwipeDemo },
   space: { title: "Watch the space add up", body: "Delete your discards in one go, free up storage, and earn streaks and badges along the way.", demo: SpaceDemo },
 };
@@ -41,9 +40,10 @@ function AccessRow({ icon, title, body }: { icon: IconName; title: string; body:
  * questions: Pictopia picks where to start. */
 export default function Onboarding() {
   const app = usePictopia();
-  const lift = useLift();
+  const replay = app.devTools && app.prefs.replayOnboarding === true;
+  const canReuseLibrary = !!app.permission?.granted && app.libraryReliable && app.stats.total > 0;
   // Someone who already gave access (e.g. reopened mid-way) continues from the reveal.
-  const [step, setStep] = useState<OnboardingStep>(() => (app.permission?.granted && app.libraryReliable && app.stats.total > 0 ? "reveal" : "welcome"));
+  const [step, setStep] = useState<OnboardingStep>(() => !replay && canReuseLibrary ? "reveal" : "welcome");
   const [connecting, setConnecting] = useState(false);
   const [accessError, setAccessError] = useState<string>();
   const [pick, setPick] = useState<AdventureSlot | null>();
@@ -51,10 +51,10 @@ export default function Onboarding() {
   const years = useMemo(() => yearTotals(app.months), [app.months]);
 
   const finish = useCallback(async (then?: () => Promise<void>) => {
-    await app.updatePrefs({ onboarded: true });
+    await app.updatePrefs(replay ? { onboarded: true, replayOnboarding: false } : { onboarded: true });
     router.replace("/(tabs)/home");
     if (then) await then();
-  }, [app]);
+  }, [app, replay]);
 
   // Pictopia picks the first adventure while the planning screen plays.
   useEffect(() => {
@@ -65,6 +65,10 @@ export default function Onboarding() {
   }, [step, pick]);
 
   async function allowAccess() {
+    if (replay && canReuseLibrary) {
+      setStep("reveal");
+      return;
+    }
     setConnecting(true);
     setAccessError(undefined);
     try {
@@ -94,26 +98,7 @@ export default function Onboarding() {
   const screen = <Stack.Screen options={{ title: "Welcome to Pictopia", headerShown: false, gestureEnabled: false }} />;
 
   if (step === "welcome") return <>{screen}
-    <OnboardingFrame footer={<>
-      <Button large onPress={() => setStep("scroll")}>Get started</Button>
-      <Text className="pt-1 text-center text-caption leading-6 text-muted-foreground">
-        By continuing you agree to our{" "}
-        <Text accessibilityRole="link" onPress={() => void openLegal("terms").catch(() => {})} className="text-caption text-tertiary">Terms</Text>
-        {" "}and{" "}
-        <Text accessibilityRole="link" onPress={() => void openLegal("privacy").catch(() => {})} className="text-caption text-tertiary">Privacy Policy</Text>
-      </Text>
-    </>}>
-      <View className="items-center gap-7">
-        <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[lift, { transform: [{ rotate: "-3deg" }] }]} className="h-72 w-56 rounded-[26px] bg-card p-2.5">
-          <View className="flex-1 overflow-hidden rounded-[18px]"><Illustration name="detour" /></View>
-        </View>
-        <View className="items-center gap-3">
-          <Wordmark />
-          <Text accessibilityRole="header" className="text-center text-display text-foreground">{TAGLINE}</Text>
-          <Text className="text-center text-body leading-6 text-muted-foreground">Scroll through your memories. Swipe away the clutter. Just a few minutes a day.</Text>
-        </View>
-      </View>
-    </OnboardingFrame>
+    <Welcome onStart={() => setStep("scroll")} />
   </>;
 
   if (step === "scroll" || step === "swipe" || step === "space") {
@@ -137,7 +122,7 @@ export default function Onboarding() {
   if (step === "access") return <>{screen}
     <OnboardingFrame footer={<>
       <Button large disabled={connecting} onPress={() => void allowAccess()}>
-        {connecting ? (app.syncProgress ? `Getting to know your photos… ${app.syncProgress}` : "Opening your library…") : Platform.OS === "web" ? "Choose photos & videos" : "Allow access"}
+        {connecting ? (app.syncProgress ? `Getting to know your photos… ${app.syncProgress}` : "Opening your library…") : replay && canReuseLibrary ? "Continue with current access" : Platform.OS === "web" ? "Choose photos & videos" : "Allow access"}
       </Button>
       {accessError && Platform.OS !== "web" ? <QuietAction onPress={() => void Linking.openSettings()}>Open Settings</QuietAction> : null}
     </>}>
@@ -145,7 +130,7 @@ export default function Onboarding() {
         <Text accessibilityRole="header" className="text-center text-h1 text-foreground">Let’s meet your photos</Text>
         <View className="gap-5">
           <AccessRow icon="Images" title="Your photos" body={Platform.OS === "web" ? "Choose photos and videos from this device. Nothing is uploaded, and originals are never deleted here." : "So Pictopia can show you your memories. They stay on your phone: no account, nothing uploaded."} />
-          {Platform.OS !== "web" ? <AccessRow icon="Bell" title="Reminders" body="A gentle nudge to keep your streak going. At most one a day, and you can change it in Settings." /> : null}
+          {Platform.OS !== "web" ? <AccessRow icon="Bell" title="Reminders" body="A gentle nudge to keep your streak going. You can manage reminders in Settings." /> : null}
         </View>
         {accessError ? <Text accessibilityRole="alert" className="text-center text-body leading-6 text-destructive">{accessError}</Text> : null}
       </View>
@@ -165,7 +150,7 @@ export default function Onboarding() {
 
   if (step === "planning") return <>{screen}
     <OnboardingFrame footer={<View className="h-14" />}>
-      <Planning ready={pick !== undefined} total={app.stats.total} onDone={() => setStep(app.pro ? "ready" : "trial")} />
+      <Planning ready={pick !== undefined} total={app.stats.total} onDone={() => setStep(replay || !app.pro ? "trial" : "ready")} />
     </OnboardingFrame>
   </>;
 

@@ -6,11 +6,21 @@ import CryptoKit
 public class PictopiaAnalysisModule: Module {
   private let review = PictopiaReview()
   private let picks = PictopiaPicks()
+  private let mosaic = PictopiaMosaic()
   private let lock = NSLock()
   private var currentRequest: PHAssetResourceDataRequestID?
   private let queue = DispatchQueue(label: "pictopia.analysis", qos: .utility)
   public func definition() -> ModuleDefinition {
     Name("PictopiaAnalysis")
+    AsyncFunction("subscriptionAnalyticsHistory") { (ids: [String]) async throws -> [String] in
+      return try await PictopiaSubscriptionAnalytics.history(ids)
+    }
+    AsyncFunction("subscriptionAnalyticsSnapshot") { (ids: [String]) async throws -> [String: Any] in
+      return try await PictopiaSubscriptionAnalytics.snapshot(ids)
+    }
+    AsyncFunction("subscriptionAnalyticsTransaction") { (id: String, ids: [String]) async -> [String: Any]? in
+      return await PictopiaSubscriptionAnalytics.transaction(id, ids: ids)
+    }
     AsyncFunction("verifyLifetimeSignature") { (payload: String, signature: String, publicKey: String) -> Bool in
       guard payload.utf8.count <= 2048,
         let keyData = Data(base64Encoded: publicKey),
@@ -23,6 +33,21 @@ public class PictopiaAnalysisModule: Module {
       Events("onReady", "onUnavailable")
       Prop("assetId") { (view: PictopiaLivePhotoView, id: String) in view.load(id: id) }
     }
+    View(PictopiaMosaicView.self) {
+      Events("onTile")
+      Prop("imageUri") { (view: PictopiaMosaicView, uri: String) in view.load(uri) }
+    }
+    AsyncFunction("mosaicStart") { (token: String, limit: Int, promise: Promise) in
+      self.mosaic.start(token, limit: limit, promise: promise)
+    }
+    AsyncFunction("mosaicScan") { (token: String, promise: Promise) in self.mosaic.scan(token, promise: promise) }
+    AsyncFunction("mosaicRender") { (token: String, scene: Int, ids: [String], targets: [Int], columns: Int, promise: Promise) in
+      self.mosaic.render(token, scene: scene, ids: ids, targets: targets, columns: columns, promise: promise)
+    }
+    AsyncFunction("mosaicInspect") { (token: String, id: String, promise: Promise) in
+      self.mosaic.inspect(token, id: id, promise: promise)
+    }
+    Function("mosaicClear") { (token: String) in self.mosaic.clear(token) }
     Function("cancel") {
       self.lock.lock(); let request = self.currentRequest; self.lock.unlock()
       if let request = request { PHAssetResourceManager.default().cancelDataRequest(request) }

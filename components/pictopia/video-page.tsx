@@ -17,10 +17,10 @@ type Phase = "idle" | "resolving" | "cloud" | "downloading" | "ready" | "failed"
 const RESOLVE_TIMEOUT = 90000, DOWNLOAD_TIMEOUT = 600000;
 
 /** Playback only: the poster, review credit and discard never wait for it. Only an explicit
- * second tap downloads an iCloud video; stale resolutions and departed/background players
+ * tap on the iCloud prompt downloads a video; stale resolutions and departed/background players
  * cannot start playback. The native player exists only while this video is on screen. */
-export function VideoPage({ media, active, playing, onPlayingChange, onReady, nativeScroll }: {
-  media: Media; active: boolean; playing: boolean;
+export function VideoPage({ media, active, autoplay, playing, onPlayingChange, onReady, nativeScroll }: {
+  media: Media; active: boolean; autoplay?: boolean; playing: boolean;
   onPlayingChange(playing: boolean): void; onReady?(): void;
   /** The feed's scroll, held still while the progress bar is being dragged. */
   nativeScroll?: NativeGesture;
@@ -28,6 +28,7 @@ export function VideoPage({ media, active, playing, onPlayingChange, onReady, na
   const [phase, setPhase] = useState<Phase>("idle"), [uri, setUri] = useState<string | null>(null);
   const retrieval = useRef<AbortController | undefined>(undefined);
   const generation = useRef(0), requested = useRef(false), foreground = useRef(AppState.currentState === "active"), focused = useRef(false);
+  const autoplayAttempted = useRef(false);
   const ready = useRef(onReady); ready.current = onReady;
   const shownSource = useRef(uri); shownSource.current = uri;
   // Other ways to open the same video, tried in turn before playback is reported as failed.
@@ -40,18 +41,28 @@ export function VideoPage({ media, active, playing, onPlayingChange, onReady, na
   }, []);
   useEffect(() => {
     retrieval.current?.abort();
+    autoplayAttempted.current = false;
     generation.current++; requested.current = false; fallbacks.current = []; setUri(null); setPhase("idle");
     return () => { retrieval.current?.abort(); generation.current++; };
   }, [media.id]);
   // Effects below depend on stable callbacks and refs only. Recreating the player (retry,
   // or returning to this video) must never look like leaving, or it cancels its own load.
   useEffect(() => {
-    if (!active) { halt(); owner.current?.pause(); onPlayingChange(false); }
+    if (!active) {
+      autoplayAttempted.current = false;
+      halt(); owner.current?.pause(); onPlayingChange(false);
+    }
   }, [active, halt, onPlayingChange]);
   useFocusEffect(useCallback(() => {
     focused.current = true;
     return () => { focused.current = false; halt(); owner.current?.pause(); onPlayingChange(false); };
   }, [halt, onPlayingChange]));
+  useEffect(() => {
+    if (!autoplay || !active || autoplayAttempted.current || !foreground.current || !focused.current) return;
+    autoplayAttempted.current = true;
+    // Leave the iCloud prompt and playback errors for the user to act on.
+    if (phase === "idle" || phase === "ready") onPlayingChange(true);
+  }, [autoplay, active, media.id, phase, onPlayingChange]);
   // Tapping again while a source is still being fetched cancels it (an iCloud download too).
   useEffect(() => {
     if (!playing && requested.current && !uri) { reviewTrace("video.source.cancelled", { photo: tracePhoto(media.id) }); halt(); }

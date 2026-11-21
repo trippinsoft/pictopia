@@ -1,4 +1,5 @@
 import { storage } from "./repository";
+import { LIFETIME_PLUS_ENABLED } from "@/lib/pictopia/feature-flags";
 import {
   DEV_OVERRIDE_KEY,
   devToolsAuthorized,
@@ -16,9 +17,8 @@ export const DEV_TOOLS = devToolsAuthorized({
   dev: typeof __DEV__ !== "undefined" && __DEV__ === true,
 });
 
-// Share the same explicit non-production gate as the rest of Developer tools so
-// downloaded Staging builds can exercise completion without a development server.
-export const LIFETIME_TEST_TOOLS = DEV_TOOLS;
+// Lifetime simulations require both the launch flag and authorized developer tools.
+export const LIFETIME_TEST_TOOLS = DEV_TOOLS && LIFETIME_PLUS_ENABLED;
 
 type Listener = (override: DevOverride) => void;
 const listeners = new Set<Listener>();

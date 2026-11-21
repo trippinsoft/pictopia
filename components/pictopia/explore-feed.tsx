@@ -46,6 +46,7 @@ export interface ExploreFeedHandle {
   traversal(): string[];
 }
 interface Props {
+  autoplayVideo?: boolean;
   session: ExploreSession;
   media: Record<string, Media>;
   getSession(): ExploreSession;
@@ -651,6 +652,7 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
                   onCountUnavailable={props.onCountUnavailable}
                   reviewed={!!session.review && !!session.records[id]?.encountered}
                   active={id === activeId}
+                  autoplayVideo={props.autoplayVideo}
                   nearby={shownIndex >= 0 && index >= shownIndex - 1 && index <= shownIndex + 2}
                   entrance={entering?.id === id ? entering.from : undefined}
                   pageHeight={height}

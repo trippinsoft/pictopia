@@ -50,14 +50,14 @@ export const lightArt: ArtPalette = {
   paper: "#FFFFFF",
   ink: "#1C2457",
   grain: "#1C2457",
-  // One step deeper and a little richer than the matching page pastels in Settings, so a
-  // scene still reads as its own color on the page theme of the same hue.
-  canvasBlue: "#CDE3FA",
-  canvasMint: "#CCEEDA",
-  canvasLilac: "#E0D3F7",
-  canvasBlush: "#F8D3DE",
-  canvasButter: "#F8E4AE",
-  canvasPeach: "#FBD9B8",
+  // Clearly deeper and more saturated than the matching page pastels in Settings, so a
+  // scene pops as its own color on any page theme instead of reading as a faded pastel.
+  canvasBlue: "#A9D2FB",
+  canvasMint: "#A3E4C1",
+  canvasLilac: "#CDB5F6",
+  canvasBlush: "#F8B2C7",
+  canvasButter: "#FBD873",
+  canvasPeach: "#FDBE8C",
 };
 export const darkArt: ArtPalette = {
   sky: "#2A1E36",

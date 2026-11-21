@@ -58,6 +58,11 @@ const fs = require("node:fs");
     await see("Where to today?", 40000);
 
     await settings();
+    await page.getByRole("button", { name: "Photomosaic Lab", exact: true }).click();
+    await see("Open on iPhone");
+    await shot("photomosaic-lab-iphone-requirement");
+    await page.getByLabel("Back", { exact: true }).click();
+    await see("Developer tools");
     await see("No active purchase");
     await radio("Free").click();
     await radio("3").click();

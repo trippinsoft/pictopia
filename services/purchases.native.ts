@@ -16,6 +16,9 @@ import {
   type ProductSubscription,
 } from "expo-iap";
 import { PurchaseService } from "./purchases.types";
+import { subscriptionAnalytics } from "./subscription-analytics";
+import { trackSubscriptionAnalytics } from "./analytics";
+import { offerProperties, type FailureReason } from "@/lib/pictopia/subscription-analytics";
 import type { Entitlement, Offer } from "@/lib/pictopia/types";
 import {
   PRO_PRODUCT_IDS,
@@ -31,7 +34,23 @@ const os = Platform.OS === "ios" ? "ios" : "android";
 const PACKAGE = "com.trippinsoft.pictopia";
 let connection: Promise<boolean> | null = null;
 let products: ProductSubscription[] = [];
-const waiting = new Map<string, { resolve(): void; reject(e: Error): void }>();
+type Pending = { resolve(): void; reject(e: Error): void; baseline: string[] | null; analytics: boolean; failed?: boolean; handling?: boolean };
+const waiting = new Map<string, Pending>();
+let offers: Offer[] = [];
+function failure(id: string, reason: FailureReason, pending?: Pending) {
+  if (!pending?.analytics || pending.failed) return;
+  pending.failed = true;
+  trackSubscriptionAnalytics("purchase_failed", {
+    product_id: id, plan: offerKind(id) ?? "unknown", error_reason: reason, user_cancelled: reason === "user_cancelled",
+  });
+}
+function errorReason(error: unknown): FailureReason {
+  if (isUserCancelledError(error)) return "user_cancelled";
+  const code = (error as { code?: string } | null)?.code;
+  if (code === "network-error") return "network_error";
+  if (code === "item-unavailable" || code === "iap-not-available" || code === "service-unavailable") return "unavailable";
+  return "store_error";
+}
 
 function connect() {
   connection ??= initConnection().catch((e: unknown) => {
@@ -57,6 +76,7 @@ async function check(): Promise<Entitlement> {
   await connect();
   const subscriptions = await getActiveSubscriptions(PRO_PRODUCT_IDS);
   const current = subscriptions.find((s) => s.isActive && PRO_PRODUCT_IDS.includes(s.productId));
+  void subscriptionAnalytics.observe();
   return entitlementFrom(
     subscriptions,
     os,
@@ -70,7 +90,9 @@ export const purchaseService: PurchaseService = {
     const updated = purchaseUpdatedListener((purchase) => {
       if (!owned(purchase)) return;
       const pending = waiting.get(purchase.productId);
+      if (pending?.handling) return;
       if (purchase.purchaseState === "pending") {
+        failure(purchase.productId, "pending_approval", pending);
         waiting.delete(purchase.productId);
         pending?.reject(
           Error(
@@ -79,20 +101,31 @@ export const purchaseService: PurchaseService = {
         );
         return;
       }
+      if (purchase.purchaseState !== "purchased") return;
+      if (pending) pending.handling = true;
       void settle(purchase)
         .then(check)
         .then((e) => {
+          if (pending?.analytics && os === "ios") {
+            if (e.active) void subscriptionAnalytics.completed(purchase.transactionId || purchase.id, purchase.productId, pending.baseline);
+            else failure(purchase.productId, "verification_failed", pending);
+          }
           listener(e);
           waiting.delete(purchase.productId);
           pending?.resolve();
         })
-        .catch(() => pending?.resolve());
+        .catch(() => {
+          failure(purchase.productId, "verification_failed", pending);
+          waiting.delete(purchase.productId);
+          pending?.resolve();
+        });
     });
     const failed = purchaseErrorListener((error) => {
       const id = error.productId ?? [...waiting.keys()][0];
       const pending = id ? waiting.get(id) : undefined;
       if (!id || !pending) return;
       waiting.delete(id);
+      failure(id, errorReason(error), pending);
       pending.reject(
         Error(
           isUserCancelledError(error)
@@ -121,11 +154,11 @@ export const purchaseService: PurchaseService = {
     );
     // Google Play lists only the offers this person is eligible for; StoreKit lists the
     // introductory offer to everyone, so iOS also asks whether this Apple ID can still use it.
-    const eligible = new Map<string, boolean>();
+    const eligible = new Map<string, boolean | undefined>();
     if (os === "ios")
       for (const group of new Set(products.map((p) => ("subscriptionGroupIdIOS" in p ? p.subscriptionGroupIdIOS : null)).filter((g): g is string => !!g)))
-        eligible.set(group, await isEligibleForIntroOfferIOS(group).catch(() => false));
-    return products.flatMap((p) => {
+        eligible.set(group, await isEligibleForIntroOfferIOS(group).catch(() => undefined));
+    offers = products.flatMap((p) => {
       const kind = offerKind(p.id);
       const group = "subscriptionGroupIdIOS" in p ? p.subscriptionGroupIdIOS : null;
       const trial = os === "ios" && (!group || !eligible.get(group)) ? undefined : freeTrialDays(p.subscriptionOffers);
@@ -137,11 +170,14 @@ export const purchaseService: PurchaseService = {
               price: p.displayPrice,
               amount: p.price ?? 0,
               currency: p.currency,
+              freeTrialAvailable: !freeTrialDays(p.subscriptionOffers) ? false : os === "ios" ? group ? eligible.get(group) : undefined : true,
+              trialEligible: os === "ios" ? group ? eligible.get(group) : undefined : !!freeTrialDays(p.subscriptionOffers),
               ...(trial ? { trialDays: trial } : {}),
             } satisfies Offer,
           ]
         : [];
     });
+    return offers;
   },
   refresh: check,
   async evidence(refreshOwnership = false) {
@@ -163,7 +199,16 @@ export const purchaseService: PurchaseService = {
     if (!PRO_PRODUCT_IDS.includes(id)) throw Error("This plan is unavailable.");
     const product = products.find((p) => p.id === id);
     if (!product) throw Error("This plan is unavailable. Refresh the plans and try again.");
-    const done = new Promise<void>((resolve, reject) => waiting.set(id, { resolve, reject }));
+    if (waiting.has(id)) throw Error("A purchase is already in progress.");
+    const analytics = await subscriptionAnalytics.enabled();
+    const baseline = analytics && os === "ios" ? await subscriptionAnalytics.prepare() : null;
+    if (waiting.has(id)) throw Error("A purchase is already in progress.");
+    const offer = offers.find(o => o.id === id);
+    if (analytics) trackSubscriptionAnalytics("purchase_started", { product_id: id, plan: offerKind(id) ?? "unknown", trial_eligibility: "unknown", ...(offer ? offerProperties(offer) : {}) });
+    let pending!: Pending;
+    const done = new Promise<void>((resolve, reject) => { pending = { resolve, reject, baseline, analytics }; waiting.set(id, pending); });
+    // Store listeners may reject before requestPurchase settles; attach a handler immediately.
+    void done.catch(() => {});
     try {
       if (os === "ios") await requestPurchase({ request: { apple: { sku: id } }, type: "subs" });
       else {
@@ -186,6 +231,7 @@ export const purchaseService: PurchaseService = {
         });
       }
     } catch (e) {
+      failure(id, errorReason(e), pending);
       waiting.delete(id);
       throw Error(
         isUserCancelledError(e)
@@ -202,6 +248,8 @@ export const purchaseService: PurchaseService = {
     await connect();
     await restorePurchases();
     for (const purchase of await getAvailablePurchases()) await settle(purchase);
-    return check();
+    const entitlement = await check();
+    if (entitlement.active && os === "ios") void subscriptionAnalytics.restored();
+    return entitlement;
   },
 };

@@ -104,6 +104,7 @@ test('historical backfill verifies distinct adventures, ignores counter/false en
   const badges = load('services/badges.ts');
   const { evaluateBadges } = load('lib/pictopia/badges.ts');
   const old = evaluateBadges(undefined, { explorer: 396, adventurer: 25 }, 1).state;
+  old.earned.adventurer = { tier: 4, earnedAt: 1, value: 25 };
   delete old.verification; // A pre-audit saved award, not a current verified receipt.
   await app.storage.setValue('badges:v1', old);
   const r = await badges.badgeStore.evaluate();
@@ -111,7 +112,7 @@ test('historical backfill verifies distinct adventures, ignores counter/false en
   assert.deepEqual(r.audit.verified, ['good']);
   assert.deepEqual(r.audit.unverified, ['bad']);
   assert.equal(r.audit.legacyCount, 25);
-  assert.equal(r.state.earned.adventurer.tier, 1, 'only the supported completion is confirmed');
+  assert.equal(r.state.earned.adventurer.tier, 1, 'one supported completion earns Level I; the unsupported legacy claim does not count');
   assert.equal(r.state.legacy.adventurer.tier, 4, 'the original claim is archived intact');
   assert.equal(r.values.explorer, 2, 'video and duplicate snapshots never add photo credit');
   assert.equal(r.values.declutterer, 0);
@@ -182,7 +183,7 @@ test('Progress and badge values share a serialized snapshot after repeated encou
   db.close();
 });
 
-test('all badge thresholds award only at the threshold, including reported Explorer I and Adventurer IV', () => {
+test('all badge thresholds award only at the threshold, including Explorer I and Adventurer III', () => {
   const b = makeLoader()('lib/pictopia/badges.ts');
   for (const def of b.BADGES) for (const [i, threshold] of def.tiers.entries()) {
     assert.equal(b.tierFor(def, threshold - 1), i);

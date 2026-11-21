@@ -71,7 +71,7 @@ export function MediaImage({
   const token = sourceTicket.current.uri === source ? sourceTicket.current.generation : -1;
   function settle(state: MediaSettled) {
     if (token !== generation.current) return;
-    if (state === "loaded") { if (source) { successful.current = { key, uri: source }; if (media) rememberDisplay(media, source); } clearTimeout(timeout.current); setLoaded(true); setFailed(false); }
+    if (state === "loaded") { if (source) { successful.current = { key, uri: source }; if (media && !isPreview(source)) rememberDisplay(media, source); } clearTimeout(timeout.current); setLoaded(true); setFailed(false); }
     report.current?.(state);
   }
   function fail() { if (token === generation.current) { clearTimeout(timeout.current); lastFailed.current = true; setFailed(true); report.current?.("failed"); } }
@@ -79,7 +79,9 @@ export function MediaImage({
     const ticket = ++generation.current;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
-    if (successful.current?.key === key) {
+    // A local preview stands in until a full review surface may fetch the sharp copy.
+    const sharpWanted = networkAllowed && allowRetry;
+    if (successful.current?.key === key && !(sharpWanted && isPreview(successful.current.uri))) {
       sourceTicket.current = { uri: successful.current.uri, generation: ticket };
       lastFailed.current = false;
       setSource(successful.current.uri); setLoaded(true); setFailed(false);
@@ -105,6 +107,7 @@ export function MediaImage({
         }
         return reviewMedia.thumbnail(media);
       }
+      if (media?.type === "photo" && !allowRetry) return decorative(media, controller.signal);
       if (media?.type === "photo") {
         const downloading = active && download && downloadFor.current === media.id;
         // A fresh display can hit a transient PhotoKit/iCloud hiccup. Retry a few times —
@@ -159,13 +162,15 @@ export function MediaImage({
   return (
     <View pointerEvents={allowRetry ? "auto" : "none"} style={style} className={className}>
       {failed && !quietFailure ? (
-        failureContent ?? <View className="flex-1 items-center justify-center bg-secondary p-3">
+        failureContent ?? (!allowRetry ? <View className="flex-1 items-center justify-center bg-muted">
+          <Icon name="Image" className="text-muted-foreground" size={22} />
+        </View> : <View className="flex-1 items-center justify-center bg-secondary p-3">
           <Icon name="CloudOff" className="text-muted-foreground" size={26} />
           <Text className="mt-2 text-caption text-center text-muted-foreground">
             {media?.type === "video" ? "Video preview unavailable" : cloud ? "This photo is in iCloud" : "Photo couldn’t load. Check photo access or try again."}
           </Text>
           {media?.type === "photo" && active && allowRetry && <Pressable accessibilityRole="button" onPress={() => { downloadFor.current = media.id; setDownload(cloud); setAttempt(value => value + 1); }} className="mt-3 min-h-11 items-center justify-center px-4"><Text className="text-button text-foreground">{cloud ? "Download photo" : "Try again"}</Text></Pressable>}
-        </View>
+        </View>)
       ) : media?.type === "video" && !nativeVideo && source ? (
         <VideoPoster uri={source} fit={fit} onReady={() => settle("loaded")} onFailed={fail} />
       ) : source ? (
@@ -189,6 +194,27 @@ export function MediaImage({
       )}
     </View>
   );
+}
+
+/** Native local previews are written as `<hash>-preview.jpg`; never treated as the sharp copy. */
+function isPreview(uri: string) { return uri.includes("-preview.jpg"); }
+
+/** Covers, tiles and onboarding: never error copy, and photos kept only in iCloud ("Optimize
+ * iPhone Storage") still appear. Local display copy → small cached thumbnail (the newest build
+ * fetches a small one from iCloud) → one display-size fetch from iCloud. */
+async function decorative(media: Media, signal: AbortSignal): Promise<string> {
+  let lastError: unknown;
+  const steps: (() => Promise<string>)[] = [
+    () => photoDisplay(media, false, signal),
+    () => reviewMedia.thumbnail(media),
+    () => photoDisplay(media, true, signal),
+  ];
+  for (const step of steps) {
+    if (signal.aborted) throw Error("Aborted");
+    try { const value = await step(); if (value) return value; }
+    catch (error) { lastError = error; }
+  }
+  throw lastError ?? Error("Unavailable");
 }
 
 const fillStyle = { width: "100%" as const, height: "100%" as const };

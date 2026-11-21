@@ -18,6 +18,7 @@ import { ReminderHost } from "@/components/pictopia/use-reminders";
 import { BadgeCelebrationHost } from "@/components/pictopia/badge-celebration";
 import { LifetimeAwardNotice } from "@/components/pictopia/lifetime-award-notice";
 import { ReferralSync } from "@/components/pictopia/referral-sync";
+import { AnalyticsHost } from "@/components/pictopia/analytics-host";
 import { systemAppearanceService } from "@/services/system-appearance";
 import { ThemeProvider, useTheme } from "@/theming/ThemeProvider";
 import darkTheme from "@/theming/themes/dark";
@@ -168,6 +169,7 @@ function RootContent() {
           })}
         >
           <Stack.Screen name="settings" options={{ title: "Settings", presentation: "modal" }} />
+          <Stack.Screen name="photomosaic-lab" options={{ title: "Photomosaic Lab" }} />
           <Stack.Screen name="on-this-day" options={{ title: "On This Day" }} />
           <Stack.Screen name="time-machine" options={{ title: "The Yearbook" }} />
           <Stack.Screen name="pit-stops" options={{ title: "Pit Stops" }} />
@@ -188,6 +190,7 @@ function RootContent() {
           />
         </Stack>
         <ReminderHost />
+        <AnalyticsHost />
         <ReferralSync ready={ready} />
         <BadgeCelebrationHost />
         <LifetimeAwardNotice />

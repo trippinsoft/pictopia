@@ -809,11 +809,14 @@ export const adventureStore = {
       const adventure = await loadMeta(id);
       const session = await loadSession(id);
       if (!adventure || !session || !completionEvidence(session)) return { ask: false };
+      const set = String(adventure.segment ?? 0);
+      const completedSets = { ...adventure.completedSets,
+        [set]: adventure.completedSets?.[set] ?? completionProof(session, Date.now()) };
       if (extendable(adventure)) {
         const status = await scopeStatus(adventure);
         const award = journeyMilestone(status.explored, status.total, adventure.milestones ?? []);
         const milestones = [...new Set([...(adventure.milestones ?? []), ...award.crossed])];
-        await storage.setValue(metaKey(id), { ...adventure, milestones });
+        await storage.setValue(metaKey(id), { ...adventure, milestones, completedSets });
         if (!status.complete) return { ask: false };
       }
       const index = await loadIndex();
@@ -825,9 +828,10 @@ export const adventureStore = {
         const due = !adventure.lab && completed >= 2 && completed - (index.askedAt ?? 0) >= 3;
         if (due) index.askedAt = index.finished;
         const at = adventure.finishedAt ?? Date.now();
-        await storage.put([], { [metaKey(id)]: { ...(await loadMeta(id)), priorCompletionProof: adventure.completionProof, finishedAt: at, completionProof: completionProof(session, at) }, [ADVENTURES_KEY]: index });
+        await storage.put([], { [metaKey(id)]: { ...(await loadMeta(id)), completedSets, priorCompletionProof: adventure.completionProof, finishedAt: at, completionProof: completionProof(session, at) }, [ADVENTURES_KEY]: index });
         return { ask: due && !answered };
       }
+      await storage.setValue(metaKey(id), { ...(await loadMeta(id)), completedSets });
       return { ask: false };
     });
   },

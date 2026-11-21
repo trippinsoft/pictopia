@@ -10,7 +10,7 @@ import { serialize, storage } from "@/services/repository";
 import type { WallMonth as CalendarProgress } from "@/services/storage.types";
 import type { Media } from "@/lib/pictopia/types";
 import { explorationPercent, wallPercent } from "@/lib/pictopia/library-progress";
-import { plural } from "@/lib/pictopia/text";
+import { libraryReadyLabel, plural } from "@/lib/pictopia/text";
 
 type MonthData = { key: string; month: CalendarProgress; scope: `month:${string}` | "unknown" };
 type Row =
@@ -76,7 +76,7 @@ export default function Timeline() {
           error ? (
             <View className="gap-4 pt-6"><Text className="text-body text-destructive">Your timeline couldn’t be loaded.</Text><Button onPress={() => setRetry(n => n + 1)}>Try again</Button></View>
           ) : (
-            <View className="gap-3 pt-6"><Loading />{!app.busy && app.ready && <Button onPress={() => void app.connect()}>Connect library</Button>}</View>
+            <View className="gap-3 pt-6"><Loading label={libraryReadyLabel(app.syncProgress)} />{!app.busy && app.ready && <Button onPress={() => void app.connect()}>Connect library</Button>}</View>
           )
         ) : months.length === 0 ? (
           <View className="gap-4 pt-6">
@@ -144,7 +144,7 @@ function MonthRow({ row, onOpen, lift }: { row: MonthData; onOpen: () => void; l
       className="mb-2.5 flex-row items-center gap-3 rounded-[16px] bg-card px-3 py-2.5 active:opacity-80"
     >
       <View style={coverStyle} className="overflow-hidden bg-muted">
-        {cover && <MediaImage media={cover} fit="cover" style={StyleSheet.absoluteFill} />}
+        {cover ? <MediaImage media={cover} thumbnail fit="cover" style={StyleSheet.absoluteFill} /> : null}
       </View>
       <View className="flex-1">
         <Text className="text-h5 text-foreground">{label}</Text>

@@ -20,8 +20,8 @@ export default function TabLayout() {
       {(
         [
           { name: "home", title: "Home", icon: "House" },
-          { name: "timeline", title: "Timeline", icon: "CalendarDays" },
           { name: "explore", title: "Explore", icon: "Compass" },
+          { name: "timeline", title: "Timeline", icon: "CalendarDays" },
           { name: "progress", title: "Progress", icon: "ChartNoAxesColumn" },
           // Retired from navigation (code and saved data kept); old links still resolve.
           { name: "swipe", title: "Swipe", icon: "Layers2", hidden: true },

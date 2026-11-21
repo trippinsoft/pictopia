@@ -1,4 +1,5 @@
 - Pictopia uses local SQLite/media references on native and IndexedDB for user-selected browser files; cleanup requires no backend or account.
+- Optional Amplitude analytics uses anonymous app lifecycle and allowlisted screen events, excluding all personal media and route parameters.
 - Rewards target the owner's existing Pictopia Supabase project in Data Systems Inc.; photo handling stays local and offline-first, with no user accounts or cloud photo storage.
 - Native SHA-256 and thumbnail quality analysis run in an autolinked local Expo module; browser and store limitations are explicit.
 - RevenueCat uses one `pro` entitlement across monthly, annual, and lifetime; real product pricing is supplied by the stores.
@@ -143,6 +144,7 @@ The review interaction uses the original 1.0.21 live feed: marked photos leave s
 - Pictopia+ testing uses one entitlement resolver with developer overrides that only development and opted-in staging builds honor; Production fails closed.
 - On This Day shows only media from earlier calendar years (matches SwipeWipe/Picnic); current-year media, including screenshots, is left out on every date.
 - Videos are reviewed and discarded from their poster like photos; playback, iCloud download and playback failures never block discard or review credit.
+- Video autoplay follows the active page in native review. Cloud downloads and full-screen video playback start on a tap.
 - App icon switched to the white-tile stacked-photo artwork (replacing the light-blue tile).
 - Near-copies (same quick series or identical hash) of photos already shown count as seen, so later sets of 20 don't feel like repeats.
 - Onboarding can no longer be skipped: the story's Skip and the access screen's Not now were removed; the trial offer keeps its close button (store requirement).
@@ -184,3 +186,27 @@ The review interaction uses the original 1.0.21 live feed: marked photos leave s
 - 2026-11-15: Duplicate Hunt returned to Explore (Pictopia+), rebuilt on on-device preview prints with a set grid and thumbnail-crossfade review.
 - Duplicate Hunt shows look-alike sets in batches of 50; reviewed sets make way for new ones on the next visit (owner's suggestion, for a calmer, faster screen).
 - 2026-11-15: Dark mode launched for everyone (Settings › Theme: System / Light / Dark, default System); The Big Picture becomes a night scene in dark mode.
+- 2026-11-15: Pictopia+ paywall simplified to Picnic/SwipeWipe structure: "Choose your plan", one "up to 5× faster" promise (unvalidated marketing claim), two store plans, one button; technical feature checklist removed.
+
+- Home adaptive spacing uses independent content measurements to remove cross-revision layout feedback while preserving postcards, fact interaction and natural scrolling.
+
+- Pictopia+ for Life launch and its simulation controls are paused until after release; existing signed awards remain valid.
+
+- Adventurer counts each completed curated set once, including continuation sets; whole-year exploration remains Time Traveller, and verifiable saved sets receive credit.
+- Adventurer starts at five completed sets, with subsequent levels at 10, 25, 50, 100 and 250; previously earned levels remain saved.
+- iOS subscription access requires a finite, future StoreKit expiry; missing expiry never creates a fallback access period.
+- Onboarding trial follows SwipeWipe/Picnic: try → reminder → Picnic timeline, ✕ after 4 s to the free version; trial is a 3-day store introductory offer on Weekly, not an in-app grant.
+- Pictopia doesn't send a trial-ending reminder; onboarding tells people to set their own (so Pictopia never promises a notification that might not arrive).
+
+- Explore’s On This Day card follows the current local date on focus, foreground and midnight; Home facts use persisted random bags with recent-repeat protection.
+- Welcome uses the stacked-photo brand artwork, pastel waves and the scroll/swipe message while preserving the existing onboarding flow.
+
+- Subscription conversions require exact verified StoreKit transactions and a local delivery ledger; lifetime access and app-closed renewals remain separate from purchase analytics.
+- Home section gaps are flex spacers resolved by the layout engine; measuring sections into state to pick 4 pt gaps made Home bounce between two layouts and was removed.
+- Photomosaic Lab trials four real photo-tile scenes under Developer tools, separate from The Big Picture’s progress artwork.
+- Explore keeps PLUS labels visible after unlocking Pictopia+ so subscribers can still recognize the features included in their plan.
+- Explore: Recents, Favorites and All Photos became full-width rows with drawn illustrations instead of photo covers, for a consistent list.
+- Explore: artwork backdrops made more saturated so illustrations pop; "Utilities" heading added above Screenshot Sweep / Largest videos, which now has its own illustration.
+- Explore: larger tile titles; Duplicate Hunt and All videos became a square pair under Utilities, and All videos got its own illustration.
+- Explore: Utilities cards shortened to 3:2 pictures (zoomed-out `wide` framing) to save vertical space.
+- Adventurer badge: Level I now at 1 finished adventure (then 5/10/25/50/100/250) so new users earn an early badge; existing holders move up one level.

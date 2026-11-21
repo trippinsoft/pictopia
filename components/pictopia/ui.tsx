@@ -106,12 +106,12 @@ export function Empty({
     </View>
   );
 }
-export function Loading() {
+export function Loading({ label }: { label?: string }) {
   const { theme } = useTheme();
   return (
     <View className="items-center p-10">
       <ActivityIndicator color={theme.colors.primary} />
-      <Text className="mt-3 text-body text-muted-foreground">Getting things ready…</Text>
+      <Text className="mt-3 text-center text-body text-muted-foreground">{label || "Getting things ready…"}</Text>
     </View>
   );
 }

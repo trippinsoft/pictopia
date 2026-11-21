@@ -1,35 +1,43 @@
 import { lifetimeTestStore } from "@/services/lifetime-testing";
-import React, { useEffect, useState } from "react";
-import { View, Pressable, Platform } from "react-native";
-import { router } from "expo-router";
-import { Page, Text, Icon, Button, Loading } from "@/components/pictopia/ui";
+import React, { useCallback, useEffect, useState } from "react";
+import { View, Platform, ScrollView } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { router, useLocalSearchParams } from "expo-router";
+import { usePaywallAnalytics } from "@/components/pictopia/use-paywall-analytics";
+import { Page, Text, Button, Loading } from "@/components/pictopia/ui";
 import { usePictopia } from "@/components/pictopia/provider";
+import { NavigationBack } from "@/components/pictopia/navigation-header";
+import { PaywallHero, PaywallLinks, PlanOptions } from "@/components/pictopia/paywall";
 import { purchaseService } from "@/services/purchases";
 import { openLegal, manageSubscription } from "@/lib/pictopia/links";
+import { defaultPlan, paywallPlans, planAction, planTerms } from "@/lib/pictopia/paywall";
 import { Offer } from "@/lib/pictopia/types";
+
+/** Pictopia+: one headline, one promise, two store plans and one button. */
 export default function Paywall() {
   const app = usePictopia();
-  const [offers, setOffers] = useState<Offer[]>([]),
+  const { entry } = useLocalSearchParams<{ entry?: string }>();
+  const [plans, setPlans] = useState<Offer[]>([]),
     [selected, setSelected] = useState(""),
     [loading, setLoading] = useState(true),
     [working, setWorking] = useState(false),
     [error, setError] = useState("");
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true);
+    setError("");
     void purchaseService
       .offers()
       .then((o) => {
-        setOffers(o);
-        setSelected(o.find((x) => x.kind === "annual")?.id ?? o[0]?.id ?? "");
+        const shown = paywallPlans(o);
+        setPlans(shown);
+        setSelected(defaultPlan(shown)?.id ?? "");
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
-  const monthly = offers.find((o) => o.kind === "monthly"),
-    annual = offers.find((o) => o.kind === "annual");
-  const savings =
-    monthly && annual && monthly.currency === annual.currency && monthly.amount > 0
-      ? Math.floor((1 - annual.amount / (monthly.amount * 12)) * 100)
-      : 0;
+  useEffect(load, [load]);
+  const offer = plans.find((o) => o.id === selected);
+  const selectAnalytics = usePaywallAnalytics(entry, app.pro, app.ready, plans, offer);
   /** Back to exactly where Pro was offered. A review stopped by the daily limit is still
    * open underneath, at the same photo, and now continues without a limit. */
   function leave() {
@@ -44,15 +52,21 @@ export default function Paywall() {
       const e = await purchaseService.purchase(selected);
       await app.setEntitlement(e);
       if (e.active) leave();
-      else
-        setError(
-          "The store has not confirmed active Pictopia+ access yet. Try Restore Purchases after approval.",
-        );
+      else setError("The store hasn’t confirmed Pictopia+ yet. Try Restore purchases once it’s approved.");
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setWorking(false);
     }
+  }
+  function restore() {
+    setWorking(true);
+    setError("");
+    void app
+      .restorePurchases()
+      .then(leave)
+      .catch((e) => setError(e.message))
+      .finally(() => setWorking(false));
   }
   if (app.entitlementSource === "lifetime") return <Page title="Pictopia+ for Life">
     <View className="gap-4 py-6">
@@ -62,125 +76,44 @@ export default function Paywall() {
       {error ? <Text accessibilityRole="alert" className="text-body text-destructive">{error}</Text> : null}
     </View>
   </Page>;
+
+  const links = [
+    { title: "Restore purchases", run: restore },
+    ...(app.pro && app.entitlementSource === "store"
+      ? [{ title: "Manage subscription", run: () => void manageSubscription(app.entitlement?.managementURL).catch((e) => setError(e.message)) }]
+      : []),
+    { title: "Terms", run: () => void openLegal("terms").catch((e) => setError(e.message)) },
+    { title: "Privacy", run: () => void openLegal("privacy").catch((e) => setError(e.message)) },
+  ];
+  const platform = Platform.OS === "ios" || Platform.OS === "android" ? Platform.OS : "web";
   return (
-    <Page title="A little extra brilliance">
-      <View className="mx-auto max-w-xl">
-        <View className="items-center">
-          <View className="mb-5 h-20 w-20 items-center justify-center rounded-3xl bg-accent">
-            <Icon name="Sparkles" size={38} className="text-primary" />
-          </View>
-          <Text className="text-h1 text-center text-foreground">
-            Less searching.{"\n"}More space.
-          </Text>
-          <Text className="mt-4 text-body text-center leading-6 text-muted-foreground">
-            Pictopia+ finds the clutter, so you can focus on the keepers.
-          </Text>
-        </View>
-        <View className="my-7 gap-4">
-          {[
-            "Find exact duplicates with file-content hashes",
-            "Compare similar shots and best-shot suggestions",
-            "Review likely blurry photos and large videos",
-            "Keep every photo analysis on your device",
-          ].map((t) => (
-            <View key={t} className="flex-row items-center gap-3">
-              <Icon name="CircleCheck" size={20} className="text-primary" />
-              <Text className="flex-1 text-body leading-6 text-foreground">{t}</Text>
-            </View>
-          ))}
-        </View>
+    <SafeAreaView edges={["top", "left", "right", "bottom"]} className="flex-1 bg-background">
+      <View className="mx-auto w-full max-w-md px-5 pt-2">
+        <NavigationBack onPress={leave} label="Close" />
+      </View>
+      <ScrollView contentContainerClassName="mx-auto w-full max-w-md flex-grow justify-center gap-6 px-6 pb-4" bounces={false}>
+        <PaywallHero />
         {loading ? (
           <Loading />
+        ) : plans.length ? (
+          <PlanOptions plans={plans} selected={selected} onSelect={id => { selectAnalytics(id); setSelected(id); }} disabled={working} />
+        ) : Platform.OS === "web" ? (
+          <Text className="text-center text-body text-muted-foreground">Pictopia+ is available in the Pictopia app for iPhone and Android.</Text>
         ) : (
-          <View className="gap-3">
-            {(offers.length ? (["weekly", "monthly", "annual", "lifetime"] as const).filter((k) => offers.some((o) => o.kind === k)) : (["monthly", "annual"] as const)).map((kind) => {
-              const o = offers.find((x) => x.kind === kind);
-              return (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: o?.id === selected, disabled: !o || working }}
-                  disabled={!o || working}
-                  key={kind}
-                  onPress={() => {
-                    if (o) setSelected(o.id);
-                  }}
-                  className={`flex-row items-center justify-between rounded-2xl border p-5 ${o?.id === selected ? "border-primary bg-accent" : "border-border bg-card"}`}
-                >
-                  <View className="w-full gap-1">
-                    <View className="flex-row items-start justify-between gap-3">
-                      <Text className="min-w-0 flex-1 text-h5 text-foreground">
-                        {kind === "weekly" ? "Pictopia+ Weekly" : kind === "monthly" ? "Pictopia+ Monthly" : kind === "annual" ? "Pictopia+ Yearly" : "Pictopia+ Lifetime"}
-                      </Text>
-                      <Text className="max-w-[50%] text-right text-h5 text-primary">{o?.price ?? "Unavailable"}</Text>
-                    </View>
-                    <Text className="text-caption text-muted-foreground">
-                      {o?.trialDays ? `${o.trialDays}-day free trial, then renews automatically. Cancel anytime.` : kind === "lifetime" ? "One payment. Ongoing Pictopia+ access." : kind === "annual" && savings > 0 ? `Save ${savings}% compared with monthly` : "Renews automatically. Cancel anytime."}
-                    </Text>
-                  </View>
-                </Pressable>
-              );
-            })}
+          <View className="items-center gap-2">
+            <Text className="text-center text-body text-muted-foreground">Plans couldn’t load from the store.</Text>
+            <Button secondary onPress={load}>Try again</Button>
           </View>
         )}
-        {!!error && (
-          <Text accessibilityRole="alert" className="mt-5 text-body leading-6 text-destructive">
-            {error}
-          </Text>
-        )}
-        {Platform.OS === "web" && (
-          <Text className="mt-5 text-body leading-6 text-muted-foreground">
-            Store prices, purchases, and restoration are available in the native app. No purchase is
-            simulated in this preview.
-          </Text>
-        )}
-        <View className="mt-6">
-          <Button disabled={working || !selected || app.pro} onPress={() => void buy()}>
-            {app.pro
-              ? "Pictopia+ is already unlocked"
-              : working
-                ? "Waiting for the store…"
-                : "Continue with selected plan"}
-          </Button>
-        </View>
-        <Text className="mt-4 text-caption text-center leading-5 text-muted-foreground">
-          Payment is charged to your store account. Subscriptions renew unless cancelled at least 24
-          hours before the end of the current period. Manage or cancel in your store account.
-        </Text>
-        <View className="mt-5 flex-row flex-wrap justify-center gap-1">
-          {[
-            {
-              title: "Restore purchases",
-              action: () => {
-                setWorking(true);
-                void app
-                  .restorePurchases()
-                  .then(leave)
-                  .catch((e) => setError(e.message))
-                  .finally(() => setWorking(false));
-              },
-            },
-            {
-              title: "Manage subscription",
-              action: () =>
-                void manageSubscription(app.entitlement?.managementURL).catch((e) =>
-                  setError(e.message),
-                ),
-            },
-            {
-              title: "Privacy",
-              action: () => void openLegal("privacy").catch((e) => setError(e.message)),
-            },
-            {
-              title: "Terms",
-              action: () => void openLegal("terms").catch((e) => setError(e.message)),
-            },
-          ].map((l) => (
-            <Pressable disabled={working} key={l.title} onPress={l.action} className="p-3">
-              <Text className="text-caption text-primary">{l.title}</Text>
-            </Pressable>
-          ))}
-        </View>
+        {error ? <Text accessibilityRole="alert" className="text-center text-body leading-6 text-destructive">{error}</Text> : null}
+      </ScrollView>
+      <View className="mx-auto w-full max-w-md gap-2 px-6 pb-2 pt-2">
+        {offer && !app.pro ? <Text className="text-center text-caption leading-5 text-muted-foreground">{planTerms(offer, platform)}</Text> : null}
+        <Button large disabled={working || !offer || app.pro} onPress={() => void buy()}>
+          {app.pro ? "Pictopia+ is already unlocked" : working ? "Waiting for the store…" : planAction(offer)}
+        </Button>
+        <PaywallLinks links={links} disabled={working} />
       </View>
-    </Page>
+    </SafeAreaView>
   );
 }

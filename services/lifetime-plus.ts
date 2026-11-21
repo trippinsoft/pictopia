@@ -1,4 +1,5 @@
 import { lifetimeTestStore } from "./lifetime-testing";
+import { LIFETIME_PLUS_ENABLED } from "@/lib/pictopia/feature-flags";
 import { digestStringAsync, CryptoDigestAlgorithm } from "expo-crypto";
 import { storage, serialize } from "./repository";
 import { rewardCredential } from "./referrals";
@@ -27,6 +28,7 @@ export const lifetimePlusStore = {
     return current;
   },
   sync(options?: { restore?: boolean; payment?: boolean; completion?: LocalCompletionAudit }): Promise<void> {
+    if (!LIFETIME_PLUS_ENABLED) return Promise.resolve();
     if (lifetimeTestStore.snapshot()) return Promise.resolve();
     // Signing and store credentials must be configured before release.
     if (!process.env.EXPO_PUBLIC_LIFETIME_PLUS_PUBLIC_KEY) return Promise.resolve();

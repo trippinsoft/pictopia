@@ -49,7 +49,7 @@ function yearsLabel(years: number[]) {
   return `${sorted[0]}–${sorted[sorted.length - 1]}`;
 }
 function dayName(date: string) {
-  return new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { month: "long", day: "numeric" });
+  return new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 export function planReminders(prefs: ReminderPrefs, facts: ReminderFacts, now: number): PlannedReminder[] {
@@ -70,7 +70,7 @@ export function planReminders(prefs: ReminderPrefs, facts: ReminderFacts, now: n
     if (prefs.streak && atRisk && at > now) {
       out.push({ id, at, kind: "streak", title: `Don’t lose your ${current}-day streak 🔥`, body: `Explore ${STREAK_VIEWS} photos today to keep it going.`, url: "/(tabs)/home" });
     } else if (prefs.onThisDay && otd && otd.count > 0 && morning > now) {
-      out.push({ id, at: morning, kind: "onThisDay", title: `On this day: ${plural(otd.count, "photo")}`, body: `Take a trip back to ${dayName(date)} in ${yearsLabel(otd.years)}.`, url: "/on-this-day" });
+      out.push({ id, at: morning, kind: "onThisDay", title: `On this day: ${plural(otd.count, "photo")}`, body: `Take a trip back to ${dayName(date)} from ${yearsLabel(otd.years)}.`, url: "/on-this-day" });
     } else if (prefs.streak && i === 0 && !todayDone && current === 0 && at > now) {
       out.push({ id, at, kind: "streakStart", title: "A few minutes with your photos?", body: `Explore ${STREAK_VIEWS} today to start a streak.`, url: "/(tabs)/home" });
     } else if (prefs.discarded && i === DISCARDED_AFTER && facts.pending.count > 0 && at > now) {

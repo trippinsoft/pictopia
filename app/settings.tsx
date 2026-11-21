@@ -22,6 +22,7 @@ import { syncReminders } from "@/services/reminders";
 import { allowanceStore } from "@/services/daily";
 import { DEV_REVIEW_LIMITS, type DevSubscriptionMode } from "@/lib/pictopia/entitlement";
 import { DEFAULT_FREE_SWIPES } from "@/lib/pictopia/daily";
+import { PAYWALL_TEASER } from "@/lib/pictopia/paywall";
 import type { ReminderPermission } from "@/services/notifications.types";
 
 const SUPPORT = process.env.EXPO_PUBLIC_SUPPORT_EMAIL;
@@ -122,6 +123,7 @@ const MODES: { value: DevSubscriptionMode; label: string }[] = [
 function DeveloperTools({ action }: { action: (work: () => Promise<unknown>) => Promise<void> }) {
   const app = usePictopia();
   const [usage, setUsage] = useState<{ used: number; limit: number }>();
+  const [replaying, setReplaying] = useState(false);
   useEffect(() => {
     let alive = true;
     void Promise.all([allowanceStore.state(), allowanceStore.limit()])
@@ -133,8 +135,19 @@ function DeveloperTools({ action }: { action: (work: () => Promise<unknown>) => 
   const why = app.entitlementSource === "developer"
     ? "Developer override · not a purchase"
     : app.pro ? "Active store purchase" : "No active purchase";
+  async function replayOnboarding() {
+    if (!app.devTools || !app.ready || replaying) return;
+    setReplaying(true);
+    try {
+      await app.updatePrefs({ replayOnboarding: true });
+      router.replace("/onboarding");
+    } finally {
+      setReplaying(false);
+    }
+  }
   return (
     <Group title="Developer tools">
+      <Row title="Photomosaic Lab" onPress={() => router.push("/photomosaic-lab")} />
       <View className="gap-1 border-b border-border px-4 py-3.5">
         <View className="flex-row items-center gap-2">
           <Text className="flex-1 text-body text-foreground">Effective access</Text>
@@ -147,6 +160,10 @@ function DeveloperTools({ action }: { action: (work: () => Promise<unknown>) => 
         <Chips label="Subscription mode" options={MODES} value={app.devOverride.mode} onChange={mode => void action(() => app.setDevOverride({ mode }))} />
         <Text className="text-caption leading-5 text-muted-foreground">Automatic uses the real App Store or Google Play purchase. Free and Pictopia+ ignore it until you switch back.</Text>
       </View>
+      <Pressable accessibilityRole="button" disabled={!app.ready || replaying} onPress={() => void action(replayOnboarding)} className="min-h-14 justify-center gap-0.5 border-b border-border px-4 py-3 active:opacity-70">
+        <Text className="text-body text-primary">{replaying ? "Opening onboarding…" : "Reset onboarding"}</Text>
+        <Text className="text-caption leading-5 text-muted-foreground">Replay from Welcome, including the Pictopia+ offer. Photo progress and store purchases are kept.</Text>
+      </Pressable>
       <View className="gap-2.5 border-b border-border px-4 py-3.5">
         <Text className="text-body text-foreground">Free daily review limit</Text>
         <Chips
@@ -221,7 +238,7 @@ export default function Settings() {
 
         <Pressable
           accessibilityRole="button"
-          onPress={() => (app.pro && app.entitlementSource !== "developer" ? void action(() => manageSubscription(app.entitlement?.managementURL)) : router.push("/paywall"))}
+          onPress={() => (app.pro && app.entitlementSource !== "developer" ? void action(() => manageSubscription(app.entitlement?.managementURL)) : router.push({ pathname: "/paywall", params: { entry: "Settings" } }))}
           style={lift}
           className="mt-4 flex-row items-center gap-3 rounded-[20px] bg-feature px-4 py-4 active:opacity-90"
         >
@@ -239,7 +256,7 @@ export default function Settings() {
                 ? app.entitlement?.expires
                   ? `Renews or ends ${new Date(app.entitlement.expires).toLocaleDateString()} · Manage`
                   : "Unlimited swipes · Manage"
-                : "Unlimited daily swipes"}
+                : PAYWALL_TEASER}
             </Text>
           </View>
           <Icon name="ChevronRight" size={18} className="text-feature-foreground" />
@@ -325,7 +342,7 @@ export default function Settings() {
                     );
                   })}
                 </View>
-                <Text className="text-caption leading-5 text-muted-foreground">At most one a day, and only when there’s a reason: a streak at risk, photos from this date in past years (sent at 8 am), or photos waiting to delete.</Text>
+                <Text className="text-caption leading-5 text-muted-foreground">On This Day reminders arrive at 8 am. Streak and Discarded reminders use the time you choose above.</Text>
               </View>
             </>
           ) : notify === "unsupported" ? (
@@ -339,7 +356,7 @@ export default function Settings() {
 
         <Group title="Photos & feel">
           <Row title="Photo access" value={app.permission?.label ?? "Checking…"} onPress={() => void action(() => (Platform.OS === "web" ? app.connect() : mediaService.manageAccess()))} />
-          <Row title="Play Live Photos & videos">{toggle("autoplay", "Play Live Photos and videos")}</Row>
+          {Platform.OS !== "web" ? <Row title="Autoplay videos in review">{toggle("autoplay", "Autoplay videos in review")}</Row> : null}
           <Row title="Haptics" last>{toggle("haptics", "Haptics")}</Row>
         </Group>
 

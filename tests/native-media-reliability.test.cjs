@@ -122,7 +122,7 @@ test('native resolution uses complete identifiers, accepts photo edits, and requ
   assert.deepEqual(calls,[[m.id,false],[m.id,false],[m.id,true]]);
 });
 
-test('full preview cannot autoplay a pending source after backgrounding or unmounting',async()=>{
+test('full preview waits for manual playback and ignores frames after backgrounding or unmounting',async()=>{
   let finish,appEvent,plays=0,ready=0;
   const owner={current:{replace:()=>new Promise(resolve=>{finish=resolve}),pause(){},play(){plays++}}};
   const h=hooks('app/preview.tsx','Video',{
@@ -133,8 +133,10 @@ test('full preview cannot autoplay a pending source after backgrounding or unmou
     '@/components/pictopia/live-photo':{},'@/components/pictopia/use-photo-encounter':{},'@/components/pictopia/zoom-photo':{},'@/components/pictopia/reset-countdown':{},
     '@/components/pictopia/ui':{Text:'Text'},'@/components/pictopia/provider':{},
     '@/services/repository':{},'@/services/media':{},
-  },{uri:'file://video',autoplay:true,onReady:()=>{ready++}});
-  const tree=h.render();appEvent('background');finish();await tick();
+  },{uri:'file://video',onReady:()=>{ready++}});
+  const tree=h.render();finish();await tick();
+  assert.equal(plays,0);
+  appEvent('background');
   assert.equal(plays,0);tree.props.onFirstFrameRender();assert.equal(ready,0);
   h.unmount();assert.doesNotThrow(()=>tree.props.onFirstFrameRender());assert.equal(ready,0);
 });

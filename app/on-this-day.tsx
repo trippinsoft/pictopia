@@ -31,7 +31,7 @@ export default function OnThisDay() {
   }, [app.ready, loadDates]));
   const open = useCallback(async (date: string) => {
     if (opening.current || !app.ready) return;
-    if (date !== localDate(Date.now()) && !app.pro) { router.push("/paywall"); return; }
+    if (date !== localDate(Date.now()) && !app.pro) { router.push({ pathname: "/paywall", params: { entry: "Adventure" } }); return; }
     opening.current = true; setBusy(true); setError(undefined); setSelection({ date });
     try {
       const adventure = await adventureStore.choose({ kind: "day", date }, Date.now(), app.pro);

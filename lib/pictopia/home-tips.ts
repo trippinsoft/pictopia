@@ -205,13 +205,31 @@ export const HOME_TIPS = [
   "Coral reefs are built by tiny animals called coral polyps.",
 ] as const;
 
-export interface HomeTipState { version: 1; day: string; index: number }
-/** Advance once on a later local day, even after several days away. Clock rollback
- * never cycles through extra tips. This state is independent of allowance/activity. */
-export function nextHomeTip(saved: HomeTipState | undefined, now: number): HomeTipState {
+export interface HomeTipState {
+  version: 1; day: string; index: number;
+  remaining?: number[];
+  recent?: number[];
+}
+const indices = () => HOME_TIPS.map((_, index) => index);
+const validIndex = (index: number) => Number.isInteger(index) && index >= 0 && index < HOME_TIPS.length;
+
+/** A persisted random bag: use every fact before refilling, avoiding the last 50
+ * even across bag boundaries. Legacy selections keep their place until advancement. */
+export function drawHomeTip(saved: HomeTipState | undefined, day: string, random = Math.random): HomeTipState {
+  const recent = saved ? [...new Set([...(saved.recent ?? []).filter(validIndex), saved.index])].slice(-50) : [];
+  let remaining = saved?.remaining?.filter(validIndex);
+  remaining = remaining ? [...new Set(remaining)].filter(index => index !== saved?.index) : indices().filter(index => index !== saved?.index);
+  if (!remaining.length) remaining = indices();
+  const eligible = remaining.filter(index => !recent.includes(index));
+  const pool = eligible.length ? eligible : remaining;
+  const index = pool[Math.min(pool.length - 1, Math.max(0, Math.floor(random() * pool.length)))];
+  return { version: 1, day, index, remaining: remaining.filter(value => value !== index), recent: [...recent, index].slice(-50) };
+}
+
+/** Advance only on a later local day; clock rollback never cycles extra facts. */
+export function nextHomeTip(saved: HomeTipState | undefined, now: number, random = Math.random): HomeTipState {
   const day = localDate(now);
-  const valid = saved?.version === 1 && /^\d{4}-\d{2}-\d{2}$/.test(saved.day) &&
-    Number.isInteger(saved.index) && saved.index >= 0 && saved.index < HOME_TIPS.length;
-  if (!valid) return { version: 1, day, index: 0 };
-  return day <= saved.day ? saved : { version: 1, day, index: (saved.index + 1) % HOME_TIPS.length };
+  const valid = saved?.version === 1 && /^\d{4}-\d{2}-\d{2}$/.test(saved.day) && validIndex(saved.index);
+  if (!valid) return drawHomeTip(undefined, day, random);
+  return day <= saved.day ? saved : drawHomeTip(saved, day, random);
 }

@@ -21,7 +21,7 @@ import { videoSource } from "@/services/video-source";
 import { CLOUD_ONLY } from "@/services/media-errors";
 import { Media } from "@/lib/pictopia/types";
 import { bytes } from "@/lib/pictopia/logic";
-export function Video({ uri, autoplay, onReady }: { uri: string; autoplay: boolean; onReady(): void }) {
+export function Video({ uri, onReady }: { uri: string; onReady(): void }) {
   const { player, status, owner } = useReviewVideo();
   const focused = useRef(false), foreground = useRef(AppState.currentState === "active");
   useFocusEffect(useCallback(() => {
@@ -29,12 +29,8 @@ export function Video({ uri, autoplay, onReady }: { uri: string; autoplay: boole
     return () => { focused.current = false; owner.current?.pause(); };
   }, [owner]));
   useEffect(() => {
-    let live = true;
-    void owner.current?.replace(uri).then(() => {
-      if (live && focused.current && foreground.current && autoplay) owner.current?.play();
-    });
-    return () => { live = false; };
-  }, [uri, autoplay, player, owner]);
+    void owner.current?.replace(uri);
+  }, [uri, owner]);
   useEffect(() => {
     const sub = AppState.addEventListener("change", state => {
       foreground.current = state === "active";
@@ -164,7 +160,7 @@ export default function Preview() {
           </View>} />
         </View>
         <View className="flex-1 overflow-hidden">
-          {!discarded && !allowance.ready ? <Loading /> : !discarded && (allowance.error || (id && !allowance.canReview(id))) ? <Empty icon="Sparkles" title={allowance.error ? "Couldn’t check daily reviews" : `You’ve explored ${allowance.limit ?? DEFAULT_FREE_SWIPES} items today`} description="Your photos and pending marks are safe. Come back tomorrow or explore with Pictopia+." action={<View className="w-full items-center gap-4">{!allowance.error && <ResetCountdown />}<Button onPress={() => allowance.error ? void allowance.reload() : router.push("/paywall")}>{allowance.error ? "Try again" : "Explore with Pictopia+"}</Button></View>} /> : error ? (
+          {!discarded && !allowance.ready ? <Loading /> : !discarded && (allowance.error || (id && !allowance.canReview(id))) ? <Empty icon="Sparkles" title={allowance.error ? "Couldn’t check daily reviews" : `You’ve explored ${allowance.limit ?? DEFAULT_FREE_SWIPES} items today`} description="Your photos and pending marks are safe. Come back tomorrow or explore with Pictopia+." action={<View className="w-full items-center gap-4">{!allowance.error && <ResetCountdown />}<Button onPress={() => allowance.error ? void allowance.reload() : router.push({ pathname: "/paywall", params: { entry: "daily_limit" } })}>{allowance.error ? "Try again" : "Explore with Pictopia+"}</Button></View>} /> : error ? (
             <Empty
               icon="CloudOff"
               title={m?.type === "video" ? "Video unavailable" : "This photo isn’t available locally"}
@@ -179,7 +175,7 @@ export default function Preview() {
           ) : !m || !uri ? (
             <Loading />
           ) : m.type === "video" ? (
-            <Video uri={uri} autoplay={app.prefs.autoplay} onReady={() => setLoadedId(m.id)} />
+            <Video uri={uri} onReady={() => setLoadedId(m.id)} />
           ) : motion && m.livePhoto ? (
             <LivePhoto id={m.id} />
           ) : (

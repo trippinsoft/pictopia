@@ -16,7 +16,7 @@ async function fixture(count = 25) {
   await app.storage.put(rows);
   const service = makeLoader({...p.mocks, './repository':app, './media':{mediaService:app.mediaService}});
   const { adventureStore, adventureSessionKey } = service('services/adventures.ts');
-  return {db,rows,app,p,adventureStore,adventureSessionKey,explore:service('services/explore.ts')};
+  return {db,rows,app,p,adventureStore,adventureSessionKey,badges:service('services/badges.ts'),explore:service('services/explore.ts')};
 }
 async function completeSegment(store) {
   let s = await store.load();
@@ -64,6 +64,9 @@ test('25-photo Yearbook continues as 20 + 5 without repeats, retains its ID, and
     let status = await f.adventureStore.segmentStatus(a.id);
     assert.deepEqual([status.explored,status.total,status.nextCount,status.milestone,status.complete],[20,25,5,75,false]);
     await f.adventureStore.finish(a.id);
+    assert.equal((await f.badges.badgeStore.evaluate()).values.adventurer,1,'the first set earns credit before the year is complete');
+    await f.adventureStore.finish(a.id);
+    assert.equal((await f.badges.badgeStore.evaluate()).values.adventurer,1,'repeated finishes count once');
     assert.equal((await f.adventureStore.segmentStatus(a.id)).milestone,undefined);
     assert.equal((await f.adventureStore.get(a.id)).finishedAt,undefined);
     // Returning to a completed segment opens the next one in the same context.
@@ -73,14 +76,41 @@ test('25-photo Yearbook continues as 20 + 5 without repeats, retains its ID, and
     assert.equal(second.ids.length,5);
     assert.ok(second.ids.every(id=>!first.ids.includes(id)));
     assert.deepEqual((await f.app.storage.getValue(next.segmentKeys[0])).ids,first.ids);
+    assert.equal((await f.badges.badgeStore.evaluate()).values.adventurer,1,'continuation retains the archived set credit');
     await completeSegment(store);
     status = await f.adventureStore.segmentStatus(a.id);
     assert.deepEqual([status.explored,status.total,status.nextCount,status.milestone,status.complete],[25,25,0,100,true]);
     await f.adventureStore.finish(a.id); await f.adventureStore.finish(a.id);
     assert.ok((await f.adventureStore.get(a.id)).finishedAt);
     assert.equal((await f.app.storage.getValue('adventures:v1')).finished,1);
+    const earned = await f.badges.badgeStore.evaluate();
+    assert.equal(earned.values.adventurer,2,'each completed set counts, including the shorter last set');
+    assert.equal(earned.values.years,1,'whole-year completion remains a separate badge fact');
+    await store.change({type:'revisit'});
+    assert.equal((await f.badges.badgeStore.evaluate()).values.adventurer,2,'reopening preserves credit without adding it again');
     assert.deepEqual(f.p.requests,[]);
   } finally { f.db.close(); }
+});
+
+test('saved finished Surprise Me sets backfill once across archived batches without whole-library completion', async () => {
+  const f = await fixture(45);
+  try {
+    const a = await f.adventureStore.choose({kind:'detour'},11);
+    await f.adventureStore.open(a.id);
+    const store = f.explore.exploreStoreFor(f.adventureSessionKey(a.id));
+    await completeSegment(store);
+    // Simulate records created before per-set badge receipts existed.
+    await f.adventureStore.continue(a.id);
+    const unfinished = await f.badges.badgeStore.evaluate();
+    assert.equal(unfinished.values.adventurer,1,'the archived completed set is recovered; the new unfinished set is excluded');
+    await completeSegment(store);
+    await f.adventureStore.finish(a.id);
+    assert.equal((await f.adventureStore.get(a.id)).finishedAt,undefined,'whole-library completion is still separate');
+    assert.equal((await f.badges.badgeStore.evaluate()).values.adventurer,2);
+    const again = await boot(f.db,f.p);
+    const service = makeLoader({...f.p.mocks,'./repository':again,'./media':{mediaService:again.mediaService}});
+    assert.equal((await service('services/badges.ts').badgeStore.evaluate()).values.adventurer,2,'restart cannot duplicate receipts');
+  } finally {f.db.close();}
 });
 
 test('unavailable final segment items prevent false whole-Adventure completion and are not marked or credited', async () => {

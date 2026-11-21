@@ -78,3 +78,29 @@ test('new awards persist atomically, survive restart, and dismiss individually w
     assert.equal((await badges.badgeStore.state()).earned.explorer.tier,2);
   } finally {db.close();}
 });
+
+ test('Adventurer first awards at one set, then five and ten, and preserves existing earned levels', () => {
+  const def = b.BADGES.find(d => d.family === 'adventurer');
+  assert.deepEqual(def.tiers, [1, 5, 10, 25, 50, 100, 250]);
+  let r = b.evaluateBadges(undefined, zero, 1);
+  r = b.evaluateBadges(r.state, {...zero, adventurer: 1}, 2);
+  assert.deepEqual(r.newlyEarned, [{family: 'adventurer', tier: 1}], 'the first finished adventure earns Adventurer I');
+  for (const count of [2, 3, 4]) {
+    r = b.evaluateBadges(r.state, {...zero, adventurer: count}, count + 1);
+    assert.equal(r.state.earned.adventurer.tier, 1);
+    assert.deepEqual(r.newlyEarned, []);
+  }
+  r = b.evaluateBadges(r.state, {...zero, adventurer: 5}, 6);
+  assert.deepEqual(r.newlyEarned, [{family: 'adventurer', tier: 2}]);
+  r = b.evaluateBadges(r.state, {...zero, adventurer: 9}, 7);
+  assert.deepEqual(r.newlyEarned, []);
+  r = b.evaluateBadges(r.state, {...zero, adventurer: 10}, 8);
+  assert.deepEqual(r.newlyEarned, [{family: 'adventurer', tier: 3}]);
+  const old = {...r.state, earned: {adventurer: {tier: 1, earnedAt: 1, value: 1}}};
+  const retained = b.evaluateBadges(old, {...zero, adventurer: 1}, 9);
+  assert.equal(retained.state.earned.adventurer.tier, 1);
+  assert.deepEqual(retained.newlyEarned, []);
+  // An install that earned the old Level I at five sets moves up to Level II (five) and celebrates it.
+  const upgraded = b.evaluateBadges(old, {...zero, adventurer: 5}, 10);
+  assert.deepEqual(upgraded.newlyEarned, [{family: 'adventurer', tier: 2}]);
+});

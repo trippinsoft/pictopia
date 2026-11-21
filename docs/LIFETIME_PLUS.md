@@ -1,5 +1,7 @@
 # Pictopia+ for Life
 
+The feature is paused until a deliberate post-release launch. `LIFETIME_PLUS_ENABLED=false` in `lib/pictopia/feature-flags.ts` hides the unearned achievement and lifetime testing controls and skips automatic completion audits and verification requests. Existing signed awards retain permanent access. Re-enabling requires an explicit code change and published build; no date enables it automatically. The rules below apply when enabled.
+
 ## Eligibility and completion
 
 Only a **currently active, paid Pictopia+ subscription** exposes the achievement beneath The Big Picture or can earn a new award. Any existing paid subscription plan qualifies. Free users, free trials, expired subscriptions, refunded/revoked purchases and developer overrides do not qualify. Canceling renewal leaves the current paid period eligible until expiry. Already-earned lifetime members always retain their award and permanent access.

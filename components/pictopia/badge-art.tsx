@@ -67,10 +67,9 @@ function Emblem({ family, c: C }: { family: BadgeFamily; c: Palette }) {
         </Face>
       );
     case "months":
-      // A calendar page sitting on a desk line, with a big check — a month finished.
+      // A calendar page with a big check — a month finished.
       return (
         <Face family={family} c={C}>
-          <Rect x={8} y={50} width={48} height={6} fill={C.sand} />
           <Rect x={18} y={16} width={28} height={30} rx={3} fill={C.paper} />
           <Rect x={18} y={16} width={28} height={8} rx={3} fill={C.terracotta} />
           <Rect x={23} y={13} width={2.5} height={7} rx={1} fill={C.ink} />
@@ -121,14 +120,12 @@ function Emblem({ family, c: C }: { family: BadgeFamily; c: Palette }) {
         </Face>
       );
     case "streak":
-      // Sunset glow with a flame on the horizon — the streak.
+      // A flame against a sunset glow — the streak.
       return (
         <Face family={family} c={C}>
-          <Rect x={8} y={38} width={48} height={18} fill={C.sand} />
           <Circle cx={32} cy={38} r={14} fill={C.sun} opacity={0.6} />
           <Path d="M32 18 C36 23 40 27 40 34 a8 8 0 0 1 -16 0 c0 -4 2 -6 4 -8 c0 3 2 4 3 4 c-1 -5 0 -8 1 -12z" fill={C.terracotta} />
           <Path d="M32 28 c2 2 3 4 3 6 a3 3 0 0 1 -6 0 c0 -2 1 -4 3 -6z" fill={C.sun} />
-          <Path d="M8 42 H56" stroke={C.sandDeep} strokeWidth={0.8} opacity={0.5} />
         </Face>
       );
   }

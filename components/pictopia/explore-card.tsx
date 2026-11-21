@@ -42,6 +42,7 @@ interface Props {
   marked?: boolean;
   onRestore?(id: string): void;
   active: boolean;
+  autoplayVideo?: boolean;
   /** Next to the shown photo: its display copy is fetched (from iCloud if needed) ahead of
    * time, so it is ready when it scrolls or slides in. */
   nearby?: boolean;
@@ -82,6 +83,7 @@ export const ExploreCard = memo(
       marked = false,
       onRestore,
       active,
+      autoplayVideo,
       nearby = false,
       entrance,
       pageHeight,
@@ -490,7 +492,7 @@ export const ExploreCard = memo(
             </Animated.View>
           )}
           {media && isVideo && (
-            <VideoPage media={media} active={active} playing={videoPlaying} onPlayingChange={setVideoPlaying} onReady={() => setPhase("loaded")} nativeScroll={nativeScroll} />
+            <VideoPage media={media} active={active} autoplay={!marked && autoplayVideo} playing={videoPlaying} onPlayingChange={setVideoPlaying} onReady={() => setPhase("loaded")} nativeScroll={nativeScroll} />
           )}
           {phase === "loading" && active && !isVideo && (
             <View className="absolute bottom-4 self-center rounded-full bg-background px-4 py-2">

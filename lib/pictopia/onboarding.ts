@@ -5,8 +5,10 @@ import type { Month, Offer } from "./types";
 
 export const TAGLINE = "The faster, more fun way to clean up your photo library";
 const DAY = 86400000;
-/** How long before a trial converts the reminder arrives. */
-export const TRIAL_REMINDER_DAYS_BEFORE = 2;
+/** The trial timeline's middle step: the day before the charge for short trials (Picnic's 3
+ * days: today → in 2 days → in 3 days), two days before for longer ones. Pictopia doesn't send
+ * a trial-ending notification; people set their own reminder. */
+export const trialReminderDaysBefore = (trialDays: number) => (trialDays <= 3 ? 1 : 2);
 
 export type OnboardingStep = "welcome" | "scroll" | "swipe" | "space" | "access" | "reveal" | "planning" | "trial" | "ready";
 export const STORY_STEPS: OnboardingStep[] = ["scroll", "swipe", "space"];
@@ -35,10 +37,10 @@ export function leadOffer(offers: readonly Offer[]) {
   const sorted = [...offers].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
   return sorted.find(o => o.trialDays) ?? offers.find(o => o.kind === "annual") ?? sorted[0];
 }
-/** Today → reminder → first charge, as calendar dates from now. */
+/** Today → reminder → first charge, as days and times from now. */
 export function trialTimeline(trialDays: number, now: number) {
-  const reminderDay = Math.max(1, trialDays - TRIAL_REMINDER_DAYS_BEFORE);
-  return { reminderDay, reminderAt: now + reminderDay * DAY, chargeAt: now + trialDays * DAY };
+  const reminderDay = Math.max(1, trialDays - trialReminderDaysBefore(trialDays));
+  return { reminderDay, reminderBefore: trialDays - reminderDay, reminderAt: now + reminderDay * DAY, chargeAt: now + trialDays * DAY };
 }
 export function periodLabel(kind: Offer["kind"]) {
   return kind === "weekly" ? "week" : kind === "monthly" ? "month" : kind === "annual" ? "year" : "";

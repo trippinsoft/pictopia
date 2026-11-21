@@ -24,12 +24,13 @@ export function entitlementFrom(
   managementURL: string | null = null,
 ): Entitlement {
   const active = subscriptions.filter(
-    (s) => s.isActive && PRO_PRODUCT_IDS.includes(s.productId) && !(s.expirationDateIOS && s.expirationDateIOS <= now),
+    (s) => s.isActive && PRO_PRODUCT_IDS.includes(s.productId) &&
+      (os !== "ios" || (typeof s.expirationDateIOS === "number" && Number.isFinite(s.expirationDateIOS) && s.expirationDateIOS > now)),
   );
   if (!active.length) return { active: false, expires: null, verifiedAt: now, managementURL };
   const expires =
     os === "ios"
-      ? Math.max(...active.map((s) => s.expirationDateIOS ?? now + ANDROID_OFFLINE_DAYS * DAY))
+      ? Math.max(...active.map((s) => s.expirationDateIOS!))
       : now + ANDROID_OFFLINE_DAYS * DAY;
   return { active: true, expires, verifiedAt: now, managementURL };
 }

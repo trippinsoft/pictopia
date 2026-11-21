@@ -18,6 +18,7 @@ import { albumService } from "@/services/albums";
 import { albumsLabel } from "@/lib/pictopia/albums";
 import type { AlbumSummary } from "@/services/albums.types";
 import { collectionStore, RECENTS_LIMIT } from "@/services/collections";
+import { useLocalDay } from "@/components/pictopia/use-local-day";
 import { lookalikeStore } from "@/services/lookalikes";
 
 type Choices = Awaited<ReturnType<typeof adventureStore.choices>>;
@@ -35,16 +36,17 @@ const KINDS: Record<Exclude<CatalogId, "duplicate-hunt" | "time-machine" | "time
  * on Progress as a reward; Timeline (years → months) has its own tab. */
 export default function Explore() {
   const app = usePictopia();
+  const today = useLocalDay();
+  const todayLabel = new Date(`${today}T12:00:00`).toLocaleDateString(undefined, { month: "long", day: "numeric" });
   const lift = useLift();
   const [choices, setChoices] = useState<Choices>();
   const [parked, setParked] = useState<AdventureSlot[]>([]);
-  const [recent, setRecent] = useState<Media>();
   const [recentCount, setRecentCount] = useState<number>();
-  const [recents, setRecents] = useState<{ total: number; cover?: Media }>();
+  const [recents, setRecents] = useState<number>();
   const [albums, setAlbums] = useState<AlbumTile[]>();
-  const [videos, setVideos] = useState<{ total: number; explored: number; cover?: Media }>();
+  const [videos, setVideos] = useState<{ total: number; explored: number }>();
   const [screenshots, setScreenshots] = useState<{ total: number }>();
-  const [favorites, setFavorites] = useState<{ total: number; cover?: Media }>();
+  const [favorites, setFavorites] = useState<number>();
   const [lookalikes, setLookalikes] = useState<number>();
   const [busy, setBusy] = useState<string>();
   const [message, setMessage] = useState<string>();
@@ -55,30 +57,22 @@ export default function Explore() {
     let alive = true;
     void (async () => {
       try {
-        const [c, waiting, [latest]] = await Promise.all([
-          adventureStore.choices(),
-          adventureStore.unfinished(),
-          storage.query({ type: "photo", order: "newest", limit: 1 }),
-        ]);
+        const [c, waiting] = await Promise.all([adventureStore.choices(), adventureStore.unfinished()]);
         if (!alive) return;
-        setChoices(c); setParked(waiting); setRecent(latest); setMessage(undefined);
+        setChoices(c); setParked(waiting); setMessage(undefined);
         void storage.count({ type: "photo" }).then(({ total }) => { if (alive) setRecentCount(total); }).catch(() => {});
         void storage.query({ order: "newest", limit: RECENTS_LIMIT + 50 }).then(rows => {
-          const live = rows.filter(m => !m.deletedAt).slice(0, RECENTS_LIMIT);
-          if (alive) setRecents({ total: live.length, cover: live[0] });
-        }).catch(() => { if (alive) setRecents({ total: 0 }); });
+          if (alive) setRecents(rows.filter(m => !m.deletedAt).slice(0, RECENTS_LIMIT).length);
+        }).catch(() => { if (alive) setRecents(0); });
         void storage.count({ type: "photo", screenshot: true }).then(totals => {
           if (alive) setScreenshots(totals);
         }).catch(() => {});
         void lookalikeStore.saved().then(index => { if (alive) setLookalikes(index?.groups.length); }).catch(() => {});
-        void Promise.all([
-          storage.count({ type: "photo", favorite: true }),
-          storage.query({ type: "photo", order: "newest", favorite: true, limit: 1 }),
-        ]).then(([{ total }, [cover]]) => {
-          if (alive) setFavorites({ total, cover });
+        void storage.count({ type: "photo", favorite: true }).then(({ total }) => {
+          if (alive) setFavorites(total);
         }).catch(() => {});
-        const [progress, [firstVideo]] = await Promise.all([storage.videoProgress(), storage.query({ type: "video", order: "newest", limit: 1 })]);
-        if (alive) setVideos({ total: progress.total, explored: progress.explored, cover: firstVideo });
+        const progress = await storage.videoProgress();
+        if (alive) setVideos({ total: progress.total, explored: progress.explored });
         if (!albumService.supported) return;
         const list = await albumService.list();
         if (!alive) return;
@@ -93,7 +87,7 @@ export default function Explore() {
       }
     })();
     return () => { alive = false; };
-  }, [hasPhotos, app.revision, retry]));
+  }, [hasPhotos, app.revision, retry, today]));
 
   const unfinished = (id: Exclude<CatalogId, "duplicate-hunt" | "time-machine" | "time-capsule">) => parked.find(slot => KINDS[id].includes(slot.adventure.kind));
   const place = (slot?: AdventureSlot) => {
@@ -110,9 +104,10 @@ export default function Explore() {
       if (!adventureId) {
         const choice: ExploreChoice = id === "surprise-me" ? { kind: "detour" } : { kind: "screenshots" };
         const made = await adventureStore.choose(choice, Date.now(), app.pro);
-        if (!made) { setMessage("No eligible photos for that one right now. Try another adventure."); return; }
+        if (!made?.id) { setMessage("No eligible photos for that one right now. Try another adventure."); return; }
         adventureId = made.id;
       }
+      if (!adventureId) return;
       await adventureStore.open(adventureId, app.pro);
       router.push({ pathname: "/vertical-explore", params: { adventure: adventureId } });
     } catch {
@@ -121,11 +116,11 @@ export default function Explore() {
       setBusy(undefined);
     }
   }
-  const otd = unfinished("on-this-day");
+  const otd = parked.find(slot => slot.adventure.kind === "day" && slot.adventure.source === `day:${today.slice(5)}`);
   const surprise = unfinished("surprise-me");
   const screenshotSlot = unfinished("screenshot-sweep");
   const screenshotsAvailable = !!choices?.screenshots || (screenshots?.total ?? 0) > 0;
-  const openPlus = (go: () => void) => app.pro ? go() : router.push("/paywall");
+  const openPlus = (go: () => void) => app.pro ? go() : router.push({ pathname: "/paywall", params: { entry: "Explore" } });
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={["top", "left", "right"]}>
@@ -152,37 +147,29 @@ export default function Explore() {
             <ExploreTile
               lift={lift}
               title="On This Day"
-              hint={choices.day ? (otd ? `${otd.adventure.hint.detail}${place(otd) ? ` · ${place(otd)}` : ""}` : "Today’s date in earlier years") : "Nothing from today’s date yet — open a past date"}
+              hint={`${todayLabel} · ${choices.day ? (place(otd) ?? "Today’s date in earlier years") : "No memories yet — open a past date"}`}
               art={{ illustration: "onThisDay" }}
               badge={busy === "on-this-day" ? "Preparing…" : "Today"}
               onPress={() => void begin("on-this-day")}
             />
-            {/* Recents + Favorites — two squares side by side, both personal-library views.
-                 Both always render (a placeholder while loading), so the row never vanishes. */}
-            <View className="mt-3 flex-row gap-3">
-              {recents?.total ? (
-                <ExploreTile
-                  square lift={lift}
-                  title="Recents"
-                  hint={`Your latest ${recents.total.toLocaleString()} · photos, videos & screenshots`}
-                  art={{ cover: recents.cover, icon: "Clock" }}
-                  onPress={() => router.push({ pathname: "/collection-review", params: { scope: "recents" } })}
-                />
-              ) : (
-                <ExploreTile square lift={lift} title="Recents" hint={recents ? "Nothing new yet" : "Checking…"} art={{ icon: "Clock" }} disabled />
-              )}
-              {favorites?.total ? (
-                <ExploreTile
-                  square lift={lift}
-                  title="Favorites"
-                  hint={`${favorites.total.toLocaleString()} photos`}
-                  art={{ cover: favorites.cover, icon: "Heart" }}
-                  onPress={() => router.push({ pathname: "/collection-review", params: { scope: "favorites" } })}
-                />
-              ) : (
-                <ExploreTile square lift={lift} title="Favorites" hint={favorites ? "Mark photos in Photos" : "Checking…"} art={{ icon: "Heart" }} disabled />
-              )}
-            </View>
+            {/* Extra breathing room sets today's On This Day apart from the library rows below. */}
+            <View className="h-5" />
+            <ExploreTile
+              lift={lift}
+              title="Recents"
+              hint={recents === undefined ? "Checking…" : recents ? `Your latest ${recents.toLocaleString()} · photos, videos & screenshots` : "Nothing new yet"}
+              art={{ illustration: "recents" }}
+              disabled={!recents}
+              onPress={() => router.push({ pathname: "/collection-review", params: { scope: "recents" } })}
+            />
+            <ExploreTile
+              lift={lift}
+              title="Favorites"
+              hint={favorites === undefined ? "Checking…" : favorites ? `${favorites.toLocaleString()} ${favorites === 1 ? "photo" : "photos"}` : "Mark photos in Photos"}
+              art={{ illustration: "favorites" }}
+              disabled={!favorites}
+              onPress={() => router.push({ pathname: "/collection-review", params: { scope: "favorites" } })}
+            />
             {/* Surprise Me — curated adventure, full-width landscape. */}
             {choices.detour ? (
               <ExploreTile
@@ -201,75 +188,74 @@ export default function Explore() {
               lift={lift}
               title="All Photos"
               hint={recentCount !== undefined ? `${recentCount.toLocaleString()} photos · newest first` : "Every photo, newest first"}
-              art={{ cover: recent, icon: "Image" }}
+              art={{ illustration: "allPhotos" }}
               onPress={() => router.push({ pathname: "/collection-review", params: { scope: "recent" } })}
             />
 
-            {/* Screenshot Sweep + Largest videos — two squares side by side. No "Clean up"
-                 heading: the whole app is cleanup, so a section for it reads as redundant. */}
-            <View className="mt-3 flex-row gap-3">
+            {/* Utilities — Screenshot Sweep + Largest videos, two squares side by side. */}
+            <SectionTitle>Utilities</SectionTitle>
+            <View className="flex-row gap-3">
               {screenshotsAvailable ? (
                 <ExploreTile
                   square lift={lift}
                   title="Screenshot Sweep"
                   hint={screenshots ? `${screenshots.total.toLocaleString()} screenshots` : "Oldest first"}
                   art={{ illustration: "screenshots" }}
-                  plus={!app.pro}
+                  plus
                   badge={busy === "screenshot-sweep" ? "Preparing…" : app.pro ? place(screenshotSlot) : undefined}
                   onPress={() => openPlus(() => void begin("screenshot-sweep"))}
                 />
               ) : (
-                <ExploreTile square lift={lift} title="Screenshot Sweep" hint={screenshots ? "Nothing to sweep" : "Looking…"} art={{ illustration: "screenshots" }} plus={!app.pro} disabled />
+                <ExploreTile square lift={lift} title="Screenshot Sweep" hint={screenshots ? "Nothing to sweep" : "Looking…"} art={{ illustration: "screenshots" }} plus disabled />
               )}
               {videos?.total ? (
                 <ExploreTile
                   square lift={lift}
                   title="Largest videos"
                   hint={`${videos.total.toLocaleString()} videos · biggest first`}
-                  art={{ cover: videos.cover, icon: "HardDrive" }}
-                  plus={!app.pro}
+                  art={{ illustration: "largeVideos" }}
+                  plus
                   onPress={() => openPlus(() => router.push({ pathname: "/collection-review", params: { scope: "videos-large" } }))}
                 />
               ) : (
-                <ExploreTile square lift={lift} title="Largest videos" hint={videos ? "No videos yet" : "Looking…"} art={{ icon: "HardDrive" }} plus={!app.pro} disabled />
+                <ExploreTile square lift={lift} title="Largest videos" hint={videos ? "No videos yet" : "Looking…"} art={{ illustration: "largeVideos" }} plus disabled />
               )}
             </View>
 
-            {/* Duplicate Hunt — sets of look-alike photos, each opened side by side. */}
-            <ExploreTile
-              lift={lift}
-              title="Duplicate Hunt"
-              hint={lookalikes ? `${lookalikes.toLocaleString()} ${lookalikes === 1 ? "set" : "sets"} of look-alikes found` : "Find copies and near-identical shots"}
-              art={{ illustration: "duplicates" }}
-              plus={!app.pro}
-              onPress={() => openPlus(() => router.push("/duplicate-hunt"))}
-            />
-
-            {/* Videos */}
-            <SectionTitle>Videos</SectionTitle>
-            {videos?.total ? (
+            {/* Duplicate Hunt + All videos — two squares side by side, like the pair above. */}
+            <View className="mt-3 flex-row gap-3">
               <ExploreTile
-                lift={lift}
-                title="All videos"
-                hint={`${videos.total.toLocaleString()} · oldest first`}
-                art={{ cover: videos.cover, icon: "Video" }}
-                plus={!app.pro}
-                onPress={() => openPlus(() => router.push({ pathname: "/collection-review", params: { scope: "videos" } }))}
+                square lift={lift}
+                title="Duplicate Hunt"
+                hint={lookalikes ? `${lookalikes.toLocaleString()} ${lookalikes === 1 ? "set" : "sets"} of look-alikes` : "Copies and near-identical shots"}
+                art={{ illustration: "duplicates" }}
+                plus
+                onPress={() => openPlus(() => router.push("/duplicate-hunt"))}
               />
-            ) : (
-              <ExploreTile lift={lift} title="All videos" hint={videos ? "No videos in your library yet." : "Looking for videos…"} art={{ icon: "Video" }} plus={!app.pro} disabled />
-            )}
+              {videos?.total ? (
+                <ExploreTile
+                  square lift={lift}
+                  title="All videos"
+                  hint={`${videos.total.toLocaleString()} videos · oldest first`}
+                  art={{ illustration: "allVideos" }}
+                  plus
+                  onPress={() => openPlus(() => router.push({ pathname: "/collection-review", params: { scope: "videos" } }))}
+                />
+              ) : (
+                <ExploreTile square lift={lift} title="All videos" hint={videos ? "No videos yet" : "Looking…"} art={{ illustration: "allVideos" }} plus disabled />
+              )}
+            </View>
 
             {/* Albums */}
             <SectionTitle action={albums && albums.length > ALBUMS_SHOWN ? { label: "See all", onPress: () => openPlus(() => router.push("/albums")) } : undefined}>{ALBUMS_LABEL}</SectionTitle>
             {!albumService.supported ? (
-              <ExploreTile lift={lift} title={ALBUMS_LABEL} hint="Your phone’s albums appear here in the installed app. Not available in the browser preview." art={{ icon: "FolderOpen" }} disabled />
+              <ExploreTile lift={lift} title={ALBUMS_LABEL} hint="Your phone’s albums appear here in the installed app. Not available in the browser preview." art={{ icon: "FolderOpen" }} plus disabled />
             ) : albums?.length ? (
               <View className="flex-row flex-wrap items-start justify-between gap-y-3">
                 {albums.slice(0, ALBUMS_SHOWN).map(a => <AlbumCard key={a.id} album={a} percent={a.percent} progressLoading={!a.progressLoaded} revision={app.revision} locked={!app.pro} />)}
               </View>
             ) : (
-              <ExploreTile lift={lift} title={ALBUMS_LABEL} hint={albums ? "No albums to show yet." : "Reading your albums…"} art={{ icon: "FolderOpen" }} plus={!app.pro} disabled />
+              <ExploreTile lift={lift} title={ALBUMS_LABEL} hint={albums ? "No albums to show yet." : "Reading your albums…"} art={{ icon: "FolderOpen" }} plus disabled />
             )}
           </>
         )}
@@ -298,13 +284,13 @@ function ExploreTile({ lift, title, hint, art, plus, disabled, badge, square, on
   if (square) {
     const inner = (
       <View style={lift} className={`flex-1 overflow-hidden rounded-[18px] bg-card ${disabled ? "opacity-70" : ""}`}>
-        <View className="aspect-square p-1.5"><View className="flex-1 overflow-hidden rounded-[13px] bg-muted"><ArtPanel art={art} /></View></View>
+        <View style={squareArt} className="p-1.5">
+          <View className="flex-1 overflow-hidden rounded-[13px] bg-muted"><ArtPanel art={art} wide /></View>
+          {plus ? <View pointerEvents="none" className="absolute right-3 top-3"><PlusTag /></View> : null}
+        </View>
         <View className="gap-1 p-3">
           {!!badge && <View className="self-start rounded-md bg-tomato/15 px-1.5 py-0.5"><Text className="text-[11px] uppercase tracking-wider text-tertiary" style={tagStyle}>{badge}</Text></View>}
-          <View className="flex-row items-center gap-1.5">
-            <Text numberOfLines={1} className="shrink text-h5 text-foreground">{title}</Text>
-            {plus && <PlusTag />}
-          </View>
+          <Text numberOfLines={2} className="text-h3 leading-[23px] text-foreground">{title}</Text>
           <Text numberOfLines={2} className="text-caption leading-[17px] text-muted-foreground">{hint}</Text>
         </View>
       </View>
@@ -319,7 +305,7 @@ function ExploreTile({ lift, title, hint, art, plus, disabled, badge, square, on
         <View className="min-w-0 flex-1 justify-center gap-1">
           {!!badge && <View className="self-start rounded-md bg-tomato/15 px-1.5 py-0.5"><Text className="text-[11px] uppercase tracking-wider text-tertiary" style={tagStyle}>{badge}</Text></View>}
           <View className="flex-row items-center gap-2">
-            <Text numberOfLines={1} className="shrink text-h4 text-foreground">{title}</Text>
+            <Text numberOfLines={1} className="shrink text-h3 text-foreground">{title}</Text>
             {plus && <PlusTag />}
           </View>
           <Text numberOfLines={2} className="text-caption leading-[17px] text-muted-foreground">{hint}</Text>
@@ -344,23 +330,23 @@ function ExploreTile({ lift, title, hint, art, plus, disabled, badge, square, on
   );
 }
 
-function ArtPanel({ art }: { art: { cover?: Media; illustration?: ArtName; icon?: IconName } }) {
+function ArtPanel({ art, wide }: { art: { cover?: Media; illustration?: ArtName; icon?: IconName }; wide?: boolean }) {
   // The art never intercepts a tap: an SVG illustration (and some cover fallbacks) can
   // capture touches on native and make the tile feel dead, so the whole panel is
   // non-interactive and the card's Pressable always receives the tap. Mirrors AlbumCover.
   return (
     <View pointerEvents="none" accessible={false} importantForAccessibility="no-hide-descendants" className="h-full w-full overflow-hidden bg-muted">
       {art.cover ? (
-        <MediaImage media={art.cover} fit="cover" style={StyleSheet.absoluteFill} failureContent={<Fallback art={art} />} />
+        <MediaImage media={art.cover} fit="cover" style={StyleSheet.absoluteFill} failureContent={<Fallback art={art} wide={wide} />} />
       ) : (
-        <Fallback art={art} />
+        <Fallback art={art} wide={wide} />
       )}
     </View>
   );
 }
 
-function Fallback({ art }: { art: { illustration?: ArtName; icon?: IconName } }) {
-  if (art.illustration) return <Illustration name={art.illustration} />;
+function Fallback({ art, wide }: { art: { illustration?: ArtName; icon?: IconName }; wide?: boolean }) {
+  if (art.illustration) return <Illustration name={art.illustration} wide={wide} />;
   return (
     <View className="flex-1 items-center justify-center bg-secondary">
       <Icon name={art.icon ?? "Image"} size={32} className="text-muted-foreground" />
@@ -370,9 +356,11 @@ function Fallback({ art }: { art: { illustration?: ArtName; icon?: IconName } })
 
 function PlusTag() {
   return (
-    <View className="shrink-0 rounded-md bg-primary px-1.5 py-0.5">
+    <View className="shrink-0 rounded-md bg-feature px-1.5 py-0.5">
       <Text className="text-[11px] text-sun" style={tagStyle}>PLUS</Text>
     </View>
   );
 }
 const tagStyle = { fontFamily: "Inter_700Bold" };
+/** Utilities cards use a landscape picture (3:2) so the pairs stay compact on the page. */
+const squareArt = { aspectRatio: 1.5 };

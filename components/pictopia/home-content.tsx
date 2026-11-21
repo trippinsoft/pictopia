@@ -1,8 +1,8 @@
-import { useState } from "react";
-import { homeSpacing } from "@/lib/pictopia/home-spacing";
+import { homeGap } from "@/lib/pictopia/home-spacing";
 import { Platform, Pressable, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { HomeTip } from "./home-tip";
+import { StreakInfo } from "./streak-info";
 import { AdventureCover } from "./adventure-art";
 import { Button, Icon, Loading, Text } from "./ui";
 import { OrBadge, Postcard, Sticker, TabHeader, WaitingPill, useLift } from "./playful";
@@ -41,8 +41,9 @@ function StreakSticker({ streak, onPress }: { streak?: StreakState; onPress(): v
   const count = streak?.current ?? 0;
   const label = streak ? `${count}-day streak${streak.todayDone ? ", today done" : ", today not yet explored"}` : "Streak";
   return (
+    <View className="relative flex-1">
     <Sticker rotate={-1.5} onPress={onPress} label={label} className="flex-1 gap-2">
-      <View className="flex-row items-center gap-1.5">
+      <View className="flex-row flex-wrap items-center gap-1.5 pr-6">
         <Icon name="Flame" size={20} className={streak?.todayDone ? "text-sun" : "text-muted-foreground"} fill={streak?.todayDone ? "currentColor" : "none"} />
         <Text className="text-h2 text-foreground">{count}</Text>
         <Text className="text-h6 text-foreground">day streak</Text>
@@ -62,6 +63,8 @@ function StreakSticker({ streak, onPress }: { streak?: StreakState; onPress(): v
         })}
       </View>
     </Sticker>
+    <View className="absolute -right-1 -top-1"><StreakInfo /></View>
+    </View>
   );
 }
 
@@ -93,22 +96,17 @@ function RestoreCard({ streak, onPress }: { streak: StreakState; onPress(): void
   );
 }
 
-/** Presentation only. Existing stores and review routes own every action. */
+/** Presentation only. Existing stores and review routes own every action.
+ * Layout is purely declarative: section gaps are flex spacers (`homeGap`) resolved by
+ * the native layout engine in one pass. Never measure sections into state here. */
 export function HomeContent(props: HomeContentProps) {
   const { ready, hasPhotos, connecting, features, error, adventureError, streak } = props;
-  const [viewport, setViewport] = useState(0), [intrinsic, setIntrinsic] = useState(0);
-  const spacing = homeSpacing(Math.max(0, viewport - 8), intrinsic, false, props.pending > 0);
   const [pick, alt] = features ?? [];
   return (
     <SafeAreaView className="flex-1 bg-background" edges={["top", "left", "right"]}>
-      <ScrollView onLayout={event => setViewport(event.nativeEvent.layout.height)} contentContainerClassName="mx-auto w-full max-w-lg grow px-[18px] pt-2">
-        <View style={{ paddingBottom: spacing.bottom }} onLayout={event => {
-          if (ready && hasPhotos) {
-            const measured = Math.max(0, event.nativeEvent.layout.height - spacing.total);
-            setIntrinsic(previous => Math.abs(previous - measured) > 1 ? measured : previous);
-          }
-        }}>
-        <TabHeader referrals />
+      <ScrollView contentContainerClassName="mx-auto w-full max-w-lg grow px-[18px] pt-2">
+        <View style={column}>
+        <View style={naturalSize}><TabHeader referrals /></View>
         {!ready ? (
           <View className="py-12"><Loading /></View>
         ) : !hasPhotos ? (
@@ -125,15 +123,20 @@ export function HomeContent(props: HomeContentProps) {
           </View>
         ) : (
           <>
-            <View style={{ marginTop: spacing.stats }} className="flex-row items-stretch gap-2.5">
+            <View style={homeGap("stats")} />
+            <View style={naturalSize}>
+            <View className="flex-row items-stretch gap-2.5">
               <StreakSticker streak={streak} onPress={props.onStreak} />
               <ProgressSticker percent={props.percent} onPress={props.onProgress} />
             </View>
             {streak?.restore && <RestoreCard streak={streak} onPress={props.onStreak} />}
-            <View style={{ height: spacing.adventure }} />
-            <View style={{ marginBottom: spacing.postcards }}>
+            </View>
+            <View style={homeGap("adventure")} />
+            <View style={naturalSize}>
               <Text accessibilityRole="header" className="text-display text-foreground">Where to today?</Text>
             </View>
+            <View style={homeGap("postcards")} />
+            <View style={naturalSize}>
             {features?.length ? (
               <View className="relative flex-row items-start gap-2.5">
                 <Postcard
@@ -173,13 +176,21 @@ export function HomeContent(props: HomeContentProps) {
               </Pressable>
             )}
             {!!error && <Text accessibilityRole="alert" className="mt-3 text-body text-destructive">{error}</Text>}
-            <View style={{ paddingTop: spacing.note }}><HomeTip spacing={0} /></View>
-            {props.pending > 0 && <><View style={{ height: spacing.pending }} /><WaitingPill count={props.pending} size={props.pendingSize} onPress={props.onPending} /></>}
+            </View>
+            <View style={homeGap("note")} />
+            <View style={naturalSize}><HomeTip spacing={0} /></View>
+            {props.pending > 0 ? <View style={homeGap("pending")} /> : null}
+            {props.pending > 0 ? <View style={naturalSize}><WaitingPill count={props.pending} size={props.pendingSize} onPress={props.onPending} /></View> : null}
           </>
         )}
+        <View style={homeGap("bottom")} />
         </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 const letterStyle = { fontFamily: "Inter_600SemiBold" };
+
+const naturalSize = { flexShrink: 0 };
+/** Fills the scroll viewport so the gap spacers can share any spare height. */
+const column = { flexGrow: 1 };

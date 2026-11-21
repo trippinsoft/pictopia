@@ -1,7 +1,7 @@
 import { NavigationBack } from "./navigation-header";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from "react";
 import { adventureLabel } from "@/lib/pictopia/catalog";
-import { Pressable, View } from "react-native";
+import { Platform, Pressable, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, Stack, useNavigation } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -221,7 +221,7 @@ export function AdventureReview({ id, collection, finishContent, onContinue, dat
     <Text className="text-center text-body leading-6 text-muted-foreground">{limit.body}</Text>
     <ResetCountdown />
     <View className="mt-2 w-full max-w-xs gap-2">
-      <Button onPress={() => router.push("/paywall")}>Unlock unlimited with Pictopia+</Button>
+      <Button onPress={() => router.push({ pathname: "/paywall", params: { entry: "daily_limit" } })}>Unlock unlimited with Pictopia+</Button>
       {marked.length > 0 && <Button secondary icon="Trash2" onPress={reviewMarked}>{"See discarded photos"}</Button>}
       <Pressable accessibilityRole="button" onPress={exit} className="min-h-12 items-center justify-center"><Text className="text-button text-foreground">Come back tomorrow</Text></Pressable>
     </View>
@@ -321,7 +321,7 @@ export function AdventureReview({ id, collection, finishContent, onContinue, dat
               <Button disabled={pending || busy || flying > 0} onPress={finish}>Finish</Button>
               <Button secondary icon="Trash2" onPress={() => setTray(true)}>Open Discarded</Button>
             </View>
-          </View> : allowance.error ? <View className="flex-1 items-center justify-center gap-4 px-8"><Text className="text-center text-body text-foreground">Couldn’t check your daily free reviews. Your saved review is safe.</Text><Button onPress={() => void allowance.reload()}>Try again</Button></View> : !allowance.ready ? <Loading /> : <ExploreFeed ref={feed} session={session} media={media} change={change} getSession={getSession} flight={flight} canReview={allowance.canReview} stopBefore={allowance.stopBefore} limitPage={limitPage} endPage={endPage} onEnd={finish}
+          </View> : allowance.error ? <View className="flex-1 items-center justify-center gap-4 px-8"><Text className="text-center text-body text-foreground">Couldn’t check your daily free reviews. Your saved review is safe.</Text><Button onPress={() => void allowance.reload()}>Try again</Button></View> : !allowance.ready ? <Loading /> : <ExploreFeed ref={feed} session={session} media={media} autoplayVideo={Platform.OS !== "web" && app.prefs.autoplay} change={change} getSession={getSession} flight={flight} canReview={allowance.canReview} stopBefore={allowance.stopBefore} limitPage={limitPage} endPage={endPage} onEnd={finish}
             onPage={(index, total) => { setAtEnd(index >= total); if (index < total) setSelected(sequence[index]); }} onScrollPosition={position => line.current?.setPosition(position)} onScrollActive={(target, ready) => { setSelected(target); setAvailable(ready); }} onBusy={setBusy} onAvailability={setAvailable} onError={setTransitionError} onRestore={restore} onCountUnavailable={countUnavailable} onPhotoUnavailable={checkGone} onUndone={allowance.refund}
             onBrowse={() => guidance.complete("browse")} onDiscard={() => guidance.complete("discard")} />}
           {!!sizeLabel && !empty && !atEnd && <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" className="absolute left-3 top-2 flex-row items-center gap-1 rounded-[9px] bg-black/50 px-2.5 py-1"><Icon name="HardDrive" size={13} className="text-white" /><Text className="text-caption text-white" style={{ fontVariant: ["tabular-nums"] }}>{sizeLabel}</Text></View>}
@@ -350,7 +350,7 @@ interface ProgressLineHandle { setPosition(position: number): void }
  * Tapping it opens Pictopia+. */
 function FreeReviews({ left, limit }: { left: number; limit: number }) {
   const label = left > 0 ? `${left.toLocaleString()} free ${left === 1 ? "review" : "reviews"} left` : "No free reviews left today";
-  return <Pressable accessibilityRole="button" accessibilityLabel={`${left} reviews available, including saved bonus credits. Today's daily and streak allowance is ${limit}. Opens Pictopia+ for unlimited reviews.`} onPress={() => router.push("/paywall")}
+  return <Pressable accessibilityRole="button" accessibilityLabel={`${left} reviews available, including saved bonus credits. Today's daily and streak allowance is ${limit}. Opens Pictopia+ for unlimited reviews.`} onPress={() => router.push({ pathname: "/paywall", params: { entry: "daily_limit" } })}
     className="mt-1.5 min-h-7 flex-row items-center rounded-full bg-sun-pastel px-3 py-1 active:opacity-80">
     <Text numberOfLines={1} className="text-caption font-semibold text-sun-ink" style={{ fontVariant: ["tabular-nums"] }}>{label}</Text>
   </Pressable>;
