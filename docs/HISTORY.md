@@ -211,3 +211,6 @@ The review interaction uses the original 1.0.21 live feed: marked photos leave s
 - Explore: Utilities cards shortened to 3:2 pictures (zoomed-out `wide` framing) to save vertical space.
 - Adventurer badge: Level I now at 1 finished adventure (then 5/10/25/50/100/250) so new users earn an early badge; existing holders move up one level.
 - All Photos, All videos, Largest videos and Screenshot Sweep gained Review Again with separate Continue progress and first-review credit rules.
+- 2026-11-21: Onboarding opens with the problem (growing photo pile) and introduces Pictopia+ through an animated four-scene showcase instead of a feature list; step-level onboarding analytics added.
+- 2026-11-21: Onboarding always ends on Home ("Your Pictopia is ready!", two adventures picked by Home's own logic); a one-time spotlight tour introduces the adventures, Timeline and Explore, replayable from Settings.
+- 2026-11-21: Home tour is four steps (adventures, Explore, Timeline, then the % sticker + Progress tab together) with Skip tutorial / Let's go!, replayable via Settings › Replay app tour.

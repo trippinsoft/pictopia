@@ -2,6 +2,7 @@ import { homeGap } from "@/lib/pictopia/home-spacing";
 import { Platform, Pressable, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { HomeTip } from "./home-tip";
+import { tourTarget } from "./tour-targets";
 import { StreakInfo } from "./streak-info";
 import { AdventureCover } from "./adventure-art";
 import { Button, Icon, Loading, Text } from "./ui";
@@ -70,7 +71,7 @@ function StreakSticker({ streak, onPress }: { streak?: StreakState; onPress(): v
 
 function ProgressSticker({ percent, onPress }: { percent?: number; onPress(): void }) {
   return (
-    <Sticker rotate={1.5} onPress={onPress} label={percent === undefined ? "The Big Picture" : `${percent}% of your photos explored. Open The Big Picture`} className="flex-1 justify-between gap-1.5">
+    <Sticker viewRef={tourTarget("percent")} rotate={1.5} onPress={onPress} label={percent === undefined ? "The Big Picture" : `${percent}% of your photos explored. Open The Big Picture`} className="flex-1 justify-between gap-1.5">
       <Text className="text-h2 text-foreground">{percent === undefined ? "—" : `${percent}%`}</Text>
       <Text className="text-h6 leading-4 text-foreground">of your photos explored</Text>
       <View className="h-2 overflow-hidden rounded-full bg-foreground/10">
@@ -138,7 +139,7 @@ export function HomeContent(props: HomeContentProps) {
             <View style={homeGap("postcards")} />
             <View style={naturalSize}>
             {features?.length ? (
-              <View className="relative flex-row items-start gap-2.5">
+              <View ref={tourTarget("adventures")} collapsable={false} className="relative flex-row items-start gap-2.5">
                 <Postcard
                   kind={pick.kind}
                   ids={pick.ids}

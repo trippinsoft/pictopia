@@ -74,22 +74,24 @@ export function TabHeader({ title, referrals = false }: { title?: string; referr
   );
 }
 
-export function Sticker({ children, rotate = 0, onPress, label, style, className = "" }: {
+export function Sticker({ children, rotate = 0, onPress, label, style, className = "", viewRef }: {
   children: ReactNode;
   rotate?: number;
   onPress?: () => void;
   label?: string;
   style?: StyleProp<ViewStyle>;
   className?: string;
+  /** Lets a tour find this sticker on screen; never used for layout. */
+  viewRef?: (view: View | null) => void;
 }) {
   const lift = useLift();
   const body = [lift, { transform: [{ rotate: `${rotate}deg` }] }, style];
   return onPress ? (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={body} className={`rounded-[20px] bg-card px-3.5 py-3 active:opacity-80 ${className}`}>
+    <Pressable ref={viewRef} accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={body} className={`rounded-[20px] bg-card px-3.5 py-3 active:opacity-80 ${className}`}>
       {children}
     </Pressable>
   ) : (
-    <View accessibilityLabel={label} style={body} className={`rounded-[20px] bg-card px-3.5 py-3 ${className}`}>
+    <View ref={viewRef} accessibilityLabel={label} style={body} className={`rounded-[20px] bg-card px-3.5 py-3 ${className}`}>
       {children}
     </View>
   );

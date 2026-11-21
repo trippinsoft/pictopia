@@ -2,6 +2,7 @@ import { View } from "react-native";
 import { Tabs } from "expo-router";
 import Icon, { IconName } from "@/lib/icons/LucideIcon";
 import { useTheme } from "@/theming/ThemeProvider";
+import { tourTarget } from "@/components/pictopia/tour-targets";
 export default function TabLayout() {
   const { theme } = useTheme();
   const outline = theme.colors.sunDeep ?? theme.colors.stage;
@@ -36,7 +37,7 @@ export default function TabLayout() {
             ...(t.hidden ? { href: null } : {}),
             // Gold interiors with dark gold outlines, without a background pill.
             tabBarIcon: ({ color, focused }) => (
-              <View className="h-7 w-14 items-center justify-center">
+              <View ref={tourTarget(t.name)} collapsable={false} className="h-7 w-14 items-center justify-center">
                 {focused ? <View className="absolute">
                   <Icon name={t.icon} size={21}
                     color={t.icon === "ChartNoAxesColumn" ? outline : theme.colors.sun}

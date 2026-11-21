@@ -11,9 +11,9 @@ const PHONE_H = 300;
 const CARD_H = 200;
 
 /** A friendly phone outline holding a demo. Decorative: screen readers get the step's text. */
-function Phone({ children }: { children: ReactNode }) {
+export function Phone({ children, width = PHONE_W, height = PHONE_H }: { children: ReactNode; width?: number; height?: number }) {
   return (
-    <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ width: PHONE_W, height: PHONE_H }} className="self-center overflow-hidden rounded-[34px] border-[6px] border-foreground bg-card">
+    <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ width, height }} className="self-center overflow-hidden rounded-[34px] border-[6px] border-foreground bg-card">
       {children}
     </View>
   );

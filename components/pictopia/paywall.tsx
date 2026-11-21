@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, View } from "react-native";
 import { Icon, Text } from "@/components/pictopia/ui";
-import { Illustration } from "@/components/pictopia/illustration";
+import { Illustration, type ArtName } from "@/components/pictopia/illustration";
 import { periodLabel } from "@/lib/pictopia/onboarding";
 import { PAYWALL_COPY, PAYWALL_VALUE, planName, yearlySavings } from "@/lib/pictopia/paywall";
 import type { Offer } from "@/lib/pictopia/types";
@@ -19,9 +19,29 @@ export function PaywallHero({ headline = PAYWALL_COPY.headline }: { headline?: s
       <Text accessibilityLabel={PAYWALL_VALUE} className="max-w-xs text-center text-h4 leading-7 text-muted-foreground">
         {PAYWALL_VALUE}
       </Text>
-      <Text className="max-w-xs text-center text-caption leading-6 text-muted-foreground">
-        {PAYWALL_COPY.features}
-      </Text>
+      <PlusIncluded />
+    </View>
+  );
+}
+
+const INCLUDED: { art: ArtName; label: string }[] = [
+  { art: "screenshots", label: "Screenshots" },
+  { art: "duplicates", label: "Duplicates" },
+  { art: "largeVideos", label: "Big videos" },
+  { art: "allPhotos", label: "Unlimited" },
+];
+/** What Pictopia+ adds, as four small artwork tiles (the same art as Explore). */
+export function PlusIncluded() {
+  return (
+    <View accessible accessibilityLabel={`Includes ${INCLUDED.map(i => i.label).join(", ")}`} className="w-full max-w-sm flex-row justify-between">
+      {INCLUDED.map((item, i) => (
+        <View key={item.art} className="w-[23%] items-center gap-1.5">
+          <View className="aspect-square w-full overflow-hidden rounded-2xl" style={{ transform: [{ rotate: `${[-3, 2, -2, 3][i]}deg` }] }}>
+            <Illustration name={item.art} square />
+          </View>
+          <Text numberOfLines={1} className="text-[12px] text-foreground">{item.label}</Text>
+        </View>
+      ))}
     </View>
   );
 }

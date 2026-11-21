@@ -4,6 +4,22 @@
 import type { Month, Offer } from "./types";
 
 export const TAGLINE = "The faster, more fun way to clean up your photo library";
+/** The opening screen: the problem first, then the way out. */
+export const PROBLEM_COPY = {
+  kicker: "Thousands of photos. So many memories.",
+  headline: "Where do you even start?",
+  body: "Cleaning up your photo library shouldn’t feel like a chore.",
+  action: "Show me how",
+} as const;
+/** The Pictopia+ showcase's four scenes, in the order they play. */
+export const PLUS_SCENES = [
+  { key: "screenshots", label: "Screenshots", icon: "Smartphone" },
+  { key: "duplicates", label: "Duplicates", icon: "Copy" },
+  { key: "videos", label: "Big videos", icon: "Film" },
+  { key: "unlimited", label: "Unlimited", icon: "Infinity" },
+] as const;
+export type PlusScene = (typeof PLUS_SCENES)[number]["key"];
+export const PLUS_SCENE_MS = 3000;
 const DAY = 86400000;
 /** The trial timeline's middle step: the day before the charge for short trials (Picnic's 3
  * days: today → in 2 days → in 3 days), two days before for longer ones. Pictopia doesn't send

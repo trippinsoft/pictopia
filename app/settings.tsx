@@ -19,6 +19,8 @@ import { REMINDER_TIMES, reminderTimeLabel } from "@/lib/pictopia/reminders";
 import type { ReminderPrefs } from "@/lib/pictopia/types";
 import { notificationService } from "@/services/notifications";
 import { syncReminders } from "@/services/reminders";
+import { homeTourStore } from "@/services/home-tour";
+import { trackOnboarding } from "@/services/analytics";
 import { allowanceStore } from "@/services/daily";
 import { DEV_REVIEW_LIMITS, type DevSubscriptionMode } from "@/lib/pictopia/entitlement";
 import { DEFAULT_FREE_SWIPES } from "@/lib/pictopia/daily";
@@ -362,6 +364,13 @@ export default function Settings() {
 
         <Group title="Help">
           <Row title="Help & tips" onPress={() => router.push("/help")} />
+          <Row title="Replay app tour" onPress={() => void action(async () => {
+            await homeTourStore.start("settings");
+            trackOnboarding("home_tour_replayed", { source: "settings" });
+            // Settings is a sheet over the tabs: close it and land on Home, where the tour starts.
+            if (router.canDismiss()) router.dismissAll();
+            router.navigate("/(tabs)/home");
+          })} />
           {!!SUPPORT && <Row title="Contact support" onPress={() => void action(() => Linking.openURL(`mailto:${SUPPORT}`))} />}
           <Row title="Privacy policy" onPress={() => void action(() => openLegal("privacy"))} />
           <Row title="Terms of use" last onPress={() => void action(() => openLegal("terms"))} />

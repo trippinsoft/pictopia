@@ -10,7 +10,6 @@ export const PAYWALL_COPY = {
   speedup: "5×",
   /** Rendered as one sentence with consistent size and color. */
   value: { before: "Clean up your photo library up to ", emphasis: "5×\u00a0faster", after: " with Pictopia+." },
-  features: "Screenshots • Duplicates • Large videos • More",
 } as const;
 /** The short form for entry points such as the Settings Pictopia+ card. */
 export const PAYWALL_TEASER = `Clean up to ${PAYWALL_COPY.speedup} faster`;

@@ -2,6 +2,7 @@ import { Platform } from "react-native";
 import { amplitudeClient } from "@/services/amplitude-client";
 import { analyticsScreen, type AnalyticsEvent } from "@/lib/pictopia/analytics-policy";
 import { sanitizeSubscriptionProperties, type SubscriptionEvent } from "@/lib/pictopia/subscription-analytics";
+import { ONBOARDING_VERSION, sanitizeOnboardingProperties, type OnboardingEvent } from "@/lib/pictopia/onboarding-analytics";
 
 let initialization: Promise<void> | undefined;
 let initialized = false;
@@ -40,7 +41,7 @@ function emit(event: AnalyticsEvent, screen?: string, properties: Record<string,
   }
 }
 
-export function trackAnalytics(event: Exclude<AnalyticsEvent, "screen_viewed">): void {
+export function trackAnalytics(event: Exclude<AnalyticsEvent, "screen_viewed" | OnboardingEvent>): void {
   emit(event);
 }
 
@@ -59,4 +60,9 @@ export function flushAnalytics(): void {
 
 export function trackSubscriptionAnalytics(event: SubscriptionEvent, properties: Record<string, string | number | boolean>): void {
   emit(event, undefined, sanitizeSubscriptionProperties(properties));
+}
+
+/** Onboarding funnel events: allowlisted properties only, always tagged with the flow version. */
+export function trackOnboarding(event: OnboardingEvent, properties: Record<string, unknown> = {}): void {
+  emit(event, undefined, sanitizeOnboardingProperties({ ...properties, onboarding_version: ONBOARDING_VERSION }));
 }

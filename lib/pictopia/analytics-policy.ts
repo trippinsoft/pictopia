@@ -37,4 +37,4 @@ export function analyticsScreen(path: string): string | undefined {
   return Object.prototype.hasOwnProperty.call(screens, path) ? screens[path] : undefined;
 }
 
-export type AnalyticsEvent = "app_opened" | "app_foregrounded" | "screen_viewed" | import("./subscription-analytics").SubscriptionEvent;
+export type AnalyticsEvent = "app_opened" | "app_foregrounded" | "screen_viewed" | import("./subscription-analytics").SubscriptionEvent | import("./onboarding-analytics").OnboardingEvent;

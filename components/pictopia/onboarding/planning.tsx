@@ -29,9 +29,10 @@ function FannedPhoto({ media, angle, index }: { media?: Media; angle: number; in
   );
 }
 
-/** "Planning your first adventure…": the user's own photos fan out while a short progress bar
- * runs. `ready` is when Pictopia has actually picked; the bar never finishes before that. */
-export function Planning({ ready, total, onDone }: { ready: boolean; total: number; onDone: () => void }) {
+/** "Picking two adventures just for you…": the user's own photos fan out while a short progress
+ * bar runs. `ready` is when Pictopia has actually picked (and saved) Home's adventures; the bar
+ * never finishes before that. `picked` is how many it found. */
+export function Planning({ ready, picked, total, onDone }: { ready: boolean; picked: number; total: number; onDone: () => void }) {
   const reduced = useReducedMotion();
   const { theme } = useTheme();
   const [photos, setPhotos] = useState<Media[]>([]);
@@ -52,8 +53,8 @@ export function Planning({ ready, total, onDone }: { ready: boolean; total: numb
   useEffect(() => {
     if (!finished) return;
     progress.value = withTiming(1, { duration: 250 });
-    AccessibilityInfo.announceForAccessibility(`${total.toLocaleString()} photos and videos ready to explore.`);
-  }, [finished, progress, total]);
+    AccessibilityInfo.announceForAccessibility(`${total.toLocaleString()} photos and videos explored. ${pickedLine(picked)}`);
+  }, [finished, progress, total, picked]);
   const bar = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` }));
   useEffect(() => {
     if (!finished) return;
@@ -67,10 +68,10 @@ export function Planning({ ready, total, onDone }: { ready: boolean; total: numb
       </View>
       <View accessibilityLiveRegion="polite" className="w-full items-center gap-3">
         <Text accessibilityRole="header" className="text-center text-h1 text-foreground">
-          {finished ? `${total.toLocaleString()} photos & videos ready to explore` : "Planning your first adventure…"}
+          {finished ? `${total.toLocaleString()} photos & videos explored` : "Picking two adventures just for you…"}
         </Text>
         <Text className="text-center text-body leading-6 text-muted-foreground">
-          {finished ? "Pictopia has picked where to start." : "Looking through your years and months for a great place to start."}
+          {finished ? pickedLine(picked) : "Looking through your years and months for the best places to start."}
         </Text>
         <View className="mt-2 h-2.5 w-full overflow-hidden rounded-full bg-foreground/10">
           <Animated.View style={[{ height: "100%", borderRadius: 999, backgroundColor: theme.colors.grass }, bar]} />
@@ -79,3 +80,5 @@ export function Planning({ ready, total, onDone }: { ready: boolean; total: numb
     </View>
   );
 }
+
+const pickedLine = (picked: number) => (picked >= 2 ? "Two adventures are ready for you." : picked === 1 ? "An adventure is ready for you." : "Your library is ready to explore.");

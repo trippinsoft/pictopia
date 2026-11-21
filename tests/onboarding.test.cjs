@@ -64,7 +64,7 @@ test("only authorized builds honor a pending replay when reopening with an exist
 });
 
 test("replay starts at Welcome, reuses library access, and shows the offer to a subscriber", async () => {
-  const saves = [], routes = [];
+  const saves = [], routes = [], events = [], tours = [];
   const app = {
     devTools: true, pro: true, prefs: { onboarded: true, replayOnboarding: true },
     stats: { total: 5 }, months: [], permission: { granted: true }, libraryReliable: true,
@@ -73,17 +73,21 @@ test("replay starts at Welcome, reuses library access, and shows the offer to a 
   };
   const h = hooks("app/onboarding.tsx", "default", {
     "react/jsx-runtime": runtime,
-    "react-native": { Platform: { OS: "web" }, View: "View" },
+    "react-native": { Platform: { OS: "web" }, View: "View", AppState: { addEventListener: () => ({ remove() {} }) } },
     "expo-router": { Stack: { Screen: "Screen" }, router: { replace: route => routes.push(route) } },
     "@/components/pictopia/provider": { usePictopia: () => app },
     "@/components/pictopia/ui": { Button: "Button", Icon: "Icon", Text: "Text" },
-    "@/components/pictopia/playful": { Postcard: "Postcard" },
+    "@/components/pictopia/playful": { Postcard: "Postcard", OrBadge: "OrBadge" },
     "@/components/pictopia/onboarding/welcome": { Welcome: "Welcome" },
     "@/components/pictopia/onboarding/frame": { OnboardingFrame: "Frame" },
     "@/components/pictopia/onboarding/demos": { ScrollDemo: "ScrollDemo", SwipeDemo: "SwipeDemo", SpaceDemo: "SpaceDemo" },
     "@/components/pictopia/onboarding/reveal": { LibraryReveal: "Reveal" },
     "@/components/pictopia/onboarding/planning": { Planning: "Planning" },
     "@/components/pictopia/onboarding/trial": { TrialOffer: "TrialOffer" },
+    "@/components/pictopia/onboarding/celebrate": { Sunrays: "Sunrays", ConfettiBurst: "ConfettiBurst" },
+    "@/services/media": { mediaService: { permission: async () => ({ granted: true }) } },
+    "@/services/analytics": { trackOnboarding: (event, props) => events.push([event, props]) },
+    "@/services/home-tour": { homeTourStore: { start: async source => tours.push(source) } },
     "@/services/adventures": { adventureStore: { home: async () => ({ slots: [] }) } },
     "@/services/notifications": { notificationService: {} },
     "@/services/repository": { storage: {} },
@@ -98,9 +102,64 @@ test("replay starts at Welcome, reuses library access, and shows the offer to a 
   await new Promise(resolve => setImmediate(resolve));
   byType("Planning").props.onDone();
   byType("TrialOffer").props.onDone();
-  press("Go to Home");
+  assert.ok(find(h.render(), node => node.type === "Text" && textOf(node) === "Your Pictopia is ready!"));
+  assert.equal(find(h.render(), node => node.type === "QuietAction"), undefined, "no Start / Look around choice");
+  press("Let’s explore Pictopia");
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(saves, [{ onboarded: true, replayOnboarding: false }]);
   assert.deepEqual(routes, ["/(tabs)/home"]);
+  const viewed = events.filter(([e]) => e === "onboarding_step_viewed").map(([, p]) => p.step);
+  assert.deepEqual(viewed, ["problem", "scroll", "swipe", "space", "access", "reveal", "planning", "ready"]);
+  assert.deepEqual(tours, ["onboarding"], "Home's tour is queued for the first Home visit");
+  assert.deepEqual(events.at(-1), ["onboarding_completed", { outcome: "explore_home", pro: true, purchased_in_onboarding: false, recommendations: 0 }]);
   h.unmount();
+});
+
+const A = makeLoader()("lib/pictopia/onboarding-analytics.ts");
+test("onboarding analytics send only allowlisted steps and coarse library sizes", () => {
+  assert.deepEqual(A.sanitizeOnboardingProperties({ step: "plus_showcase", index: 7.4, seconds: 12, photo: "abc", library_size: "123", replay: false, access: "full" }),
+    { step: "plus_showcase", index: 7, seconds: 12, replay: false, access: "full" });
+  assert.deepEqual(A.sanitizeOnboardingProperties({ step: "/onboarding?x=1", seconds: -3 }), {});
+  assert.equal(A.librarySizeBucket(0), "0");
+  assert.equal(A.librarySizeBucket(99), "1-99");
+  assert.equal(A.librarySizeBucket(4999), "1k-4.9k");
+  assert.equal(A.librarySizeBucket(80000), "50k+");
+  assert.equal(A.stepSeconds(0, 2_000_000), 600);
+  assert.equal(A.stepSeconds(1000, 3600), 3);
+});
+
+const T = makeLoader()("lib/pictopia/home-tour.ts");
+test("Home's tour: adventures, Explore, Timeline, then the percentage sticker and Progress tab together", () => {
+  assert.deepEqual(T.homeTourSteps(2), ["adventures", "explore", "timeline", "progress"]);
+  assert.deepEqual(T.homeTourSteps(0), ["explore", "timeline", "progress"]);
+  assert.deepEqual(T.HOME_TOUR_TARGETS.progress, ["percent", "progress"]);
+  assert.match(T.homeTourCopy("adventures", 2).body, /tap whichever looks fun/);
+  assert.match(T.homeTourCopy("adventures", 1).title, /An adventure/);
+  assert.match(T.homeTourCopy("explore").body, /screenshots, large videos, duplicates/);
+  assert.match(T.homeTourCopy("timeline").body, /by year or month/);
+  assert.match(T.homeTourCopy("progress").body, /Tap Progress/);
+  assert.deepEqual(A.sanitizeOnboardingProperties({ tour_step: "progress", source: "settings", steps: 4, index: 3 }),
+    { tour_step: "progress", source: "settings", steps: 4, index: 3 });
+});
+
+test("the tour card never covers a spotlight, on small and large phones", () => {
+  const screens = [{ height: 667, top: 28, bottom: 8 }, { height: 932, top: 67, bottom: 42 }];
+  const overlaps = (a, b) => a.y < b.y + b.height && b.y < a.y + a.height;
+  for (const screen of screens) {
+    const tab = { x: 200, y: screen.height - screen.bottom - 60, width: 80, height: 60 };
+    const cases = [
+      [{ x: 10, y: 230, width: 370, height: 300 }],          // postcards
+      [tab],                                                  // one tab
+      [{ x: 200, y: 110, width: 170, height: 120 }, tab],    // sticker + Progress tab
+      [{ x: 10, y: 200, width: 370, height: screen.height - 340 }], // very tall postcards (large text)
+    ];
+    for (const holes of cases) {
+      const card = { height: 200 };
+      const pos = T.placeCard(holes, card, screen);
+      const top = "top" in pos ? pos.top : screen.height - pos.bottom - card.height;
+      const box = { y: top, height: card.height };
+      assert.ok(top >= screen.top, `card inside the safe area (${screen.height})`);
+      if (holes.length > 1 || holes[0].height < screen.height - 400) for (const h of holes) assert.ok(!overlaps(box, h), `card clear of spotlight at ${h.y} (${screen.height})`);
+    }
+  }
 });

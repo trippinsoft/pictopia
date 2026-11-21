@@ -1,18 +1,22 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Platform, View } from "react-native";
 import { Button, Icon, Loading, Text } from "@/components/pictopia/ui";
 import { usePictopia } from "@/components/pictopia/provider";
 import { periodLabel, trialTimeline } from "@/lib/pictopia/onboarding";
 import { defaultPlan, paywallPlans, planAction, planTerms } from "@/lib/pictopia/paywall";
 import { plural } from "@/lib/pictopia/text";
-import { PaywallHero, PaywallLinks, PlanOptions } from "@/components/pictopia/paywall";
+import { PaywallHero, PaywallLinks, PlanOptions, PlusIncluded } from "@/components/pictopia/paywall";
 import { openLegal } from "@/lib/pictopia/links";
 import type { Offer } from "@/lib/pictopia/types";
 import { purchaseService } from "@/services/purchases";
 import { usePaywallAnalytics } from "@/components/pictopia/use-paywall-analytics";
 import { lifetimeTestStore } from "@/services/lifetime-testing";
 import { OnboardingFrame, QuietAction } from "./frame";
-import { SwipeDemo } from "./demos";
+import { PlusShowcase } from "./plus-showcase";
+import { trackOnboarding } from "@/services/analytics";
+import { stepSeconds } from "@/lib/pictopia/onboarding-analytics";
+import { PAYWALL_COPY } from "@/lib/pictopia/paywall";
+import type { PlusScene } from "@/lib/pictopia/onboarding";
 
 type Part = "intro" | "reminder" | "plans";
 /** Like SwipeWipe, the last screen's ✕ appears after a few seconds. */
@@ -25,12 +29,15 @@ function priceLine(offer: Offer) {
   return offer.trialDays ? `${offer.trialDays} days free, then ${price}` : `Only ${price}`;
 }
 
-/** The onboarding trial offer, in SwipeWipe and Picnic's three steps: "We want you to try
- * Pictopia+", a nudge to set their own reminder before the trial ends, then Picnic's Today → In 2 days → In 3 days
+/** Which onboarding step a part of the offer is, for the funnel. */
+export type OfferStep = "plus_showcase" | "trial_reminder" | "trial_plans";
+const onShowcaseScene = (scene: PlusScene, seen: number) => trackOnboarding("onboarding_showcase_progress", { scene, scenes_seen: seen });
+
+/** The onboarding trial offer, in SwipeWipe and Picnic's three steps: the Pictopia+ showcase, a nudge to set their own reminder before the trial ends, then Picnic's Today → In 2 days → In 3 days
  * timeline with one button. There's no way out on the first two; the last one's ✕ appears after
  * a few seconds and leads to the free version. Every price and trial length comes from the
  * store; without a store trial the last step is a plain plan choice. */
-export function TrialOffer({ onDone, start = "intro" }: { onDone: () => void; start?: Part }) {
+export function TrialOffer({ onDone, onStep, start = "intro" }: { onDone: (purchased?: boolean) => void; onStep?: (step: OfferStep) => void; start?: Part }) {
   const app = usePictopia();
   const [part, setPart] = useState<Part>(start);
   const [offers, setOffers] = useState<Offer[]>();
@@ -38,11 +45,19 @@ export function TrialOffer({ onDone, start = "intro" }: { onDone: () => void; st
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string>();
   const [closable, setClosable] = useState(false);
+  const plansAt = useRef(0);
   useEffect(() => {
     void purchaseService.offers().then(o => { const plans = paywallPlans(o); setOffers(plans); setSelected(defaultPlan(plans)?.id); }).catch(() => setOffers([]));
   }, []);
+  const offersReady = !!offers;
+  const noOffers = offers?.length === 0;
+  useEffect(() => {
+    if (!offersReady) return;
+    onStep?.(part === "intro" || noOffers ? "plus_showcase" : part === "reminder" ? "trial_reminder" : "trial_plans");
+  }, [offersReady, noOffers, part, onStep]);
   useEffect(() => {
     if (part !== "plans") return;
+    plansAt.current = Date.now();
     setClosable(false);
     const t = setTimeout(() => setClosable(true), CLOSE_DELAY_MS);
     return () => clearTimeout(t);
@@ -63,7 +78,7 @@ export function TrialOffer({ onDone, start = "intro" }: { onDone: () => void; st
       const e = await purchaseService.purchase(offer.id);
       await app.setEntitlement(e);
       if (!e.active) { setError("The store hasn’t confirmed Pictopia+ yet. It unlocks as soon as it does."); return; }
-      onDone();
+      onDone(true);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -71,7 +86,7 @@ export function TrialOffer({ onDone, start = "intro" }: { onDone: () => void; st
     }
   }
 
-  if (!offers) return <OnboardingFrame footer={<QuietAction onPress={onDone}>Continue with the free version</QuietAction>}><Loading /></OnboardingFrame>;
+  if (!offers) return <OnboardingFrame footer={<QuietAction onPress={() => { trackOnboarding("onboarding_offer_closed", { closed_from: "loading" }); onDone(); }}>Continue with the free version</QuietAction>}><Loading /></OnboardingFrame>;
 
   const caption = (o: Offer | undefined) => (o ? <Text className="pt-1 text-center text-caption text-muted-foreground">{priceLine(o)}</Text> : null);
 
@@ -82,11 +97,11 @@ export function TrialOffer({ onDone, start = "intro" }: { onDone: () => void; st
           {leadTrial ? <Text className="text-center text-caption text-muted-foreground">No payment due now</Text> : null}
           <Button large onPress={() => setPart(leadTrial ? "reminder" : "plans")}>Continue</Button>
           {caption(lead)}
-        </> : <Button large onPress={onDone}>Continue</Button>}
+        </> : <Button large onPress={() => { trackOnboarding("onboarding_offer_closed", { closed_from: "no_offers" }); onDone(); }}>Continue</Button>}
       >
-        <View className="gap-8">
-          <Text accessibilityRole="header" className="text-center text-h1 text-foreground">{leadTrial ? "We want you to try Pictopia+ for free" : "We want you to try Pictopia+"}</Text>
-          <View className="h-[340px]"><SwipeDemo /></View>
+        <View className="gap-5">
+          <Text accessibilityRole="header" className="text-center text-h1 text-foreground">{`Clean up to ${PAYWALL_COPY.speedup} faster with Pictopia+`}</Text>
+          <PlusShowcase onScene={onShowcaseScene} />
           {!offers.length ? (
             <Text className="text-center text-caption leading-5 text-muted-foreground">
               {Platform.OS === "web" ? "Pictopia+ is available in the Pictopia app for iPhone and Android." : "Plans couldn’t load from the store right now. You can find Pictopia+ in Settings anytime."}
@@ -114,10 +129,10 @@ export function TrialOffer({ onDone, start = "intro" }: { onDone: () => void; st
     );
   }
 
-  const close = closable ? onDone : undefined;
+  const close = closable ? () => { trackOnboarding("onboarding_offer_closed", { closed_from: trial && offer ? "trial_plans" : "plan_picker", seconds: stepSeconds(plansAt.current, Date.now()) }); onDone(); } : undefined;
   const links = (
     <PaywallLinks disabled={working} links={[
-      { title: "Restore", run: () => app.restorePurchases().then(onDone) },
+      { title: "Restore", run: () => app.restorePurchases().then(() => onDone()) },
       { title: "Terms", run: () => openLegal("terms") },
       { title: "Privacy", run: () => openLegal("privacy") },
     ].map(l => ({ title: l.title, run: () => void l.run().catch(e => setError((e as Error).message)) }))} />
@@ -147,7 +162,10 @@ export function TrialOffer({ onDone, start = "intro" }: { onDone: () => void; st
         </>}
       >
         <View className="gap-8">
-          <Text accessibilityRole="header" className="text-center text-h1 text-foreground">{`Start your ${trial}-day free trial`}</Text>
+          <View className="items-center gap-5">
+            <Text accessibilityRole="header" className="text-center text-h1 text-foreground">{`Start your ${trial}-day free trial`}</Text>
+            <PlusIncluded />
+          </View>
           <View>
             {rows.map((row, i) => (
               <View key={row.title} className="flex-row gap-4">

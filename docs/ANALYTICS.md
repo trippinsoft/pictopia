@@ -18,6 +18,30 @@ Use separate project keys per environment if desired; all events also carry `env
 
 `lib/pictopia/analytics-policy.ts` owns the allowlist. Screen visits describe navigation, not successful review completion, deletion or purchase. Query/route parameters are excluded, so switching photo IDs, dates or games on the same route does not produce another screen visit. Redirects, unknown routes and developer-only screens are ignored. Per-photo decisions are excluded. Subscription instrumentation is described below.
 
+## Onboarding funnel
+
+Every event carries `onboarding_version` (bump `ONBOARDING_VERSION` in `lib/pictopia/onboarding-analytics.ts` when the flow changes meaningfully) plus `platform`/`environment`. Properties pass a strict allowlist (`sanitizeOnboardingProperties`); library size is only a coarse range.
+
+| Event | Trigger | Additional properties |
+| --- | --- | --- |
+| `onboarding_started` | Onboarding mounts | `replay`, `resumed` (reopened past access) |
+| `onboarding_step_viewed` | A step becomes visible | `step` (`problem`, `scroll`, `swipe`, `space`, `access`, `reveal`, `planning`, `plus_showcase`, `trial_reminder`, `trial_plans`, `ready`), `index` |
+| `onboarding_step_completed` | Leaving a step (including finishing) | `step`, `index`, `seconds` (capped at 600) |
+| `onboarding_access_result` | Allow access finishes | `access` (`full`/`limited`/`denied`/`empty`/`error`), `library_size` (range), `notifications` on success |
+| `onboarding_planning_result` | Home's adventures picked (or not) | `picked`, `recommendations` (0–2) |
+| `onboarding_showcase_progress` | Each Pictopia+ showcase scene seen for the first time | `scene`, `scenes_seen` |
+| `onboarding_offer_closed` | Free continuation from the offer (✕, loading or no offers) | `closed_from`, `seconds` on the plans screen |
+| `onboarding_backgrounded` | App goes to background during onboarding | `step`, `index` |
+| `onboarding_completed` | "Let’s explore Pictopia" (everyone lands on Home) | `outcome` (`explore_home`), `pro`, `purchased_in_onboarding`, `recommendations` |
+| `home_tour_started` | The Home tour appears | `source` (`onboarding`/`settings`), `steps` (3–4) |
+| `home_tour_step_viewed` | A tour step is shown | `tour_step` (`adventures`/`explore`/`timeline`/`progress`), `index`, `source` |
+| `home_tour_step_completed` | Next or Let’s go! | `tour_step`, `index`, `seconds`, `source` |
+| `home_tour_skipped` | Skip tutorial (or Android back) | `tour_step` where it was skipped, `index`, `source` |
+| `home_tour_completed` | Let’s go! on the last step | `source` |
+| `home_tour_replayed` | Settings › Replay app tour | `source=settings` |
+
+Drop-off = viewed without completed. Trial and paywall conversion use the Pictopia+ funnel below (`entry_point=Onboarding`).
+
 ## Pictopia+ funnel
 
 All events below include `platform` and `environment` (Draftbit deployment environment). `plan` is `weekly`, `annual`, or the supported legacy `monthly`; `product_id` is allowlisted to `pictopia.pro.weekly`, `pictopia.pro.annual`, `pictopia.pro.monthly`. No pricing or paywall design changes are involved.

@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { router, useFocusEffect } from "expo-router";
 import { HomeContent } from "@/components/pictopia/home-content";
+import { HomeTour } from "@/components/pictopia/home-tour";
 import { useAdventures } from "@/components/pictopia/use-adventures";
 import type { StreakState } from "@/lib/pictopia/daily";
 import { useLibraryProgress } from "@/components/pictopia/use-library-progress";
@@ -44,12 +45,14 @@ export default function Home() {
     router.push({ pathname: "/vertical-explore", params: { adventure: id } });
   }
   const pendingBytes = app.stats.pendingBytes;
-  return <HomeContent
+  const homeReady = adv.ready && (!hasPhotos || !!slots);
+  return <>
+  <HomeContent
     percent={percent}
     streak={streak}
     pending={adv.stats.pending}
     pendingSize={pendingBytes > 0 ? bytes(pendingBytes) : undefined}
-    ready={adv.ready && (!hasPhotos || !!slots)} hasPhotos={hasPhotos} busy={opening || adv.busy} connecting={opening || adv.busy}
+    ready={homeReady} hasPhotos={hasPhotos} busy={opening || adv.busy} connecting={opening || adv.busy}
     features={slots?.map(slot => ({ id: slot.adventure.id, kind: slot.adventure.kind, hint: slot.adventure.hint.detail, ids: slot.session.ids }))}
     error={message ?? adv.error ?? undefined} adventureError={error}
     onConnect={() => void run(() => adv.connect().then(() => undefined))}
@@ -58,5 +61,8 @@ export default function Home() {
     onProgress={() => router.push("/memory-wall")}
     onPending={() => router.push("/queue")}
     onRetry={() => { setRetry(n => n + 1); void reload(); }}
-  />;
+  />
+  {/* First visit after onboarding (or Replay app tour in Settings): a short spotlight tour. */}
+  <HomeTour ready={homeReady && hasPhotos} adventures={slots?.length ?? 0} />
+  </>;
 }

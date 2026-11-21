@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
 import { Button, Icon, Loading, Text } from "@/components/pictopia/ui";
@@ -39,6 +39,9 @@ export default function Explore() {
   const today = useLocalDay();
   const todayLabel = new Date(`${today}T12:00:00`).toLocaleDateString(undefined, { month: "long", day: "numeric" });
   const lift = useLift();
+  const { fontScale } = useWindowDimensions();
+  // Reserve two title lines and two caption lines, plus padding and a small rounding margin.
+  const utilityCopyHeight = 22 + Math.ceil(80 * Math.max(fontScale, 1));
   const [choices, setChoices] = useState<Choices>();
   const [parked, setParked] = useState<AdventureSlot[]>([]);
   const [recentCount, setRecentCount] = useState<number>();
@@ -161,96 +164,102 @@ export default function Explore() {
             />
             {/* Extra breathing room sets today's On This Day apart from the library rows below. */}
             <View className="h-5" />
-            <ExploreTile
-              lift={lift}
-              title="Recents"
-              hint={recents === undefined ? "Checking…" : recents ? `Your latest ${recents.toLocaleString()} · photos, videos & screenshots` : "Nothing new yet"}
-              art={{ illustration: "recents" }}
-              disabled={!recents}
-              onPress={() => router.push({ pathname: "/collection-review", params: { scope: "recents" } })}
-            />
-            <ExploreTile
-              lift={lift}
-              title="Favorites"
-              hint={favorites === undefined ? "Checking…" : favorites ? `${favorites.toLocaleString()} ${favorites === 1 ? "photo" : "photos"}` : "Mark photos in Photos"}
-              art={{ illustration: "favorites" }}
-              disabled={!favorites}
-              onPress={() => router.push({ pathname: "/collection-review", params: { scope: "favorites" } })}
-            />
-            {/* Surprise Me — curated adventure, full-width landscape. */}
-            {choices.detour ? (
+            <View className="mt-3 gap-1.5">
               <ExploreTile
+                grouped
                 lift={lift}
-                title="Surprise Me"
-                hint={surprise ? surprise.adventure.hint.detail : "20 photos, drawn from across your years"}
-                art={{ illustration: "detour" }}
-                badge={busy === "surprise-me" ? "Preparing…" : place(surprise)}
-                onPress={() => void begin("surprise-me")}
+                title="Recents"
+                hint={recents === undefined ? "Checking…" : recents ? `Your latest ${recents.toLocaleString()} · photos, videos & screenshots` : "Nothing new yet"}
+                art={{ illustration: "recents" }}
+                disabled={!recents}
+                onPress={() => router.push({ pathname: "/collection-review", params: { scope: "recents" } })}
               />
-            ) : (
-              <ExploreTile lift={lift} title="Surprise Me" hint="Not enough variety yet — try after reviewing a few more months." art={{ illustration: "detour" }} disabled />
-            )}
-            {/* All Photos — the whole library, newest first. */}
-            <ExploreTile
-              lift={lift}
-              title="All Photos"
-              hint={recentCount !== undefined ? `${recentCount.toLocaleString()} photos · newest first` : "Every photo, newest first"}
-              art={{ illustration: "allPhotos" }}
-              onPress={() => router.push({ pathname: "/collection-review", params: { scope: "recent" } })}
-            />
-
-            {/* Utilities — Screenshot Sweep + Largest videos, two squares side by side. */}
-            <SectionTitle>Utilities</SectionTitle>
-            <View className="flex-row gap-3">
-              {screenshotsAvailable ? (
+              <ExploreTile
+                grouped
+                lift={lift}
+                title="Favorites"
+                hint={favorites === undefined ? "Checking…" : favorites ? `${favorites.toLocaleString()} ${favorites === 1 ? "photo" : "photos"}` : "Mark photos in Photos"}
+                art={{ illustration: "favorites" }}
+                disabled={!favorites}
+                onPress={() => router.push({ pathname: "/collection-review", params: { scope: "favorites" } })}
+              />
+              {/* Surprise Me — curated adventure, full-width landscape. */}
+              {choices.detour ? (
                 <ExploreTile
-                  square lift={lift}
-                  title="Screenshot Sweep"
-                  hint={screenshots ? `${screenshots.total.toLocaleString()} screenshots` : "Oldest first"}
-                  art={{ illustration: "screenshots" }}
-                  plus
-                  badge={busy === "screenshot-sweep" ? "Preparing…" : app.pro ? place(screenshotSlot) : undefined}
-                  onPress={() => openPlus(() => void begin("screenshot-sweep"))}
+                  grouped
+                  lift={lift}
+                  title="Surprise Me"
+                  hint={surprise ? surprise.adventure.hint.detail : "20 photos, drawn from across your years"}
+                  art={{ illustration: "detour" }}
+                  badge={busy === "surprise-me" ? "Preparing…" : place(surprise)}
+                  onPress={() => void begin("surprise-me")}
                 />
               ) : (
-                <ExploreTile square lift={lift} title="Screenshot Sweep" hint={screenshots ? "Nothing to sweep" : "Looking…"} art={{ illustration: "screenshots" }} plus disabled />
+                <ExploreTile grouped lift={lift} title="Surprise Me" hint="Not enough variety yet — try after reviewing a few more months." art={{ illustration: "detour" }} disabled />
               )}
-              {videos?.total ? (
-                <ExploreTile
-                  square lift={lift}
-                  title="Largest videos"
-                  hint={`${videos.total.toLocaleString()} videos · biggest first`}
-                  art={{ illustration: "largeVideos" }}
-                  plus
-                  onPress={() => openPlus(() => router.push({ pathname: "/collection-review", params: { scope: "videos-large" } }))}
-                />
-              ) : (
-                <ExploreTile square lift={lift} title="Largest videos" hint={videos ? "No videos yet" : "Looking…"} art={{ illustration: "largeVideos" }} plus disabled />
-              )}
+              {/* All Photos — the whole library, newest first. */}
+              <ExploreTile
+                grouped
+                lift={lift}
+                title="All Photos"
+                hint={recentCount !== undefined ? `${recentCount.toLocaleString()} photos · newest first` : "Every photo, newest first"}
+                art={{ illustration: "allPhotos" }}
+                onPress={() => router.push({ pathname: "/collection-review", params: { scope: "recent" } })}
+              />
             </View>
 
-            {/* Duplicate Hunt + All videos — two squares side by side, like the pair above. */}
-            <View className="mt-3 flex-row gap-3">
-              <ExploreTile
-                square lift={lift}
-                title="Duplicate Hunt"
-                hint={lookalikes ? `${lookalikes.toLocaleString()} ${lookalikes === 1 ? "set" : "sets"} of look-alikes` : "Copies and near-identical shots"}
-                art={{ illustration: "duplicates" }}
-                plus
-                onPress={() => openPlus(() => router.push("/duplicate-hunt"))}
-              />
-              {videos?.total ? (
+            <SectionTitle>Utilities</SectionTitle>
+            <View className="gap-3">
+              <View className="flex-row gap-3">
+                {screenshotsAvailable ? (
+                  <ExploreTile
+                    utilityCopyHeight={utilityCopyHeight} lift={lift}
+                    title="Screenshot Sweep"
+                    hint={screenshots ? `${screenshots.total.toLocaleString()} screenshots` : "Oldest first"}
+                    art={{ illustration: "screenshots" }}
+                    plus
+                    badge={busy === "screenshot-sweep" ? "Preparing…" : app.pro ? place(screenshotSlot) : undefined}
+                    onPress={() => openPlus(() => void begin("screenshot-sweep"))}
+                  />
+                ) : (
+                  <ExploreTile utilityCopyHeight={utilityCopyHeight} lift={lift} title="Screenshot Sweep" hint={screenshots ? "Nothing to sweep" : "Looking…"} art={{ illustration: "screenshots" }} plus disabled />
+                )}
+                {videos?.total ? (
+                  <ExploreTile
+                    utilityCopyHeight={utilityCopyHeight} lift={lift}
+                    title="Largest videos"
+                    hint={`${videos.total.toLocaleString()} videos · biggest first`}
+                    art={{ illustration: "largeVideos" }}
+                    plus
+                    onPress={() => openPlus(() => router.push({ pathname: "/collection-review", params: { scope: "videos-large" } }))}
+                  />
+                ) : (
+                  <ExploreTile utilityCopyHeight={utilityCopyHeight} lift={lift} title="Largest videos" hint={videos ? "No videos yet" : "Looking…"} art={{ illustration: "largeVideos" }} plus disabled />
+                )}
+              </View>
+
+              <View className="flex-row gap-3">
                 <ExploreTile
-                  square lift={lift}
-                  title="All videos"
-                  hint={`${videos.total.toLocaleString()} videos · oldest first`}
-                  art={{ illustration: "allVideos" }}
+                  utilityCopyHeight={utilityCopyHeight} lift={lift}
+                  title="Duplicate Hunt"
+                  hint={lookalikes ? `${lookalikes.toLocaleString()} ${lookalikes === 1 ? "set" : "sets"} of look-alikes` : "Copies and near-identical shots"}
+                  art={{ illustration: "duplicates" }}
                   plus
-                  onPress={() => openPlus(() => router.push({ pathname: "/collection-review", params: { scope: "videos" } }))}
+                  onPress={() => openPlus(() => router.push("/duplicate-hunt"))}
                 />
-              ) : (
-                <ExploreTile square lift={lift} title="All videos" hint={videos ? "No videos yet" : "Looking…"} art={{ illustration: "allVideos" }} plus disabled />
-              )}
+                {videos?.total ? (
+                  <ExploreTile
+                    utilityCopyHeight={utilityCopyHeight} lift={lift}
+                    title="All videos"
+                    hint={`${videos.total.toLocaleString()} videos · oldest first`}
+                    art={{ illustration: "allVideos" }}
+                    plus
+                    onPress={() => openPlus(() => router.push({ pathname: "/collection-review", params: { scope: "videos" } }))}
+                  />
+                ) : (
+                  <ExploreTile utilityCopyHeight={utilityCopyHeight} lift={lift} title="All videos" hint={videos ? "No videos yet" : "Looking…"} art={{ illustration: "allVideos" }} plus disabled />
+                )}
+              </View>
             </View>
 
             {/* Albums */}
@@ -272,10 +281,9 @@ export default function Explore() {
 }
 
 /** One unified Explore tile. By default it's a landscape row (108 px tall with a 108 px art
- * panel on the left). `square` turns it into a half-width square card — art on top, text
- * below — so sibling pairs can sit two-up in a `flex-row gap-3`. `disabled` greys the tile
+ * panel on the left). Utilities use half-width cards with matching artwork and text areas. `disabled` greys the tile
  * but keeps its shape, so empty sections never collapse. */
-function ExploreTile({ lift, title, hint, art, plus, disabled, badge, square, onPress }: {
+function ExploreTile({ lift, title, hint, art, plus, disabled, badge, utilityCopyHeight, grouped, onPress }: {
   lift: object;
   title: string;
   hint: string;
@@ -284,26 +292,33 @@ function ExploreTile({ lift, title, hint, art, plus, disabled, badge, square, on
   plus?: boolean;
   disabled?: boolean;
   badge?: string;
-  square?: boolean;
+  utilityCopyHeight?: number;
+  grouped?: boolean;
   onPress?: () => void;
 }) {
-  const label = `${title}${plus ? ", Pictopia+" : ""}. ${hint}`;
-  if (square) {
-    const inner = (
-      <View style={lift} className={`flex-1 overflow-hidden rounded-[18px] bg-card ${disabled ? "opacity-70" : ""}`}>
+  const label = `${title}${plus ? ", Pictopia+" : ""}. ${hint}${badge ? `. ${badge}` : ""}`;
+  if (utilityCopyHeight !== undefined) {
+    const cardStyle = [lift, utilityTile];
+    const cardClass = "overflow-hidden rounded-[18px] bg-card";
+    const content = (
+      <>
         <View style={squareArt} className="p-1.5">
           <View className="flex-1 overflow-hidden rounded-[13px] bg-muted"><ArtPanel art={art} wide /></View>
           {plus ? <View pointerEvents="none" className="absolute right-3 top-3"><PlusTag /></View> : null}
+          {badge ? <View pointerEvents="none" className="absolute bottom-3 left-3 right-3 items-start">
+            <View className="max-w-full rounded-md bg-card px-1.5 py-0.5">
+              <Text numberOfLines={1} className="text-[11px] leading-[14px] uppercase tracking-wider text-foreground" style={tagStyle}>{badge}</Text>
+            </View>
+          </View> : null}
         </View>
-        <View className="gap-1 p-3">
-          {!!badge && <View className="self-start rounded-md bg-tomato/15 px-1.5 py-0.5"><Text className="text-[11px] uppercase tracking-wider text-tertiary" style={tagStyle}>{badge}</Text></View>}
+        <View style={{ height: utilityCopyHeight }} className="gap-1 px-3 py-2">
           <Text numberOfLines={2} className="text-h3 leading-[23px] text-foreground">{title}</Text>
-          <Text numberOfLines={2} className="text-caption leading-[17px] text-muted-foreground">{hint}</Text>
+          <Text numberOfLines={2} ellipsizeMode="tail" className="text-caption leading-[17px] text-muted-foreground">{hint}</Text>
         </View>
-      </View>
+      </>
     );
-    if (disabled || !onPress) return <View accessibilityLabel={label} className="flex-1">{inner}</View>;
-    return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} className="flex-1 active:opacity-90">{inner}</Pressable>;
+    if (disabled || !onPress) return <View accessibilityLabel={label} style={cardStyle} className={`${cardClass} opacity-70`}>{content}</View>;
+    return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={cardStyle} className={`${cardClass} active:opacity-90`}>{content}</Pressable>;
   }
   const row = (
     <View style={lift} className={`h-[108px] flex-row overflow-hidden rounded-[18px] bg-card ${disabled ? "opacity-70" : ""}`}>
@@ -329,7 +344,7 @@ function ExploreTile({ lift, title, hint, art, plus, disabled, badge, square, on
   // the card View: NativeWind upgrades a View with press pseudo-classes into its own
   // Pressable on native, which would claim every tap before onPress can fire.
   return (
-    <View className="relative mt-3">
+    <View className={grouped ? "relative" : "relative mt-3"}>
       {disabled || !onPress
         ? <View accessibilityLabel={label}>{row}</View>
         : <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} className="active:opacity-90">{row}</Pressable>}
@@ -370,4 +385,6 @@ function PlusTag() {
 }
 const tagStyle = { fontFamily: "Inter_700Bold" };
 /** Utilities cards use a landscape picture (3:2) so the pairs stay compact on the page. */
-const squareArt = { aspectRatio: 1.5 };
+const squareArt = { width: "100%", aspectRatio: 1.5, flexShrink: 0 } as const;
+// Share row width evenly. The artwork ratio and reserved copy area set the height.
+const utilityTile = { flexBasis: 0, flexGrow: 1, minWidth: 0 };
