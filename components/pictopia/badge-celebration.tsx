@@ -55,7 +55,7 @@ export function BadgeCelebrationHost() {
   };
   if (!award || !definition) return null;
   return <Modal visible transparent animationType="fade" onRequestClose={() => void dismiss()}>
-    <SafeAreaView className="flex-1 items-center justify-center bg-background/95 px-6">
+    <SafeAreaView className="flex-1 items-center justify-center bg-overlay/40 px-6">
       <ScrollView className="w-full max-w-md" contentContainerClassName="flex-grow items-center justify-center py-8">
         {/* Keyed per award so "Next badge" plays the whole reveal again. */}
         <BadgeReveal key={`${award.family}:${award.tier}:${award.earnedAt}`} award={award} name={`${definition.name} ${ROMAN[award.tier] ?? ""}`}

@@ -171,15 +171,6 @@ export default function Explore() {
                 disabled={!recents}
                 onPress={() => router.push({ pathname: "/collection-review", params: { scope: "recents" } })}
               />
-              <ExploreTile
-                grouped
-                lift={lift}
-                title="Favorites"
-                hint={favorites === undefined ? "Checking…" : favorites ? `${favorites.toLocaleString()} ${favorites === 1 ? "photo" : "photos"}` : "Mark photos in Photos"}
-                art={{ illustration: "favorites" }}
-                disabled={!favorites}
-                onPress={() => router.push({ pathname: "/collection-review", params: { scope: "favorites" } })}
-              />
               {/* Surprise Me — curated adventure, full-width landscape. */}
               {choices.detour ? (
                 <ExploreTile
@@ -194,6 +185,15 @@ export default function Explore() {
               ) : (
                 <ExploreTile grouped lift={lift} title="Surprise Me" hint="Not enough variety yet — try after reviewing a few more months." art={{ illustration: "detour" }} disabled />
               )}
+              <ExploreTile
+                grouped
+                lift={lift}
+                title="Favorites"
+                hint={favorites === undefined ? "Checking…" : favorites ? `${favorites.toLocaleString()} ${favorites === 1 ? "photo" : "photos"}` : "Mark photos in Photos"}
+                art={{ illustration: "favorites" }}
+                disabled={!favorites}
+                onPress={() => router.push({ pathname: "/collection-review", params: { scope: "favorites" } })}
+              />
               {/* All Photos — the whole library, newest first. */}
               <ExploreTile
                 grouped
