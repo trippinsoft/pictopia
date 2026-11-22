@@ -71,7 +71,8 @@ export const Illustration = memo(function Illustration({
 }) {
   const { theme } = useTheme();
   const dark = theme.name === "dark" || theme.name === "adventure";
-  const c = dark ? (emphasized ? darkExploreArt : darkArt) : (emphasized ? lightExploreArt : lightArt);
+  const useExplorePalette = emphasized || name === "memoryMatch" || name === "whichFirst";
+  const c = dark ? (useExplorePalette ? darkExploreArt : darkArt) : (useExplorePalette ? lightExploreArt : lightArt);
   return (
     <Svg
       width="100%"
@@ -393,30 +394,30 @@ const SCENES: Record<ArtName, Scene> = {
   whichFirst: (c) => (
     <G>
       {sky(c.canvasBlush)}
-      <Ellipse cx="60" cy="116" rx="44" ry="5" fill={c.ink} opacity="0.07" />
+      <Ellipse cx="60" cy="116" rx="46" ry="6" fill={c.ink} opacity={0.16} />
       {sparkle(16, 30, 3.2, c.sun)}
       {sparkle(106, 124, 3, c.sun)}
       <G transform="rotate(-9 36 82)">
-        <Rect x="17.5" y="61" width="40" height="48" rx="4" fill={c.ink} opacity="0.13" />
+        <Rect x="19" y="62" width="40" height="48" rx="5" fill={c.ink} opacity={0.22} />
         <Rect x="16" y="58" width="40" height="48" rx="4" fill={c.paper} />
-        <Rect x="20" y="62" width="32" height="30" rx="1.5" fill={c.sky} />
+        <Rect x="20" y="62" width="32" height="30" rx="1.5" fill={c.canvasBlue} />
         <Circle cx="45" cy="70" r="4" fill={c.sun} />
         <Path d="M20 92 Q32 78 52 92Z" fill={c.moss} />
         <Rect x="22" y="96" width="12" height="2.5" rx="1" fill={c.sandDeep} opacity={0.6} />
         <Rect x="22" y="100" width="20" height="2.5" rx="1" fill={c.sandDeep} opacity={0.35} />
       </G>
       <G transform="rotate(10 86 88)">
-        <Rect x="67.5" y="67" width="40" height="48" rx="4" fill={c.ink} opacity="0.13" />
+        <Rect x="69" y="68" width="40" height="48" rx="5" fill={c.ink} opacity={0.22} />
         <Rect x="66" y="64" width="40" height="48" rx="4" fill={c.paper} />
-        <Rect x="70" y="68" width="32" height="30" rx="1.5" fill={c.rose} />
-        <Circle cx="92" cy="76" r="4" fill={c.terracotta} />
-        <Path d="M70 98 Q82 84 102 98Z" fill={c.terracotta} opacity={0.75} />
+        <Rect x="70" y="68" width="32" height="30" rx="1.5" fill={c.coral} />
+        <Circle cx="92" cy="76" r="4" fill={c.sun} />
+        <Path d="M70 98 Q82 84 102 98Z" fill={c.tealDeep} />
         <Rect x="72" y="102" width="12" height="2.5" rx="1" fill={c.sandDeep} opacity={0.6} />
         <Rect x="72" y="106" width="20" height="2.5" rx="1" fill={c.sandDeep} opacity={0.35} />
       </G>
       {/* Older → newer: a dashed arc over the prints, ending in an arrowhead. */}
-      <Path d="M32 48 Q58 22 84 50" stroke={c.terracotta} strokeWidth="2.4" strokeDasharray="4 3.5" strokeLinecap="round" fill="none" />
-      <Path d="M78 47 L85 52 L86.5 43.5" stroke={c.terracotta} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <Path d="M32 48 Q58 22 84 50" stroke={c.teal} strokeWidth="2.4" strokeDasharray="4 3.5" strokeLinecap="round" fill="none" />
+      <Path d="M78 47 L85 52 L86.5 43.5" stroke={c.teal} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
     </G>
   ),
 
@@ -439,7 +440,8 @@ const SCENES: Record<ArtName, Scene> = {
   memoryMatch: (c) => (
     <G>
       {sky(c.canvasMint)}
-      <Ellipse cx="60" cy="104" rx="36" ry="5" fill={c.ink} opacity="0.07" />
+      <Ellipse cx="63" cy="107" rx="39" ry="7" fill={c.ink} opacity={0.16} />
+      <Ellipse cx="63" cy="107" rx="29" ry="4" fill={c.ink} opacity={0.10} />
       <CardStackMark c={c} cx={60} cy={74} s={0.92} />
       {sparkle(24, 38, 4, c.sun)}
       {sparkle(98, 44, 3, c.terracotta)}
