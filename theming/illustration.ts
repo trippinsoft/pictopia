@@ -85,6 +85,31 @@ export const darkArt: ArtPalette = {
   canvasPeach: "#352519",
 };
 
+// Explore mixes the brighter Storybook colors with the deeper fills used by Utilities.
+export const lightExploreArt: ArtPalette = {
+  ...lightArt,
+  canvasBlue: "#89B5E1",
+  canvasMint: "#81C9AB",
+  canvasBlush: "#DEA27D",
+  canvasButter: "#F5C55C",
+  canvasPeach: "#EDA969",
+  sage: "#6BB48E",
+  moss: "#2C795D",
+  tealLight: "#A08CC8",
+  terracotta: "#E45A3C",
+};
+
+export const darkExploreArt: ArtPalette = {
+  ...darkArt,
+  canvasBlue: "#2E507B",
+  canvasMint: "#265347",
+  canvasBlush: "#654439",
+  canvasButter: "#684E2A",
+  canvasPeach: "#674930",
+  moss: "#3F916D",
+  tealLight: "#977DBF",
+};
+
 /** Memory Wall "Mountains to the Sea" world by day. The scene shares the Storybook palette above
  * and adds the terrain, building and sea tones the larger world needs. Every colour the wall
  * artwork draws comes from here (or `nightWorld` in dark mode). */

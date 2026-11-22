@@ -2,7 +2,7 @@ import { memo, type ReactNode } from "react";
 import { type StyleProp, type ViewStyle } from "react-native";
 import Svg, { Circle, Ellipse, G, Line, Path, Polygon, Rect } from "react-native-svg";
 import { useTheme } from "@/theming/ThemeProvider";
-import { darkArt, lightArt, type ArtPalette } from "@/theming/illustration";
+import { darkArt, darkExploreArt, lightArt, lightExploreArt, type ArtPalette } from "@/theming/illustration";
 import { CardStackMark } from "./card-stack-mark";
 import type { AdventureKind } from "@/lib/pictopia/adventures";
 
@@ -57,6 +57,7 @@ export const Illustration = memo(function Illustration({
   style,
   square = false,
   wide = false,
+  emphasized = false,
   accessibilityLabel,
 }: {
   name: ArtName;
@@ -65,10 +66,12 @@ export const Illustration = memo(function Illustration({
   square?: boolean;
   /** Zoom out to a 3:2 landscape frame that keeps the whole subject (compact cards). */
   wide?: boolean;
+  emphasized?: boolean;
   accessibilityLabel?: string;
 }) {
   const { theme } = useTheme();
-  const c = theme.name === "dark" || theme.name === "adventure" ? darkArt : lightArt;
+  const dark = theme.name === "dark" || theme.name === "adventure";
+  const c = dark ? (emphasized ? darkExploreArt : darkArt) : (emphasized ? lightExploreArt : lightArt);
   return (
     <Svg
       width="100%"
@@ -78,12 +81,12 @@ export const Illustration = memo(function Illustration({
       preserveAspectRatio="xMidYMid slice"
       {...(accessibilityLabel ? { accessible: true, accessibilityLabel } : {})}
     >
-      {SCENES[name](c)}
+      {SCENES[name](c, emphasized)}
     </Svg>
   );
 });
 
-type Scene = (c: ArtPalette) => ReactNode;
+type Scene = (c: ArtPalette, emphasized?: boolean) => ReactNode;
 // The backdrop overflows the 120 × 150 canvas so the zoomed-out `wide` frame has no bare edges.
 const sky = (fill: string) => <Rect x="-60" y="-60" width="240" height="270" fill={fill} />;
 const cloud = (x: number, y: number, fill: string, s = 1) => (
@@ -114,10 +117,11 @@ const heart = (x: number, y: number, r: number, fill: string, rot = 0) => (
   />
 );
 /** A small instant print: border, picture area with a sun and a hill. */
-const print = (x: number, y: number, w: number, rot: number, c: ArtPalette, tint = c.skyAlt) => {
+const print = (x: number, y: number, w: number, rot: number, c: ArtPalette, tint = c.skyAlt, shadow = false) => {
   const h = w * 1.15;
   return (
     <G transform={`rotate(${rot} ${x + w / 2} ${y + h / 2})`}>
+      {shadow && <Rect x={x + 2.5} y={y + 3.5} width={w} height={h} rx="3" fill={c.ink} opacity={0.2} />}
       <Rect x={x} y={y} width={w} height={h} rx="1.5" fill={c.paper} />
       <Rect x={x + w * 0.09} y={y + w * 0.09} width={w * 0.82} height={w * 0.78} fill={tint} />
       <Circle cx={x + w * 0.66} cy={y + w * 0.32} r={w * 0.1} fill={c.sun} />
@@ -203,14 +207,15 @@ const SCENES: Record<ArtName, Scene> = {
   ),
 
   // A torn-off calendar page holding the season, with a sprig reaching in.
-  onThisDay: (c) => (
+  onThisDay: (c, emphasized) => (
     <G>
       {sky(c.canvasButter)}
       <Circle cx="96" cy="30" r="10" fill={c.sun} />
       <Path d="M0 124 Q40 112 70 120 T120 116 V150 H0Z" fill={c.sage} />
       <G transform="rotate(-5 60 76)">
+        {emphasized && <Rect x="34" y="45" width="60" height="70" rx="7" fill={c.ink} opacity={0.2} />}
         <Rect x="30" y="40" width="60" height="70" rx="6" fill={c.paper} />
-        <Path d="M30 46 a6 6 0 0 1 6 -6 h48 a6 6 0 0 1 6 6 v12 h-60z" fill={c.terracotta} />
+        <Path d="M30 46 a6 6 0 0 1 6 -6 h48 a6 6 0 0 1 6 6 v12 h-60z" fill={emphasized ? c.tealDeep : c.terracotta} />
         <Rect x="41" y="35" width="4" height="10" rx="2" fill={c.ink} />
         <Rect x="75" y="35" width="4" height="10" rx="2" fill={c.ink} />
         <Circle cx="60" cy="80" r="11" fill={c.sun} opacity={0.9} />
@@ -218,7 +223,7 @@ const SCENES: Record<ArtName, Scene> = {
         {[0, 1, 2, 3, 4].map((i) => (
           <Rect key={i} x={38 + i * 9.5} y="64" width="5" height="2" rx="1" fill={c.sandDeep} opacity={0.6} />
         ))}
-        <Path d="M90 98 L90 110 L78 110Z" fill={c.sand} />
+        <Path d="M90 98 L90 110 L78 110Z" fill={emphasized ? c.sandDeep : c.sand} />
       </G>
       <Path d="M0 30 Q20 34 34 52" stroke={c.moss} strokeWidth="2" fill="none" strokeLinecap="round" />
       {[
@@ -235,7 +240,7 @@ const SCENES: Record<ArtName, Scene> = {
   ),
 
   // A balloon drifting off a looping, dashed route among stray shapes.
-  detour: (c) => (
+  detour: (c, emphasized) => (
     <G>
       {sky(c.canvasBlue)}
       {cloud(22, 30, c.cloud)}
@@ -251,16 +256,17 @@ const SCENES: Record<ArtName, Scene> = {
       <G>
         <Path d="M60 28 C42 28 38 50 46 62 L54 72 H66 L74 62 C82 50 78 28 60 28Z" fill={c.terracotta} />
         <Path d="M60 28 C54 34 52 54 56 72 H64 C68 54 66 34 60 28Z" fill={c.sun} />
+        {emphasized && <Path d="M73 33 C81 40 80 53 74 62 L66 72 H63 C70 58 75 45 73 33Z" fill={c.tealDeep} opacity={0.42} />}
         <Path d="M47 46 H73" stroke={c.paper} strokeWidth="1.2" opacity={0.7} />
         <Line x1="55" y1="72" x2="56" y2="80" stroke={c.ink} strokeWidth="0.8" />
         <Line x1="65" y1="72" x2="64" y2="80" stroke={c.ink} strokeWidth="0.8" />
-        <Rect x="54.5" y="80" width="11" height="7" rx="1.5" fill={c.sandDeep} />
+        <Rect x="54.5" y="80" width="11" height="7" rx="1.5" fill={emphasized ? c.ink : c.sandDeep} />
       </G>
       {sparkle(24, 70, 4.5, c.sun)}
       <Polygon points="96,30 102,40 90,40" fill={c.tealLight} />
       <Circle cx="20" cy="100" r="3.5" fill={c.coral} />
       <Rect x="98" y="58" width="6" height="6" rx="1" fill={c.sage} transform="rotate(20 101 61)" />
-      <Path d="M0 140 Q30 128 60 138 T120 134 V150 H0Z" fill={c.tealLight} />
+      <Path d="M0 140 Q30 128 60 138 T120 134 V150 H0Z" fill={emphasized ? c.teal : c.tealLight} />
     </G>
   ),
 
@@ -473,15 +479,16 @@ const SCENES: Record<ArtName, Scene> = {
   },
 
   // Recents: fresh prints landing on the pile, newest on top, under a little clock.
-  recents: (c) => (
+  recents: (c, emphasized) => (
     <G>
       {sky(c.canvasMint)}
       <G transform="translate(60 76) scale(1.16) translate(-60 -76)">
-      <Ellipse cx="60" cy="112" rx="44" ry="5" fill={c.ink} opacity="0.07" />
-      {print(12, 64, 30, -14, c, c.coral)}
-      {print(36, 56, 34, -4, c, c.tealLight)}
-      {print(62, 50, 38, 8, c, c.sage)}
+      <Ellipse cx="60" cy="112" rx="44" ry="5" fill={c.ink} opacity={emphasized ? 0.16 : 0.07} />
+      {print(12, 64, 30, -14, c, c.coral, emphasized)}
+      {print(36, 56, 34, -4, c, emphasized ? c.teal : c.tealLight, emphasized)}
+      {print(62, 50, 38, 8, c, c.sage, emphasized)}
       <Path d="M18 50 H32 M14 56 H26" stroke={c.paper} strokeWidth="2.4" strokeLinecap="round" opacity={0.9} />
+      {emphasized && <Circle cx="96" cy="47" r="14" fill={c.ink} opacity={0.22} />}
       <Circle cx="94" cy="44" r="14" fill={c.sun} />
       <Circle cx="94" cy="44" r="10.5" fill={c.paper} />
       <Line x1="94" y1="44" x2="94" y2="37" stroke={c.ink} strokeWidth="1.8" strokeLinecap="round" />
@@ -494,15 +501,16 @@ const SCENES: Record<ArtName, Scene> = {
   ),
 
   // Favorites: a treasured print with a big heart sticker and a few hearts floating up.
-  favorites: (c) => (
+  favorites: (c, emphasized) => (
     <G>
       {sky(c.canvasBlush)}
       <G transform="translate(60 76) scale(1.16) translate(-60 -76)">
-      <Ellipse cx="58" cy="114" rx="38" ry="5" fill={c.ink} opacity="0.07" />
+      <Ellipse cx="58" cy="114" rx="38" ry="5" fill={c.ink} opacity={emphasized ? 0.16 : 0.07} />
       <G transform="rotate(-6 56 76)">
-        <Rect x="33.5" y="51" width="46" height="54" rx="3" fill={c.ink} opacity="0.12" />
+        <Rect x={emphasized ? 35 : 33.5} y={emphasized ? 53 : 51} width="46" height="54" rx="3" fill={c.ink} opacity={emphasized ? 0.22 : 0.12} />
       </G>
-      {print(32, 48, 46, -6, c, c.tealLight)}
+      {print(32, 48, 46, -6, c, emphasized ? c.teal : c.tealLight)}
+      {emphasized && <G opacity={0.24}>{heart(86, 56, 15, c.ink, 12)}</G>}
       {heart(84, 52, 15, c.terracotta, 12)}
       <Path d="M77 46 Q79 42 83 42" stroke={c.paper} strokeWidth="2.2" strokeLinecap="round" fill="none" opacity={0.85} />
       {heart(22, 42, 5.5, c.coral, -14)}
@@ -515,16 +523,18 @@ const SCENES: Record<ArtName, Scene> = {
   ),
 
   // All Photos: the whole library as one contact sheet of tiny pictures, more stacked behind.
-  allPhotos: (c) => {
-    const tints = [c.tealLight, c.sage, c.coral, c.canvasBlue, c.rose, c.tealLight, c.sage, c.canvasButter, c.coral];
+  allPhotos: (c, emphasized) => {
+    const tints = emphasized
+      ? [c.teal, c.sage, c.coral, c.canvasBlue, c.sun, c.tealDeep, c.sage, c.canvasButter, c.terracotta]
+      : [c.tealLight, c.sage, c.coral, c.canvasBlue, c.rose, c.tealLight, c.sage, c.canvasButter, c.coral];
     return (
       <G>
         {sky(c.canvasPeach)}
       <G transform="translate(60 76) scale(1.16) translate(-60 -76)">
-        <Ellipse cx="60" cy="118" rx="44" ry="5" fill={c.ink} opacity="0.07" />
-        <Rect x="26" y="36" width="72" height="78" rx="6" fill={c.paper} opacity={0.55} transform="rotate(8 62 75)" />
+        <Ellipse cx="60" cy="118" rx="44" ry="5" fill={c.ink} opacity={emphasized ? 0.16 : 0.07} />
+        <Rect x="26" y="36" width="72" height="78" rx="6" fill={emphasized ? c.tealDeep : c.paper} opacity={emphasized ? 1 : 0.55} transform="rotate(8 62 75)" />
         <G transform="rotate(-4 60 75)">
-          <Rect x="25" y="39" width="72" height="78" rx="6" fill={c.ink} opacity="0.1" />
+          <Rect x={emphasized ? 27 : 25} y={emphasized ? 41 : 39} width="72" height="78" rx="6" fill={c.ink} opacity={emphasized ? 0.23 : 0.1} />
           <Rect x="24" y="36" width="72" height="78" rx="6" fill={c.paper} />
           {tints.map((tint, i) => {
             const x = 29 + (i % 3) * 21.5;

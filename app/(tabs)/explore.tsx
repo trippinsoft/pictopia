@@ -364,8 +364,10 @@ function ArtPanel({ art, wide }: { art: { cover?: Media; illustration?: ArtName;
   );
 }
 
+const FEATURE_ART = new Set<ArtName>(["onThisDay", "recents", "favorites", "detour", "allPhotos"]);
+
 function Fallback({ art, wide }: { art: { illustration?: ArtName; icon?: IconName }; wide?: boolean }) {
-  if (art.illustration) return <Illustration name={art.illustration} wide={wide} />;
+  if (art.illustration) return <Illustration name={art.illustration} wide={wide} emphasized={FEATURE_ART.has(art.illustration)} />;
   return (
     <View className="flex-1 items-center justify-center bg-secondary">
       <Icon name={art.icon ?? "Image"} size={32} className="text-muted-foreground" />
