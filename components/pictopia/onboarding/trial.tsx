@@ -183,7 +183,7 @@ export function TrialOffer({ onDone, onStep }: { onDone: (purchased?: boolean) =
       <View className="gap-6">
         <View className="items-center gap-4">
           <Text accessibilityRole="header" className="text-center text-h1 text-foreground">
-            {app.pro ? "Pictopia+ is unlocked" : leadTrial ? `Try Pictopia+ free for ${plural(leadTrial, "day")}` : "Unlock Pictopia+"}
+            {app.pro ? "Pictopia+ is unlocked" : leadTrial ? `Try Pictopia+ free for ${plural(leadTrial, "day").replace(" ", "\u00a0")}` : "Unlock Pictopia+"}
           </Text>
           <PlusIncluded />
         </View>

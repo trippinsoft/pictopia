@@ -229,7 +229,7 @@ export default function Onboarding() {
 const noop = () => {};
 /** The ready screen's promise matches what was actually prepared. */
 function readyLine(picked: number) {
-  return picked >= 2 ? "We picked two adventures just for you."
+  return picked >= 2 ? "We curated two adventures just for you."
     : picked === 1 ? "We picked an adventure just for you."
     : "Let’s take a look around.";
 }

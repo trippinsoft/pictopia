@@ -84,7 +84,7 @@ module.exports = {
   scheme: "pictopia",
   slug: "pictopia",
   userInterfaceStyle: "automatic",
-  version: "1.0.71",
+  version: "1.0.72",
   web: { bundler: "metro", output: "single", favicon: "./assets/images/favicon.png" },
   platforms: ["ios", "android", "web"]
 };

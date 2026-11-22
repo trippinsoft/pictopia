@@ -158,7 +158,7 @@ test("the trial screen redeems the lead offer and the bottom sheet can redeem th
   await new Promise(resolve => setImmediate(resolve));
   getButton(h.render(), "Continue").props.onPress();
   const timeline = h.render();
-  assert.match(textOf(timeline), /Try Pictopia\+ free for 3 days/);
+  assert.match(textOf(timeline), /Try Pictopia\+ free for 3\u00a0days/);
   assert.match(textOf(timeline), /In 2 days.*if notifications are on/s);
   const redeem = "Redeem 3 day trial for $0.00";
   assert.match(textOf(timeline.props.footer), /No payment due now.*\$7\.99\/week.*Redeem.*View all plans/s);
