@@ -10,7 +10,7 @@ import type { ViewStyle } from "react-native";
  * feed back into the next layout. (Measuring sections with onLayout and choosing
  * 4 pt-stepped gaps from that state made Home oscillate between two layouts.) */
 export const HOME_GAPS = {
-  roomy: { stats: 20, adventure: 28, postcards: 24, note: 32, pending: 28, bottom: 32 },
+  roomy: { stats: 48, adventure: 64, postcards: 40, note: 76, pending: 48, bottom: 32 },
   compact: { stats: 12, adventure: 20, postcards: 16, note: 20, pending: 16, bottom: 16 },
 } as const;
 export type HomeGap = keyof typeof HOME_GAPS.roomy;

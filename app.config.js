@@ -20,7 +20,7 @@ module.exports = {
   experiments: { typedRoutes: true, tsconfigPaths: true },
   icon: "./assets/images/icon.png",
   ios: {
-    supportsTablet: true,
+    supportsTablet: false,
     bundleIdentifier: "com.trippinsoft.pictopia",
     buildNumber: "1",
     infoPlist: { ITSAppUsesNonExemptEncryption: false }
@@ -84,7 +84,6 @@ module.exports = {
 
 
   }]],
-
 
 
 

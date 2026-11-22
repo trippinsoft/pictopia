@@ -89,14 +89,23 @@ test('section order and gaps match the Home design', () => {
 
 test('roomy gaps when everything fits, compressed when tight, minimums and scrolling when short', () => {
   const { items } = column(base);
-  assert.deepEqual(gaps(layout(items, 1000, phone)), [20, 28, 24, 32, 28, 32], 'roomy rhythm on tall screens');
+  const roomy = [48, 64, 40, 76, 48, 32], compact = [12, 20, 16, 20, 16, 16];
+  assert.deepEqual(gaps(layout(items, 1000, phone)).map(gap => Math.round(gap * 3) / 3), roomy, 'roomy rhythm on tall screens');
   const tight = layout(items, 760, phone), pill = sections(tight).pending;
   assert.ok(pill.top + pill.height <= 760, 'a near-fitting iPhone shows the whole Discarded pill');
-  assert.ok(gaps(tight).every((g, i) => g >= [12, 20, 16, 20, 16, 16][i] && g <= [20, 28, 24, 32, 28, 32][i]));
-  assert.ok(gaps(tight).some((g, i) => g < [20, 28, 24, 32, 28, 32][i]), 'gaps compress');
+  assert.ok(gaps(tight).every((g, i) => g >= compact[i] && g <= roomy[i]));
+  assert.ok(gaps(tight).some((g, i) => g < roomy[i]), 'gaps compress');
   const short = layout(items, 560, phone), last = short.at(-1);
-  assert.deepEqual(gaps(short), [12, 20, 16, 20, 16, 16], 'compact minimums on short screens / large text');
+  assert.deepEqual(gaps(short), compact, 'compact minimums on short screens / large text');
   assert.ok(last.top + last.height > 560, 'content overflows into normal scrolling instead of being squeezed');
+});
+
+test('a tall iPhone with an empty queue spreads spare height between Home sections', () => {
+  const { items } = column({ ...base, pending: 0 });
+  const tall = layout(items, 840, phone);
+  assert.ok(gaps(tall).slice(0, -1).every((gap, i) => gap > [20, 28, 24, 32][i]));
+  const note = sections(tall).note;
+  assert.ok(840 - (note.top + note.height) <= 40, 'the tip sits close to the bottom of the usable viewport');
 });
 
 test('a one-pixel change in any section moves nothing by more than that pixel', () => {
