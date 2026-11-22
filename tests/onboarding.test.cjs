@@ -125,17 +125,17 @@ test("replay starts at Welcome, reuses library access, and shows the offer to a 
   h.unmount();
 });
 
-test("the trial screen redeems the lead offer and the bottom sheet can redeem the alternate plan", async () => {
-  const weekly = { id: "w", kind: "weekly", price: "$7.99", amount: 7.99, currency: "USD", trialDays: 3 };
-  const yearly = { id: "y", kind: "annual", price: "$29.99", amount: 29.99, currency: "USD", trialDays: 3 };
-  const steps = [], purchases = [];
+function mockTrialOffer({ pro = false, trialDays } = {}) {
+  const weekly = { id: "w", kind: "weekly", price: "$7.99", amount: 7.99, currency: "USD", trialDays };
+  const yearly = { id: "y", kind: "annual", price: "$29.99", amount: 29.99, currency: "USD", trialDays };
+  const steps = [], purchases = [], done = [];
   const h = hooks("components/pictopia/onboarding/trial.tsx", "TrialOffer", {
     "react/jsx-runtime": runtime,
     "react-native": { Platform: { OS: "ios" }, View: "View", Pressable: "Pressable", Modal: "Modal", ScrollView: "ScrollView" },
     "react-native-safe-area-context": { SafeAreaView: "SafeAreaView" },
     "@/components/pictopia/ui": { Button: "Button", Icon: "Icon", Text: "Text" },
-    "@/components/pictopia/provider": { usePictopia: () => ({ ready: true, setEntitlement: async () => {} }) },
-    "@/components/pictopia/paywall": { PaywallHero: "PaywallHero", PaywallLinks: "PaywallLinks", PlanOptions: "PlanOptions", PlusIncluded: "PlusIncluded" },
+    "@/components/pictopia/provider": { usePictopia: () => ({ ready: true, pro, setEntitlement: async () => {} }) },
+    "@/components/pictopia/paywall": { PaywallLinks: "PaywallLinks", PlanOptions: "PlanOptions", PlusIncluded: "PlusIncluded" },
     "@/components/pictopia/use-paywall-analytics": { usePaywallAnalytics: () => () => {} },
     "@/lib/pictopia/links": {},
     "@/services/analytics": { trackOnboarding() {} },
@@ -147,8 +147,13 @@ test("the trial screen redeems the lead offer and the bottom sheet can redeem th
     } },
     "./frame": { OnboardingFrame: "Frame" },
     "./plus-showcase": { PlusShowcase: "PlusShowcase" },
-  }, { onStep: step => steps.push(step), onDone: () => {} });
-  const getButton = (tree, title) => find(tree, node => node.type === "Button" && textOf(node) === title);
+  }, { onStep: step => steps.push(step), onDone: value => done.push(value) });
+  return { h, steps, purchases, done };
+}
+const getButton = (tree, title) => find(tree, node => node.type === "Button" && textOf(node) === title);
+
+test("the trial screen redeems the lead offer and the bottom sheet can redeem the alternate plan", async () => {
+  const { h, steps, purchases } = mockTrialOffer({ trialDays: 3 });
   assert.ok(find(h.render(), node => node.type === "PlusShowcase"));
   await new Promise(resolve => setImmediate(resolve));
   getButton(h.render(), "Continue").props.onPress();
@@ -180,6 +185,45 @@ test("the trial screen redeems the lead offer and the bottom sheet can redeem th
   assert.equal(find(h.render(), node => node.type === "Modal"), undefined);
   h.unmount();
 });
+
+for (const pro of [false, true]) {
+  test(`weekly and yearly plans stay in the bottom sheet for ${pro ? "subscribers replaying onboarding" : "people without a trial"}`, async () => {
+    const { h, purchases, done } = mockTrialOffer({ pro });
+    try {
+      h.render();
+      await new Promise(resolve => setImmediate(resolve));
+      getButton(h.render(), "Continue").props.onPress();
+      const offer = h.render();
+      assert.match(textOf(offer), pro ? /Pictopia\+ is unlocked/ : /Unlock Pictopia\+/);
+      assert.ok(find(offer, node => node.type === "PlusIncluded"));
+      assert.equal(find(offer, node => node.type === "PlanOptions"), undefined);
+      assert.doesNotMatch(textOf(offer.props.footer), /No payment due now|Redeem/);
+      find(offer, node => ["Button", "Pressable"].includes(node.type) && textOf(node) === "View all plans").props.onPress();
+      const sheet = find(h.render(), node => node.type === "Modal");
+      assert.equal(find(sheet, node => node.type === "PlusIncluded"), undefined);
+      assert.match(textOf(sheet), /\$29\.99 per year/);
+      find(sheet, node => node.type === "PlanOptions").props.onSelect("w");
+      const weeklySheet = find(h.render(), node => node.type === "Modal");
+      assert.match(textOf(weeklySheet), /\$7\.99 per week/);
+      if (pro) {
+        assert.equal(getButton(weeklySheet, "Subscribe"), undefined);
+        weeklySheet.props.onRequestClose();
+        const next = getButton(h.render(), "Continue");
+        assert.equal(next.props.disabled, false);
+        next.props.onPress();
+        assert.deepEqual(purchases, []);
+        assert.deepEqual(done, [undefined]);
+      } else {
+        getButton(weeklySheet, "Subscribe").props.onPress();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepEqual(purchases, [["w", { remindBeforeTrialEnds: false }]]);
+        assert.deepEqual(done, [true]);
+      }
+    } finally {
+      h.unmount();
+    }
+  });
+}
 
 const A = makeLoader()("lib/pictopia/onboarding-analytics.ts");
 test("onboarding analytics send only allowlisted steps and coarse library sizes", () => {

@@ -60,6 +60,15 @@ function reviewHarness(ids = ['a','b','c','d'], completionPage = false) {
     settle: () => tail,
   };
 }
+test('awaiting a review position flush saves the visible item before switching groups', async () => {
+  const h = reviewHarness(['a', 'b', 'c', 'd'], true);
+  const release = h.gate();
+  const saved = h.controller.flushPosition(2, ['a', 'b', 'c', 'd']);
+  assert.equal(h.session().activeId, 'a');
+  release();
+  assert.equal(await saved, true);
+  assert.equal(h.session().activeId, 'c');
+});
 test('scrolling past photographs reviews them; one that failed to load stays unreviewed', () => {
   let s = review(['a','b','c','d']);
   s = reduceExplore(s, { type: 'unavailable', id: 'b' });

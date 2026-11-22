@@ -220,3 +220,7 @@ The review interaction uses the original 1.0.21 live feed: marked photos leave s
 
 - Onboarding presents the library count, Pictopia+ showcase, eligible trial timeline, shared plan picker, and a single starburst adventure reveal. Confirmed iPhone trials can schedule a local reminder on day two.
 - The onboarding trial timeline now offers direct redemption with the renewal price visible and weekly/yearly alternatives in a bottom sheet.
+- All Photos and both video collections show position across 120-item groups and let users continue or revisit the previous group from completion.
+- The sorted collections also offer Previous N throughout review, with confirmation and a saved return position.
+
+- Onboarding uses the same bottom sheet for trial, paid and existing-member plan views. Existing members can continue directly during replay.

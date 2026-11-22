@@ -15,6 +15,7 @@ import { knownMediaSize } from "@/lib/pictopia/storage-size";
 export type PhotoCollection = "recents" | "recent" | "screenshots" | "favorites" | "videos" | "videos-large" | "unknown" | `month:${string}` | `year:${string}` | `album:${string}`;
 export const COLLECTION_BATCH = 120;
 export const RECENTS_LIMIT = 100;
+export type CollectionGroup = { offset: number; count: number; total: number };
 interface Batch {
   sessionKey: string;
   mode: "unseen" | "all";
@@ -22,11 +23,17 @@ interface Batch {
   hasMore?: boolean;
   replayStart?: number;
   browse?: true;
+  group?: CollectionGroup;
 }
 export interface CollectionReview { scope: PhotoCollection; batches: Batch[]; position: number; continuePosition?: number; openedAt: number; sizeOrderVersion?: number; /** Albums: the name shown when opened. */ title?: string }
 const INDEX = "photoCollections:v1";
 const metaKey = (scope: PhotoCollection) => `photoCollection:${scope}`;
 export const currentBatch = (state: CollectionReview) => state.batches[state.position];
+const sameBrowsePass = (batch: Batch, other?: Batch) =>
+  !!batch.browse && !!other?.browse && other.replayStart === batch.replayStart;
+export function hasPreviousCollectionGroup(state: CollectionReview) {
+  return sameBrowsePass(currentBatch(state), state.batches[state.position - 1]);
+}
 export function isPhotoCollection(value: string): value is PhotoCollection {
   return value === "recents" || value === "recent" || value === "screenshots" || value === "favorites" || value === "videos" || value === "videos-large" || value === "unknown" || /^album:.+/.test(value) || /^month:\d{4}-(0[1-9]|1[0-2])$/.test(value) || /^year:\d{4}$/.test(value);
 }
@@ -111,9 +118,40 @@ async function albumRows(id: string) {
   }
   return ids.flatMap(member => { const m = known.get(member); return m && !m.deletedAt ? [m] : []; });
 }
+async function countBrowseItems(scope: PhotoCollection, blocked: Set<string>) {
+  const query = collectionQuery(scope);
+  const { total } = await storage.count(query);
+  if (!blocked.size) return total;
+  return total - (await storage.count({ ...query, ids: [...blocked] })).total;
+}
+
+/** Read older batches only once to give existing saved positions an absolute offset. */
+async function withCollectionGroups(state: CollectionReview): Promise<CollectionReview> {
+  const batch = currentBatch(state);
+  if (!batch.browse || batch.group) return state;
+  const start = batch.replayStart ?? state.position;
+  const batches = state.batches.slice();
+  let offset = 0;
+  let total = await countBrowseItems(state.scope, await deletionBlocked());
+  for (let position = start; position <= state.position; position++) {
+    const item = batches[position];
+    const count = item.group?.count ??
+      (await storage.getValue<ReturnType<typeof createExplore>>(item.sessionKey))?.ids.length ?? 0;
+    total = Math.max(total, offset + count + (item.hasMore ? 1 : 0));
+    batches[position] = { ...item, group: { offset, count, total } };
+    offset += count;
+  }
+  if (batch.hasMore === false) total = offset;
+  return { ...state, batches: batches.map(item => withBrowseTotal(batch, item, total)) };
+}
+function withBrowseTotal(batch: Batch, item: Batch, total: number) {
+  return sameBrowsePass(batch, item) && item.group && item.group.total !== total
+    ? { ...item, group: { ...item.group, total } }
+    : item;
+}
 async function build(
   scope: PhotoCollection, saved?: CollectionReview, mode: Batch["mode"] = "unseen",
-  cursor?: Batch["cursor"], replayStart?: number, browse?: { resumeId?: string },
+  cursor?: Batch["cursor"], replayStart?: number, browse?: { resumeId?: string; emptyPosition?: number },
 ) {
   const blocked = await deletionBlocked();
   const limit = scope === "screenshots" && replayStart !== undefined ? adventureSize("screenshots") : COLLECTION_BATCH;
@@ -164,30 +202,85 @@ async function build(
   const startingSequence = replayStart === saved?.batches.length && replayStart !== undefined;
   const switchingToUnseen = mode === "unseen" && saved && currentBatch(saved).replayStart !== undefined;
   if (!rows.length && saved && browse && !startingSequence) {
-    const batches = saved.batches.map((batch, i) => i === saved.position ? { ...batch, hasMore: false } : batch);
-    return remember({ ...saved, batches, openedAt: Date.now() });
+    return endBrowseGroup({ ...saved, position: browse.emptyPosition ?? saved.position });
   }
   if (!rows.length && saved && !startingSequence && !switchingToUnseen && (!repeatable(scope) || !!cursor)) {
     return remember({ ...saved, openedAt: Date.now() });
   }
-  return saveBatch(scope, rows, saved, mode, after, lookAhead ? hasMore : undefined, replayStart, browse);
+  let group: CollectionGroup | undefined;
+  if (browse) {
+    if (saved && !startingSequence) saved = await withCollectionGroups(saved);
+    const previous = saved && !startingSequence ? currentBatch(saved).group : undefined;
+    const offset = previous ? previous.offset + previous.count : 0;
+    const total = previous?.total ?? await countBrowseItems(scope, blocked);
+    group = { offset, count: rows.length, total: hasMore ? Math.max(total, offset + rows.length + 1) : offset + rows.length };
+  }
+  return saveBatch(scope, rows, saved, mode, after, lookAhead ? hasMore : undefined, replayStart, browse, group);
 }
 
 function saveBatch(
   scope: PhotoCollection, rows: Media[], saved: CollectionReview | undefined,
-  mode: Batch["mode"], cursor?: Batch["cursor"], hasMore?: boolean, replayStart?: number, browse?: { resumeId?: string },
+  mode: Batch["mode"], cursor?: Batch["cursor"], hasMore?: boolean, replayStart?: number, browse?: { resumeId?: string }, group?: CollectionGroup,
 ) {
   const sessionKey = `collection:${scope}:${Date.now()}-${Math.random().toString(36).slice(2)}:explore`;
   const ids = rows.map(m => m.id);
   const session = { ...createExplore(ids), review: true, instructionsDismissed: true, ...(rows.length ? {} : { finished: true }) };
   if (browse?.resumeId && ids.includes(browse.resumeId)) session.activeId = browse.resumeId;
-  const batch: Batch = { sessionKey, mode, cursor, ...(browse ? { browse: true } : {}), ...(hasMore !== undefined ? { hasMore } : {}), ...(replayStart !== undefined ? { replayStart } : {}) };
+  const batch: Batch = { sessionKey, mode, cursor, ...(browse ? { browse: true, group } : {}), ...(hasMore !== undefined ? { hasMore } : {}), ...(replayStart !== undefined ? { replayStart } : {}) };
   const position = saved?.batches.length ?? 0;
-  const state: CollectionReview = { ...saved, scope, batches: [...(saved?.batches ?? []), batch], position, openedAt: Date.now(), ...(scope === "videos-large" ? { sizeOrderVersion: 1 } : {}) };
+  const earlier = saved?.batches ?? [];
+  const batches = [...(group ? earlier.map(item => withBrowseTotal(batch, item, group.total)) : earlier), batch];
+  const state: CollectionReview = { ...saved, scope, batches, position, openedAt: Date.now(), ...(scope === "videos-large" ? { sizeOrderVersion: 1 } : {}) };
   if (browse || (canReviewAgain(scope) && mode === "unseen")) state.continuePosition = position;
   return remember(state, session);
 }
+async function endBrowseGroup(saved: CollectionReview) {
+  const state = await withCollectionGroups(saved);
+  const batch = currentBatch(state);
+  const group = batch.group && { ...batch.group, total: batch.group.offset + batch.group.count };
+  const batches = state.batches.map((item, i) => i === state.position
+    ? { ...item, hasMore: false, group }
+    : group ? withBrowseTotal(batch, item, group.total) : item);
+  return remember({ ...state, batches, openedAt: Date.now() });
+}
+
+async function availableBrowseGroup(batch: Batch) {
+  const previous = await storage.getValue<Parameters<typeof migrateExplore>[0]>(batch.sessionKey);
+  if (!previous?.ids.length) return undefined;
+  const rows = await storage.query({ ids: previous.ids, limit: previous.ids.length });
+  const count = rows.filter(m => !m.deletedAt).length;
+  return count ? { previous, count } : undefined;
+}
+
+async function openBrowseGroup(saved: CollectionReview, position: number) {
+  const state = { ...saved, position, continuePosition: position, openedAt: Date.now() };
+  const available = await availableBrowseGroup(currentBatch(state));
+  if (!available) return undefined;
+  const { previous } = available;
+  const session = migrateExplore(previous);
+  const reopened = reduceExplore(session, { type: "revisit" });
+  return remember(await withCollectionGroups(state), reopened !== session ? reopened : undefined);
+}
+async function nextBrowseGroup(saved: CollectionReview) {
+  const batch = currentBatch(saved);
+  let position = saved.position;
+  while (sameBrowsePass(batch, saved.batches[position + 1])) {
+    position++;
+    const next = await openBrowseGroup(saved, position);
+    if (next) return next;
+  }
+  return build(saved.scope, { ...saved, position }, "all", saved.batches[position].cursor, batch.replayStart, { emptyPosition: saved.position });
+}
+
 export const collectionStore = {
+  async previousGroupCount(state: CollectionReview) {
+    const batch = currentBatch(state);
+    for (let earlier = state.position - 1; sameBrowsePass(batch, state.batches[earlier]); earlier--) {
+      const available = await availableBrowseGroup(state.batches[earlier]);
+      if (available) return available.count;
+    }
+    return 0;
+  },
   async summary(scope: PhotoCollection) {
     if (scope === "videos" || scope === "videos-large") return storage.videoProgress();
     if (scope === "screenshots") {
@@ -230,10 +323,10 @@ export const collectionStore = {
         if (saved && batch?.browse && session?.ids.length && (!session.finished || batch.hasMore)) {
           if (!session.finished) {
             const rows = await storage.query({ ids: session.ids, limit: session.ids.length });
-            if (rows.some(m => !m.deletedAt)) return remember({ ...saved, openedAt: Date.now() });
+            if (rows.some(m => !m.deletedAt)) return remember({ ...await withCollectionGroups(saved), openedAt: Date.now() });
           }
           if (batch.hasMore) {
-            const next = await build(scope, saved, "all", batch.cursor, batch.replayStart, {});
+            const next = await nextBrowseGroup(saved);
             if (currentBatch(next).sessionKey !== batch.sessionKey) return next;
           }
         }
@@ -290,17 +383,30 @@ export const collectionStore = {
       }
       if (!saved) return build(scope, undefined, all ? "all" : "unseen");
       const batch = currentBatch(saved);
+      if (batch.browse && !all) return nextBrowseGroup(saved);
       const following = saved.batches[saved.position + 1];
       if (!all && following && (!canReviewAgain(scope) || (batch.replayStart !== undefined && following.replayStart === batch.replayStart))) {
-        return remember({ ...saved, position: saved.position + 1, ...(following.browse ? { continuePosition: saved.position + 1 } : {}), openedAt: Date.now() });
+        return remember({ ...saved, position: saved.position + 1, openedAt: Date.now() });
       }
-      return build(scope, saved, all ? "all" : batch.mode, all ? undefined : batch.mode === "all" ? batch.cursor : undefined, batch.replayStart, batch.browse && !all ? {} : undefined);
+      return build(scope, saved, all ? "all" : batch.mode, all ? undefined : batch.mode === "all" ? batch.cursor : undefined, batch.replayStart);
     });
   },
-  async previous(scope: PhotoCollection) {
+  async previous(scope: PhotoCollection, fromKey?: string) {
     return serialize(async () => {
-      const saved = await storage.getValue<CollectionReview>(metaKey(scope));
-      return saved ? remember({ ...saved, position: Math.max(0, saved.position - 1), openedAt: Date.now() }) : undefined;
+      const stored = await storage.getValue<CollectionReview>(metaKey(scope));
+      if (!stored) return undefined;
+      const position = fromKey ? stored.batches.findIndex(batch => batch.sessionKey === fromKey) : stored.position;
+      if (position < 0) return undefined;
+      const saved = { ...stored, position };
+      const batch = currentBatch(saved);
+      if (batch.browse) {
+        for (let earlier = position - 1; sameBrowsePass(batch, saved.batches[earlier]); earlier--) {
+          const previous = await openBrowseGroup(saved, earlier);
+          if (previous) return previous;
+        }
+        return undefined;
+      }
+      return remember({ ...saved, position: Math.max(0, position - 1), openedAt: Date.now() });
     });
   },
   async latest() {

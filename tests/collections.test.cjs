@@ -276,6 +276,7 @@ test('All Photos browses every 120-item batch and reopens at the newest without 
   const before = await h.app.storage.progress();
   for (const [index, count] of [120, 120, 5].entries()) {
     assert.equal(h.currentBatch(state).hasMore, count === 120);
+    assert.deepEqual(h.currentBatch(state).group, { offset: index * 120, count, total: 245 });
     const ids = await exploreBatch(h, state);
     assert.equal(ids.length, count);
     visited.push(...ids);
@@ -293,6 +294,67 @@ test('All Photos browses every 120-item batch and reopens at the newest without 
   assert.deepEqual(day.today.ids, ['new-photo']);
   assert.equal((await h.app.storage.progress()).explored, before.explored + 1);
   h.db.close();
+});
+
+test('saved video groups can go back and continue again without replacing their sessions or discard decisions', async () => {
+  const rows = Array.from({ length: 245 }, (_, i) => media(`v${String(i).padStart(3, '0')}`, {
+    type: 'video', created: 1_700_000_000_000 + i, size: 1000 - i, firstSeenAt: 1,
+  }));
+  rows[0].decision = 'delete';
+  const h = await setup(rows);
+  try {
+    for (const scope of ['videos', 'videos-large']) {
+      const first = await h.collectionStore.open(scope);
+      assert.equal(h.hasPreviousCollectionGroup(first), false);
+      assert.equal(await h.collectionStore.previousGroupCount(first), 0);
+      const firstIds = await exploreBatch(h, first);
+      const second = await h.collectionStore.next(scope);
+      const secondIds = await exploreBatch(h, second);
+      const secondKey = h.currentBatch(second).sessionKey;
+      const third = await h.collectionStore.open(scope);
+      assert.deepEqual(h.currentBatch(third).group, { offset: 240, count: 5, total: 245 });
+      assert.equal(h.hasPreviousCollectionGroup(third), true);
+      assert.equal(await h.collectionStore.previousGroupCount(third), 120);
+      const thirdStore = h.exploreStoreFor(h.currentBatch(third).sessionKey);
+      const resumeId = (await thirdStore.load()).ids[2];
+      await thirdStore.change(session => ({ type: 'page', id: session.activeId, revision: session.revision, toId: resumeId, availableIds: session.ids }));
+
+      const previous = await h.collectionStore.previous(scope, h.currentBatch(third).sessionKey);
+      assert.equal(h.currentBatch(previous).sessionKey, secondKey);
+      assert.equal((await h.exploreStoreFor(secondKey).load()).activeId, secondIds[0]);
+      assert.equal(h.currentBatch(await h.collectionStore.open(scope)).sessionKey, secondKey);
+
+      const start = await h.collectionStore.previous(scope, secondKey);
+      assert.equal(h.currentBatch(start).sessionKey, h.currentBatch(first).sessionKey);
+      const reopened = await h.exploreStoreFor(h.currentBatch(start).sessionKey).load();
+      assert.equal(reopened.activeId, firstIds[0]);
+      assert.equal(reopened.records[rows[0].id].queued, true);
+      assert.equal((await h.app.storage.get(rows[0].id)).decision, 'delete');
+      await exploreBatch(h, start);
+      const backToSecond = await h.collectionStore.next(scope);
+      assert.equal(h.currentBatch(backToSecond).sessionKey, secondKey);
+      await exploreBatch(h, backToSecond);
+      assert.equal(h.currentBatch(await h.collectionStore.next(scope)).sessionKey, h.currentBatch(third).sessionKey);
+      assert.equal((await thirdStore.load()).activeId, resumeId);
+      assert.equal(await h.collectionStore.previous(scope, h.currentBatch(first).sessionKey), undefined);
+    }
+    assert.deepEqual(h.p.requests, []);
+  } finally { h.db.close(); }
+});
+
+test('an existing saved group gets an absolute position without reopening its earlier items', async () => {
+  const h = await setup(Array.from({ length: 242 }, (_, i) => media(`p${i}`, { firstSeenAt: 1 })));
+  try {
+    await exploreBatch(h, await h.collectionStore.open('recent'));
+    const second = await h.collectionStore.next('recent');
+    const key = h.currentBatch(second).sessionKey;
+    const stored = { ...second, batches: second.batches.map(({ group, ...batch }) => batch) };
+    await h.app.storage.setValue('photoCollection:recent', stored);
+    const opened = await h.collectionStore.open('recent');
+    assert.equal(h.currentBatch(opened).sessionKey, key);
+    assert.deepEqual(h.currentBatch(opened).group, { offset: 120, count: 120, total: 242 });
+    assert.deepEqual(opened.batches[0].group, { offset: 0, count: 120, total: 242 });
+  } finally { h.db.close(); }
 });
 
 for (const os of ['ios', 'android']) {

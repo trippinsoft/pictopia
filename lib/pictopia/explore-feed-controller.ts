@@ -109,16 +109,15 @@ export class ExploreFeedController {
   }
   /** Leaving or backgrounding: save the page under the finger. On a review's end card there is
    * no place to save, but what was scrolled through still is. */
-  flushPosition(page: number, availableIds: string[]) {
+  async flushPosition(page: number, availableIds: string[]) {
     const last = this.deps.pages().length - 1;
-    if (this.busy || page < 0 || page > last) return;
+    if (this.busy || page < 0 || page > last) return false;
     this.travel(page);
     if (page === last) {
-      if (this.deps.read().review) void this.flushTraversal();
-      return;
+      return this.flushTraversal();
     }
     this.show(page, false);
-    void this.persist(availableIds);
+    return this.persist(availableIds);
   }
   /** Traversal not yet confirmed saved; a review's Finish carries it in the same write. */
   traversal() {
@@ -367,10 +366,10 @@ export class ExploreFeedController {
   /** Saves the shown photograph as the place. The result is checked, never assumed: a save
    * that throws is retried once, and only if the user is still on that photograph does a
    * final failure fall back to the saved place, so the screen and the store always agree. */
-  private async persist(availableIds: string[], attempt = 0): Promise<void> {
+  private async persist(availableIds: string[], attempt = 0): Promise<boolean> {
     const toId = this.activeId;
     // A review's end card and daily-limit page are never saved places.
-    if (toId === null && this.deps.read().review) return;
+    if (toId === null && this.deps.read().review) return true;
     let saved: ExploreSession | undefined;
     let passed: string[] = [];
     try {
@@ -381,17 +380,18 @@ export class ExploreFeedController {
       saved = undefined;
     }
     if (saved) this.confirm(saved, passed);
-    if (saved?.activeId === toId) return;
+    if (saved?.activeId === toId) return true;
     // The user has moved on: their newer page save is already queued and supersedes this.
-    if (this.activeId !== toId) return;
+    if (this.activeId !== toId) return false;
     if (!saved && attempt === 0) {
       await new Promise((resolve) => setTimeout(resolve, 250));
       if (this.activeId === toId) return this.persist(availableIds, 1);
-      return;
+      return false;
     }
     // Saved but refused: the photograph left the sequence meanwhile (marked elsewhere).
     // Either way, show the place that is actually saved.
     this.resync(!saved);
+    return false;
   }
   private resync(failed = true) {
     if (failed) this.deps.onError("Couldn’t save that action. Please try again.");

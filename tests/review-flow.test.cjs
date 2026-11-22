@@ -215,6 +215,21 @@ test("collection completion keeps existing batch navigation without a Review Aga
     const unrelated = h.render({ ...props, moreAfterCompletion: false });
     assert.equal(byLabel(unrelated, "Review Again"), undefined);
     assert.equal(byLabel(unrelated, "Review next batch"), undefined);
+    const group = h.render({
+      ...props, scope: { explored: 120, total: 1265, complete: false },
+      headingOverride: "Group complete", headlineOverride: "121–240 of 1,265",
+      doneLabel: "Finish for now", more: { label: "Continue", onPress: () => calls.push("continue") },
+      onPreviousGroup: () => calls.push("previous"), onDone: () => calls.push("done"),
+    });
+    assert.match(textOf(group), /Group complete/);
+    assert.match(textOf(group), /121–240 of 1,265/);
+    byLabel(group, "Continue").props.onPress();
+    byLabel(group, "Previous group").props.onPress();
+    byLabel(group, "Finish for now").props.onPress();
+    assert.deepEqual(calls, ["next", "continue", "previous", "done"]);
+    const finalGroup = h.render({ ...props, headingOverride: "End of collection", more: undefined });
+    assert.match(textOf(finalGroup), /End of collection/);
+    assert.equal(byLabel(finalGroup, "Continue"), undefined);
     const empty = h.render({ ...props, scope: { explored: 0, total: 0, complete: false }, headlineOverride: undefined });
     assert.match(textOf(empty), /No items available/);
     assert.doesNotMatch(textOf(empty), /100% reviewed/);

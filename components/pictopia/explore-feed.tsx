@@ -40,7 +40,7 @@ export interface ExploreFeedHandle {
   discard(direction: DiscardDirection): void;
   undo(): Promise<boolean>;
   action(action: ExploreAction): void;
-  flush(): void;
+  flush(): Promise<boolean>;
   isAtEnd(): boolean;
   /** Photographs scrolled through whose review credit isn't saved yet; Finish saves them. */
   traversal(): string[];
@@ -526,7 +526,7 @@ export const ExploreFeed = forwardRef<ExploreFeedHandle, Props>(function Explore
     () => ({
       isAtEnd: () => controller.activeId === null,
       traversal: () => controller.traversal(),
-      flush: () => { if (pageHeight.current) controller.flushPosition(Math.round(readOffset() / pageHeight.current), availableIds()); },
+      flush: async () => !pageHeight.current || controller.flushPosition(Math.round(readOffset() / pageHeight.current), availableIds()),
       next: () => controller.next(availableIds()),
       jump: (id) => { if (concealed.current.delete(id)) setConcealedIds(new Set(concealed.current.keys())); cards.current.get(id)?.reset(); setZoomedId(undefined); controller.jump(id, availableIds()); },
       discard: (direction) =>

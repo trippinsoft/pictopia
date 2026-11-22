@@ -1,7 +1,7 @@
 import { NavigationBack } from "./navigation-header";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from "react";
 import { adventureLabel } from "@/lib/pictopia/catalog";
-import { Platform, Pressable, View } from "react-native";
+import { Modal, Platform, Pressable, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, Stack, useNavigation } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -29,6 +29,7 @@ import { plural } from "@/lib/pictopia/text";
 import { mediaService } from "@/services/media";
 import { repository, serialize, storage } from "@/services/repository";
 import type { Adventure } from "@/lib/pictopia/adventures";
+import type { CollectionGroup } from "@/services/collections";
 import type { Media } from "@/lib/pictopia/types";
 import { adventureSessionKey, adventureStore } from "@/services/adventures";
 
@@ -41,13 +42,14 @@ export interface FinishActions {
   explored: number; marked: number; unavailable: number; libraryBefore?: number;
   photoIds: string[]; discarded: Media[];
 }
-export function AdventureReview({ id, collection, finishContent, onContinue, dateNavigation, showCompletionOnOpen, reviewError }: {
+export function AdventureReview({ id, collection, finishContent, onContinue, dateNavigation, showCompletionOnOpen, reviewError, previousGroup }: {
   id: string;
   /** Collections supply their own review session and title. */
-  collection?: { sessionKey: string; title: string; firstReviewOnly?: boolean; replay?: boolean };
+  collection?: { sessionKey: string; title: string; firstReviewOnly?: boolean; replay?: boolean; group?: CollectionGroup };
   finishContent?: (actions: FinishActions) => ReactNode;
   showCompletionOnOpen?: boolean;
   reviewError?: string;
+  previousGroup?: { count: number; busy: boolean; onConfirm(savePosition: () => Promise<boolean>): void };
   /** Remount the review after a persisted segment change to discard the prior feed state. */
   onContinue?: () => void;
   /** Date navigation flushes this feed before the owner switches saved sessions. */
@@ -57,6 +59,7 @@ export function AdventureReview({ id, collection, finishContent, onContinue, dat
   const { app, session, media, pending, error, change, getSession, reload } = useExplore(sessionKey);
   const [adventure, setAdventure] = useState<Adventure>(), [valid, setValid] = useState<boolean>(), [loadError, setLoadError] = useState<string>();
   const [metadataRetry, setMetadataRetry] = useState(0);
+  const [confirmPrevious, setConfirmPrevious] = useState(false);
   const [selected, setSelected] = useState<string>(), [busy, setBusy] = useState(false), [available, setAvailable] = useState(false), [tray, setTray] = useState(false), [transitionError, setTransitionError] = useState<string>();
   // The pager is on the end card (or the daily-limit page): past the last photograph, which
   // is never a saved place. Photo controls and the date hide there.
@@ -264,11 +267,18 @@ export function AdventureReview({ id, collection, finishContent, onContinue, dat
     if (atEnd && !stopBefore && session) line.current?.setPosition(sequence.length - 1);
     else if (originalPlace >= 0) line.current?.setPosition(originalPlace);
   }, [originalPlace, atEnd, stopBefore, sequence.length]);
-  const contextProgress = reviewProgressLabel(atEnd ? Math.max(0, sequence.length - 1) : originalPlace, sequence.length);
+  const group = collection?.group;
+  const shownId = atEnd ? sequence.at(-1) : photo;
+  const groupIndex = shownId ? session?.ids.indexOf(shownId) ?? -1 : -1;
+  const contextProgress = group && group.count > 0
+    ? `${(group.offset + Math.max(0, groupIndex) + 1).toLocaleString()} of ${group.total.toLocaleString()}`
+    : reviewProgressLabel(atEnd ? Math.max(0, sequence.length - 1) : originalPlace, sequence.length);
   const label = current ? monthYear(current.created) : undefined;
   // Largest videos: each video's size, measured when the platform reports it, else estimated.
   const sizeLabel = id === "videos-large" && current?.type === "video" ? `${knownMediaSize(current) === undefined ? "≈ " : ""}${bytes(displayMediaSize(current))}` : undefined;
-  const dateStrip = dateNavigation?.({ disabled: busy || pending || flying > 0 || finishing.current, flush: () => feed.current?.flush() });
+  const moving = busy || pending || flying > 0 || finishing.current;
+  const dateStrip = dateNavigation?.({ disabled: moving, flush: () => { void feed.current?.flush(); } });
+  const previousDisabled = moving || !!previousGroup?.busy;
   // Date switches must keep the full header while the saved review loads; the
   // compact loading header otherwise lifts the date strip and drops it again.
   if (!session || valid === undefined || (!collection && !adventure) || (complete && awaitingReopen)) return <AdventureTheme enabled><SafeAreaView className="flex-1 bg-background">
@@ -328,9 +338,19 @@ export function AdventureReview({ id, collection, finishContent, onContinue, dat
               <Button secondary icon="Trash2" onPress={() => setTray(true)}>Open Discarded</Button>
             </View>
           </View> : allowance.error ? <View className="flex-1 items-center justify-center gap-4 px-8"><Text className="text-center text-body text-foreground">Couldn’t check your daily free reviews. Your saved review is safe.</Text><Button onPress={() => void allowance.reload()}>Try again</Button></View> : !allowance.ready ? <Loading /> : <ExploreFeed ref={feed} session={session} media={media} autoplayVideo={Platform.OS !== "web" && app.prefs.autoplay} change={change} getSession={getSession} flight={flight} canReview={allowance.canReview} stopBefore={stopBefore} limitPage={limitPage} endPage={endPage} onEnd={finish}
-            onPage={(index, total) => { setAtEnd(index >= total); if (index < total) setSelected(sequence[index]); }} onScrollPosition={position => line.current?.setPosition(position)} onScrollActive={(target, ready) => { setSelected(target); setAvailable(ready); }} onBusy={setBusy} onAvailability={setAvailable} onError={setTransitionError} onRestore={restore} onCountUnavailable={countUnavailable} onPhotoUnavailable={checkGone} onUndone={allowance.refund} />}
-          {!!sizeLabel && !empty && !atEnd && <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" className="absolute left-3 top-2 flex-row items-center gap-1 rounded-[9px] bg-black/50 px-2.5 py-1"><Icon name="HardDrive" size={13} className="text-white" /><Text className="text-caption text-white" style={{ fontVariant: ["tabular-nums"] }}>{sizeLabel}</Text></View>}
-          {!!label && !empty && !atEnd && <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" className="absolute right-3 top-2 rounded-[9px] bg-black/50 px-2.5 py-1"><Text className="text-caption text-white">{label}</Text></View>}
+            onPage={(index, total) => { setAtEnd(index >= total); if (index < total) setSelected(sequence[index]); }} onScrollPosition={position => line.current?.setPosition(position)} onScrollActive={(target, ready) => { setSelected(target); setAvailable(ready); }} onBusy={setBusy} onAvailability={setAvailable} onError={setTransitionError} onRestore={restore} onCountUnavailable={countUnavailable} onPhotoUnavailable={checkGone} onUndone={allowance.refund}
+            onBrowse={() => guidance.complete("browse")} />}
+          {previousGroup ? <Pressable accessibilityRole="button" accessibilityLabel={`Previous group, ${previousGroup.count} items`}
+            disabled={previousDisabled} onPress={() => setConfirmPrevious(true)} className="absolute left-3 top-1 min-h-11 justify-center">
+            <View className="flex-row items-center gap-1 rounded-[9px] bg-black/70 px-2.5 py-1.5">
+              <Icon name="ChevronLeft" size={15} className="text-white" />
+              <Text className="text-caption text-white">{`Previous ${previousGroup.count.toLocaleString()}`}</Text>
+            </View>
+          </Pressable> : null}
+          {!empty && !atEnd && (label || sizeLabel) ? <View pointerEvents="none" className="absolute right-3 top-2 items-end rounded-[9px] bg-black/50 px-2.5 py-1">
+            {label ? <Text className="text-caption text-white">{label}</Text> : null}
+            {sizeLabel ? <View className="flex-row items-center gap-1"><Icon name="HardDrive" size={13} className="text-white" /><Text className="text-caption text-white" style={{ fontVariant: ["tabular-nums"] }}>{sizeLabel}</Text></View> : null}
+          </View> : null}
           {/* Over the photos, never above them: inserting it would resize every page mid-scroll. */}
           {!!(error || loadError || transitionError) && <Pressable accessibilityRole="button" accessibilityLabel="Retry loading saved review" onPress={() => { setTransitionError(undefined); void reload(); }} className="absolute left-4 right-4 top-12 rounded-2xl bg-card/95 px-4 py-2"><Text accessibilityRole="alert" className="text-body text-foreground">{error || loadError || transitionError}</Text></Pressable>}
           {reviewError ? <Text accessibilityRole="alert" className="absolute left-4 right-4 top-12 rounded-2xl bg-card px-4 py-2 text-center text-body text-destructive">{reviewError}</Text> : null}
@@ -348,6 +368,19 @@ export function AdventureReview({ id, collection, finishContent, onContinue, dat
       {layer}
     </View>
     <DiscardTray visible={tray} ids={marked} media={media} busy={busy} onRestore={restore} onClose={() => setTray(false)} onReview={() => { setTray(false); reviewMarked(); }} />
+    {confirmPrevious && previousGroup ? <Modal visible transparent animationType="fade" onRequestClose={() => setConfirmPrevious(false)}>
+      <SafeAreaView className="flex-1 items-center justify-center bg-black/60 px-6">
+        <View accessibilityViewIsModal className="w-full max-w-sm gap-4 rounded-3xl border border-border bg-card p-6">
+          <Text accessibilityRole="header" className="text-center text-headline text-foreground">Go to the previous group?</Text>
+          <Text className="text-center text-body text-muted-foreground">Your place in this group will be saved.</Text>
+          <Button disabled={previousDisabled} onPress={() => {
+            setConfirmPrevious(false);
+            previousGroup.onConfirm(async () => await feed.current?.flush() ?? true);
+          }}>Go to previous group</Button>
+          <Button secondary onPress={() => setConfirmPrevious(false)}>Cancel</Button>
+        </View>
+      </SafeAreaView>
+    </Modal> : null}
   </SafeAreaView></AdventureTheme>;
 }
 

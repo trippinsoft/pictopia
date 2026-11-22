@@ -111,6 +111,7 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
   const syncRef = useRef<AbortController | null>(null),
     scanRef = useRef<AbortController | null>(null),
     requestingPhotoPermission = useRef(false),
+    backgroundLibraryEnabled = useRef(false),
     alive = useRef(true),
     deletingRef = useRef(false),
     // True once a full sync has succeeded (or on web, where data loads on connect). After
@@ -152,7 +153,7 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
     }
   }
   async function sync(request: boolean) {
-    if (syncRef.current || deletingRef.current) return false;
+    if ((!request && !backgroundLibraryEnabled.current) || syncRef.current || deletingRef.current) return false;
     setBusy(true);
     // Only blank the UI for the very first sync, when there is genuinely no data to show.
     // Later background syncs keep current data on screen and update it when they finish.
@@ -165,8 +166,11 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
       requestingPhotoPermission.current = request && Platform.OS !== "web";
       const p = await mediaService.permission(request).finally(() => { requestingPhotoPermission.current = false; });
       setPermission(p);
-      if (!p.granted)
-        throw Error("Photo access is off. Allow access in Settings to start cleaning.");
+      if (!p.granted) {
+        if (request) throw Error("Photo access is off. Allow access in Settings to start cleaning.");
+        return false;
+      }
+      backgroundLibraryEnabled.current = true;
       let epoch = 0;
       let indexedIds = new Set<string>();
       let discovered = 0;
@@ -229,6 +233,9 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
         const startPermission = await mediaService.permission();
         setPermission(startPermission);
         await refresh();
+        // A passive status check supports existing users and interrupted onboarding.
+        // First-time users without access only connect from the library access step.
+        backgroundLibraryEnabled.current = p.onboarded || startPermission.granted;
         // A library check that finished on an earlier launch makes the saved records
         // trustworthy right away: show them now and let this launch's sync update them in
         // place. Only a library that has never finished indexing waits (and shows progress).
@@ -246,7 +253,7 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
           void saveEnt(e);
           void lifetimePlusStore.sync({ payment: true }).catch(() => {});
         });
-        if (Platform.OS !== "web") {
+        if (Platform.OS !== "web" && backgroundLibraryEnabled.current) {
           // Finish checking any deletion interrupted by a crash or termination before syncing.
           await recover();
           const permission = await mediaService.permission();
@@ -270,7 +277,7 @@ export function PictopiaProvider({ children }: { children: React.ReactNode }) {
         // Always finish any interrupted deletion, but don't re-scan the whole library on
         // every single return to the app — a quick screen off/on shouldn't cost a full
         // sync. Real photo changes still sync immediately via the media change listener.
-        if (Platform.OS !== "web")
+        if (Platform.OS !== "web" && backgroundLibraryEnabled.current)
           void recover().then(() => {
             if (Date.now() - lastSyncAtRef.current > FOREGROUND_RESYNC_MS) void sync(false);
           });
